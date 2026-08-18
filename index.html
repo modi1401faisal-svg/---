@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+
+<html lang="ar" dir="rtl">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>نظام مختبر جودة المشاريع</title>
+
+    <link rel="stylesheet" href="style.css">
+
+</head>
+
+<body>
+
+<!-- =========================
+
+     الرأس
+
+========================= -->
+
+<header class="main-header">
+
+    <div class="header-content">
+
+        <div>
+
+            <h1>نظام رخص الإخلاءات والطوارئ والملاحظات</h1>
+
+            <p>مختبر جودة المشاريع</p>
+
+        </div>
+
+    </div>
+
+</header>
+
+<!-- =========================
+
+     شريط التنقل
+
+========================= -->
+
+<nav class="navbar">
+
+    <button onclick="showPage('dashboard')">
+
+        الرئيسية
+
+    </button>
+
+    <button onclick="showPage('clearance')">
+
+        رخص الإخلاءات
+
+    </button>
+
+    <button onclick="showPage('emergency')">
+
+        رخص الطوارئ
+
+    </button>
+
+    <button onclick="showPage('notes')">
+
+        الملاحظات
+
+    </button>
+
+</nav>
+
+<main class="container">
+
+<!-- ==================================================
+
+     الرئيسية
+
+================================================== -->
+
+<section id="dashboard" class="page active">
+
+    <div class="section-title">
+
+        <h2>لوحة المتابعة</h2>
+
+        <p>
+
+            ملخص أعمال مختبر جودة المشاريع
+
+        </p>
+
+    </div>
+
+    <div class="stats-grid">
+
+        <div class="stat-card">
+
+            <div class="stat-icon">
+
+                📄
+
+            </div>
+
+            <div>
+
+                <span>رخص الإخلاءات</span>
+
+                <strong id="clearanceCount">0</strong>
+
+            </div>
+
+        </div>
+
+        <div class="stat-card">
+
+            <div class="stat-icon">
+
+                🚧
+
+            </div>
+
+            <div>
+
+                <span>رخص الطوارئ</span>
+
+                <strong id="emergencyCount">0</strong>
+
+            </div>
+
+        </div>
+
+        <div class="stat-card">
+
+            <div class="stat-icon">
+
+                🔴
+
+            </div>
+
+            <div>
+
+                <span>ملاحظات متأخرة</span>
+
+                <strong id="lateNotesCount">0</strong>
+
+            </div>
+
+        </div>
+
+        <div class="stat-card">
+
+            <div class="stat-icon">
+
+                ✅
+
+            </div>
+
+            <div>
+
+                <span>ملاحظات تم تعديلها</span>
+
+                <strong id="completedNotesCount">0</strong>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <div class="card">
+
+        <div class="card-header">
+
+            <h3>
+
+                تنبيهات الملاحظات
+
+            </h3>
+
+        </div>
+
+        <div id="alerts" class="alerts-box">
+
+            لا توجد ملاحظات متأخرة حالياً
+
+        </div>
+
+    </div>
+
+</section>
+
+<!-- ==================================================
+
+     رخص الإخلاءات
+
+================================================== -->
+
+<section id="clearance" class="page">
+
+    <div class="section-title">
+
+        <h2>رخص الإخلاءات</h2>
+
+        <p>
+
+            إدخال والبحث ومتابعة رخص الإخلاءات
+
+        </p>
+
+    </div>
+
+    <!-- =========================
+
+         البحث
+
+    ========================= -->
+
+    <div class="card search-card">
+
+        <div class="card-header">
+
+            <h3>
+
+                🔎 البحث عن رخصة إخلاء
+
+            </h3>
+
+        </div>
+
+        <div class="search-row">
+
+            <input
+
+                type="text"
+
+                id="clearanceSearch"
+
+                placeholder="اكتب رقم رخصة الإخلاء..."
+
+                autocomplete="off"
+
+            >
+
+            <button
+
+                class="btn-primary"
+
+                onclick="searchClearance()"
+
+            >
+
+                بحث
+
+            </button>
+
+            <button
+
+                class="btn-secondary"
+
+                onclick="clearClearanceSearch()"
+
+            >
+
+                مسح البحث
+
+            </button>
+
+        </div>
+
+        <div id="clearanceSearchResult"
+
+             class="search-result">
+
+        </div>
+
+    </div>
+
+    <!-- =========================
+
+         إدخال الرخصة
+
+    ========================= -->
+
+    <div class="card">
+
+        <div class="card-header">
+
+            <h3>
+
+                إدخال رخصة إخلاء
+
+            </h3>
+
+        </div>
+
+        <div class="form-grid">
+
+            <div class="form-group">
+
+                <label>
+
+                    رقم التصريح
+
+                </label>
+
+                <input
+
+                    id="clearancePermit"
+
+                    type="text"
+
+                >
+
+            </div>
+
+            <div class="form-group">
+
+                <label>
+
+                    اسم المقاول
+
+                </label>
+
+                <input
+
+                    id="clearanceContractor"
+
+                    type="text"
+
+                >
+
+            </div>
+
+            <div class="form-group">
+
+                <label>
+
+                    الجهة المالكة
+
+                </label>
+
+                <input
+
+                    id="clearanceOwner"
+
+                    type="text"
+
+                >
+
+            </div>
+
+            <div class="form-group">
+
+                <label>
+
+                    الموقع
+
+                </label>
+
+                <input
+
+                    id="clearanceLocation"
+
+                    type="text"
+
+                >
+
+            </div>
+
+            <div class="form-group full">
+
+                <label>
+
+                    الصور
+
+                </label>
+
+                <input
+
+                    id="clearanceImages"
+
+                    type="file"
+
+                    accept="image/*"
+
+                    multiple
+
+                >
+
+            </div>
+
+        </div>
+
+        <div class="form-actions">
+
+            <button
+
+                class="btn-primary"
+
+                onclick="saveClearance()"
+
+            >
+
+                حفظ الرخصة
+
+            </button>
+
+            <button
+
+                class="btn-secondary"
+
+                onclick="clearClearance()"
+
+            >
+
+                تفريغ
+
+            </button>
+
+        </div>
+
+    </div>
+
+    <!-- =========================
+
+         جدول الإخلاءات
+
+    ========================= -->
+
+    <div class="card table-card">
+
+        <div class="card-header">
+
+            <h3>
+
+                سجل رخص الإخلاءات
+
+            </h3>
+
+        </div>
+
+        <div class="table-container">
+
+            <table>
+
+                <thead>
+
+                    <tr>
+
+                        <th>
+
+                            رقم التصريح
+
+                        </th>
+
+                        <th>
+
+                            المقاول
+
+                        </th>
+
+                        <th>
+
+                            الجهة المالكة
+
+                        </th>
+
+                        <th>
+
+                            الموقع
+
+                        </th>
+
+                        <th>
+
+                            الصور
+
+                        </th>
+
+                        <th>
+
+                            الإجراءات
+
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+                <tbody id="clearanceTable">
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</section>
+
+<!-- ==================================================
+
+     رخص الطوارئ
+
+================================================== -->
+
+<section id="emergency" class="page">
+
+    <div class="section-title">
+
+        <h2>
+
+            رخص الطوارئ
+
+        </h2>
+
+        <p>
+
+            إدخال والبحث ومتابعة رخص الطوارئ
+
+        </p>
+
+    </div>
+
+    <!-- =========================
+
+         البحث
+
+    ========================= -->
+
+    <div class="card search-card">
+
+        <div class="card-header">
+
+            <h3>
+
+                🔎 البحث عن رخصة طوارئ
+
+            </h3>
+
+        </div>
+
+        <div class="search-row">
+
+            <input
+
+                type="text"
+
+                id="emergencySearch"
+
+                placeholder="اكتب رقم رخصة الطوارئ..."
+
+                autocomplete="off"
+
+            >
+
+            <button
+
+                class="btn-primary"
+
+                onclick="searchEmergency()"
+
+            >
+
+                بحث
+
+            </button>
+
+            <button
+
+                class="btn-secondary"
+
+                onclick="clearEmergencySearch()"
+
+            >
+
+                مسح البحث
+
+            </button>
+
+        </div>
+
+        <div id="emergencySearchResult"
+
+             class="search-result">
+
+        </div>
+
+    </div>
+
+    <!-- =========================
+
+         إدخال الطوارئ
+
+    ========================= -->
+
+    <div class="card">
+
+        <div class="card-header">
+
+            <h3>
+
+                إدخال رخصة طوارئ
+
+            </h3>
+
+        </div>
+
+        <div class="form-grid">
+
+            <div class="form-group">
+
+                <label>
+
+                    رقم التصريح
+
+                </label>
+
+                <input
+
+                    id="emergencyPermit"
+
+                    type="text"
+
+                >
+
+            </div>
+
+            <div class="form-group">
+
+                <label>
+
+                    اسم المقاول
+
+                </label>
+
+                <input
+
+                    id="emergencyContractor"
+
+                    type="text"
+
+                >
+
+            </div>
+
+            <div class="form-group">
+
+                <label>
+
+                    الجهة المالكة
+
+                </label>
+
+                <input
+
+                    id="emergencyOwner"
+
+                    type="text"
+
+                >
+
+            </div>
+
+            <div class="form-group">
+
+                <label>
+
+                    تاريخ استلام المختبر
+
+                </label>
+
+                <input
+
+                    id="labReceiveDate"
+
+                    type="date"
+
+                >
+
+            </div>
+
+            <div class="form-group">
+
+                <label>
+
+                    تاريخ بدء العمل
+
+                </label>
+
+                <input
+
+                    id="workStartDate"
+
+                    type="date"
+
+                >
+
+            </div>
+
+            <div class="form-group">
+
+                <label>
+
+                    تاريخ انتهاء العمل
+
+                </label>
+
+                <input
+
+                    id="workEndDate"
+
+                    type="date"
+
+                >
+
+            </div>
+
+            <div class="form-group">
+
+                <label>
+
+                    الموقع
+
+                </label>
+
+                <input
+
+                    id="emergencyLocation"
+
+                    type="text"
+
+                >
+
+            </div>
+
+            <div class="form-group full">
+
+                <label>
+
+                    الصور
+
+                </label>
+
+                <input
+
+                    id="emergencyImages"
+
+                    type="file"
+
+                    accept="image/*"
+
+                    multiple
+
+                >
+
+            </div>
+
+        </div>
+
+        <div class="form-actions">
+
+            <button
+
+                class="btn-primary"
+
+                onclick="saveEmergency()"
+
+            >
+
+                حفظ الرخصة
+
+            </button>
+
+            <button
+
+                class="btn-secondary"
+
+                onclick="clearEmergency()"
+
+            >
+
+                تفريغ
+
+            </button>
+
+        </div>
+
+    </div>
+
+    <!-- =========================
+
+         جدول الطوارئ
+
+    ========================= -->
+
+    <div class="card table-card">
+
+        <div class="card-header">
+
+            <h3>
+
+                سجل رخص الطوارئ
+
+            </h3>
+
+        </div>
+
+        <div class="table-container">
+
+            <table>
+
+                <thead>
+
+                    <tr>
+
+                        <th>
+
+                            رقم التصريح
+
+                        </th>
+
+                        <th>
+
+                            المقاول
+
+                        </th>
+
+                        <th>
+
+                            الجهة المالكة
+
+                        </th>
+
+                        <th>
+
+                            استلام المختبر
+
+                        </th>
+
+                        <th>
+
+                            بدء العمل
+
+                        </th>
+
+                        <th>
+
+                            انتهاء العمل
+
+                        </th>
+
+                        <th>
+
+                            الموقع
+
+                        </th>
+
+                        <th>
+
+                            الصور
+
+                        </th>
+
+                        <th>
+
+                            الإجراءات
+
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+                <tbody id="emergencyTable">
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</section>
+
+<!-- ==================================================
+
+     الملاحظات
+
+================================================== -->
+
+<section id="notes" class="page">
+
+    <div class="section-title">
+
+        <h2>
+
+            الملاحظات
+
+        </h2>
+
+        <p>
+
+            تسجيل ومتابعة ملاحظات المشاريع والمقاولين
+
+        </p>
+
+    </div>
+
+    <!-- =========================
+
+         إدخال الملاحظة
+
+    ========================= -->
+
+    <div class="card">
+
+        <div class="card-header">
+
+            <h3>
+
+                إدخال ملاحظة
+
+            </h3>
+
+        </div>
+
+        <!-- نوع الملاحظة -->
+
+        <div class="note-types">
+
+            <button
+
+                onclick="setNoteType('مشاريع الأمانة')"
+
+            >
+
+                مشاريع الأمانة
+
+            </button>
+
+            <button
+
+                onclick="setNoteType('المياه الوطنية')"
+
+            >
+
+                المياه الوطنية
+
+            </button>
+
+            <button
+
+                onclick="setNoteType('الكهرباء')"
+
+            >
+
+                الكهرباء
+
+            </button>
+
+            <button
+
+                onclick="setNoteType('الاتصالات')"
+
+            >
+
+                الاتصالات
+
+            </button>
+
+            <button
+
+                onclick="setNoteType('مشاريع خاصة')"
+
+            >
+
+                مشاريع خاصة
+
+            </button>
+
+        </div>
+
+        <input
+
+            type="hidden"
+
+            id="noteType"
+
+            value="مشاريع الأمانة"
+
+        >
+
+        <div class="form-grid">
+
+            <div class="form-group">
+
+                <label>
+
+                    تاريخ الملاحظة
+
+                </label>
+
+                <input
+
+                    id="noteDate"
+
+                    type="date"
+
+                >
+
+            </div>
+
+            <div class="form-group">
+
+                <label>
+
+                    رقم التصريح
+
+                </label>
+
+                <input
+
+                    id="notePermit"
+
+                    type="text"
+
+                >
+
+            </div>
+
+            <div class="form-group">
+
+                <label>
+
+                    اسم المقاول
+
+                </label>
+
+                <input
+
+                    id="noteContractor"
+
+                    type="text"
+
+                >
+
+            </div>
+
+            <div class="form-group">
+
+                <label>
+
+                    الجهة المالكة
+
+                </label>
+
+                <input
+
+                    id="noteOwner"
+
+                    type="text"
+
+                >
+
+            </div>
+
+            <div class="form-group full">
+
+                <label>
+
+                    أسباب الرفض
+
+                </label>
+
+                <textarea
+
+                    id="noteReason"
+
+                ></textarea>
+
+            </div>
+
+            <div class="form-group full">
+
+                <label>
+
+                    الإجراء المتخذ
+
+                </label>
+
+                <textarea
+
+                    id="noteAction"
+
+                    readonly
+
+                >تم إبلاغ المقاول بالملاحظات واتخاذ الإجراء اللازم</textarea>
+
+            </div>
+
+            <div class="form-group">
+
+                <label>
+
+                    صورة الملاحظة
+
+                </label>
+
+                <input
+
+                    id="beforeImage"
+
+                    type="file"
+
+                    accept="image/*"
+
+                >
+
+            </div>
+
+            <div class="form-group">
+
+                <label>
+
+                    صورة الملاحظة بعد التعديل
+
+                </label>
+
+                <input
+
+                    id="afterImage"
+
+                    type="file"
+
+                    accept="image/*"
+
+                >
+
+            </div>
+
+        </div>
+
+        <div class="form-actions">
+
+            <button
+
+                class="btn-primary"
+
+                onclick="saveNote()"
+
+            >
+
+                حفظ الملاحظة
+
+            </button>
+
+            <button
+
+                class="btn-secondary"
+
+                onclick="clearNote()"
+
+            >
+
+                تفريغ
+
+            </button>
+
+        </div>
+
+    </div>
+
+    <!-- =========================
+
+         جدول الملاحظات
+
+    ========================= -->
+
+    <div class="card table-card">
+
+        <div class="card-header">
+
+            <h3>
+
+                سجل الملاحظات
+
+            </h3>
+
+        </div>
+
+        <div class="table-container">
+
+            <table>
+
+                <thead>
+
+                    <tr>
+
+                        <th>
+
+                            التاريخ
+
+                        </th>
+
+                        <th>
+
+                            نوع الملاحظة
+
+                        </th>
+
+                        <th>
+
+                            رقم التصريح
+
+                        </th>
+
+                        <th>
+
+                            المقاول
+
+                        </th>
+
+                        <th>
+
+                            الجهة المالكة
+
+                        </th>
+
+                        <th>
+
+                            سبب الرفض
+
+                        </th>
+
+                        <th>
+
+                            الإجراء المتخذ
+
+                        </th>
+
+                        <th>
+
+                            الحالة
+
+                        </th>
+
+                        <th>
+
+                            الصور
+
+                        </th>
+
+                        <th>
+
+                            الإجراءات
+
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+                <tbody id="notesTable">
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</section>
+
+</main>
+
+<!-- =========================
+
+     التذييل
+
+========================= -->
+
+<footer>
+
+    نظام مختبر جودة المشاريع
+
+</footer>
+
+<script src="script.js"></script>
+
+</body>
+
+</html>
