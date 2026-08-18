@@ -367,23 +367,7 @@ async function saveClearance() {
         "clearances",
 
         JSON.stringify(clearances)
-supabase
-
-    .from("clearances")
-
-    .insert([{
-
-        permit_number: data.permitNumber,
-
-        contractor_name: data.contractorName,
-
-        owning_entity: data.owningEntity,
-
-        photos: data.images || [],
-
-        location: data.location
-
-    }])
+    }
 
     .then(({ error }) => {
 
