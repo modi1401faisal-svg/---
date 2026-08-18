@@ -8,7 +8,7 @@
 
 /* =========================
 
-   تحميل البيانات
+   بتحميل البيانات
 
 ========================= */
 const SUPABASE_URL = "https://efceexzzjmvscjqlgmio.supabase.co/rest/v1/";
@@ -367,8 +367,39 @@ async function saveClearance() {
         "clearances",
 
         JSON.stringify(clearances)
+supabase
 
-    );
+    .from("clearances")
+
+    .insert([{
+
+        permit_number: data.permitNumber,
+
+        contractor_name: data.contractorName,
+
+        owning_entity: data.owningEntity,
+
+        photos: data.images || [],
+
+        location: data.location
+
+    }])
+
+    .then(({ error }) => {
+
+        if (error) {
+
+            console.error("Supabase Error:", error);
+
+            alert("لم يتم حفظ البيانات في قاعدة البيانات");
+
+        } else {
+
+            console.log("تم الحفظ في Supabase بنجاح");
+
+        }
+
+    });
 
     clearClearance();
 
