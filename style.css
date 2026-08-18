@@ -1,0 +1,270 @@
+/* =====================================================
+   نظام مختبر جودة المشاريع
+   التصميم - درجات الأخضر
+===================================================== */
+* {
+    box-sizing: border-box;
+}
+body {
+    margin: 0;
+    font-family: "Tahoma", "Arial", sans-serif;
+    background: #f1f5f1;
+    color: #26352d;
+    direction: rtl;
+}
+
+/* الرأس */
+.main-header {
+    width: 100%;
+    background: linear-gradient(135deg, #173f32, #245c49, #39745d);
+    color: white;
+    padding: 25px 30px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.12);
+}
+.header-content { max-width: 1450px; margin: auto; }
+.main-header h1 { margin: 0 0 8px; font-size: 25px; font-weight: bold; }
+.main-header p { margin: 0; color: #dcebe3; font-size: 15px; }
+
+/* شريط التنقل */
+.navbar {
+    width: 100%;
+    background: #1d4d3d;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 15px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.12);
+}
+.navbar button {
+    border: none;
+    background: transparent;
+    color: white;
+    padding: 12px 25px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: 0.2s;
+}
+.navbar button:hover { background: #39745d; }
+.navbar button:active { background: #4d866c; }
+
+/* الحاوية الرئيسية */
+.container { width: 96%; max-width: 1450px; margin: 25px auto 40px; }
+
+/* الصفحات */
+.page { display: none; }
+.page.active { display: block; }
+
+/* عنوان القسم */
+.section-title {
+    background: #ffffff;
+    border-right: 6px solid #2d6a52;
+    border-radius: 12px;
+    padding: 18px 22px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+}
+.section-title h2 { margin: 0 0 7px; color: #1d4d3d; font-size: 23px; }
+.section-title p { margin: 0; color: #6d7d74; font-size: 14px; }
+
+/* البطاقات */
+.card {
+    width: 100%;
+    background: #ffffff;
+    border: 1px solid #d7e2dc;
+    border-radius: 12px;
+    margin-bottom: 22px;
+    box-shadow: 0 3px 12px rgba(30,70,55,0.07);
+    overflow: hidden;
+}
+.card-header {
+    background: linear-gradient(90deg, #245c49, #39745d);
+    color: white;
+    padding: 15px 20px;
+}
+.card-header h3 { margin: 0; font-size: 17px; }
+
+/* الإحصائيات */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+    margin-bottom: 22px;
+}
+.stat-card {
+    background: white;
+    border: 1px solid #d7e2dc;
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    box-shadow: 0 3px 12px rgba(30,70,55,0.07);
+}
+.stat-icon {
+    width: 55px;
+    height: 55px;
+    background: #e0eee7;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 25px;
+}
+.stat-card span { display: block; color: #6c7d73; font-size: 13px; margin-bottom: 6px; }
+.stat-card strong { display: block; color: #1d4d3d; font-size: 27px; }
+
+/* نموذج الإدخال */
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+    padding: 22px;
+}
+.form-group { display: flex; flex-direction: column; }
+.form-group.full { grid-column: 1 / -1; }
+.form-group label { margin-bottom: 7px; color: #315b4b; font-size: 14px; font-weight: bold; }
+.form-group input,
+.form-group textarea,
+.search-row input {
+    width: 100%;
+    border: 1px solid #cbdad2;
+    background: #fbfdfc;
+    border-radius: 8px;
+    padding: 11px 13px;
+    font-family: inherit;
+    font-size: 14px;
+    color: #26352d;
+    outline: none;
+    transition: 0.2s;
+}
+.form-group input:focus,
+.form-group textarea:focus,
+.search-row input:focus {
+    border-color: #39745d;
+    box-shadow: 0 0 0 3px rgba(57,116,93,0.10);
+}
+.form-group textarea { min-height: 100px; resize: vertical; }
+.form-group input[type="file"] { background: #f4f8f5; cursor: pointer; }
+
+/* الأزرار */
+.form-actions { display: flex; gap: 10px; padding: 0 22px 22px; }
+button { font-family: inherit; }
+.btn-primary, .btn-secondary, .edit, .delete {
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: 0.2s;
+}
+.btn-primary { background: #245c49; color: white; }
+.btn-primary:hover { background: #173f32; }
+.btn-secondary { background: #dfeae4; color: #245c49; }
+.btn-secondary:hover { background: #cbdcd3; }
+.edit { background: #e1eee7; color: #245c49; margin: 3px; }
+.edit:hover { background: #c8ded2; }
+.delete { background: #f3dddd; color: #8a3e3e; margin: 3px; }
+.delete:hover { background: #eac8c8; }
+
+/* البحث */
+.search-card { margin-bottom: 22px; }
+.search-row { display: flex; align-items: center; gap: 10px; padding: 20px; }
+.search-row input { flex: 1; }
+.search-result { padding: 0 20px 20px; }
+.search-result:empty { display: none; }
+.search-success { background: #e4f1e9; border: 1px solid #bcd7c8; color: #245c49; border-radius: 8px; padding: 13px; }
+.search-error { background: #f8e5e5; border: 1px solid #e8c2c2; color: #8a3e3e; border-radius: 8px; padding: 13px; }
+
+/* الجداول */
+.table-card { overflow: hidden; }
+.table-container { width: 100%; overflow-x: auto; overflow-y: hidden; padding: 0; }
+table { width: 100%; border-collapse: collapse; border-spacing: 0; background: white; }
+table thead { background: #245c49; color: white; }
+table th {
+    padding: 13px 12px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: bold;
+    white-space: nowrap;
+    border-left: 1px solid rgba(255,255,255,0.15);
+}
+table td {
+    padding: 12px 10px;
+    text-align: center;
+    border-bottom: 1px solid #dce6e1;
+    color: #34483e;
+    font-size: 13px;
+    vertical-align: middle;
+}
+table tbody tr:nth-child(even) { background: #f5f9f6; }
+table tbody tr:hover { background: #eaf3ee; }
+table img {
+    width: 60px;
+    height: 60px;
+    object-fit: cover;
+    border-radius: 7px;
+    border: 2px solid #c8dbd1;
+    cursor: pointer;
+    margin: 2px;
+}
+
+/* نوع الملاحظات */
+.note-types { display: flex; flex-wrap: wrap; gap: 9px; padding: 20px 22px 0; }
+.note-types button {
+    border: 1px solid #bcd2c7;
+    background: #edf5f0;
+    color: #245c49;
+    padding: 10px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+}
+.note-types button:hover { background: #d7e9df; }
+
+/* حالات الملاحظات */
+.status-done { display: inline-block; background: #dcefe4; color: #24704d; padding: 6px 10px; border-radius: 7px; font-weight: bold; }
+.status-open { display: inline-block; background: #f7dddd; color: #a33f3f; padding: 6px 10px; border-radius: 7px; font-weight: bold; }
+.status-follow { display: inline-block; background: #e8eee9; color: #5d7066; padding: 6px 10px; border-radius: 7px; }
+
+/* التنبيهات */
+.alerts-box { padding: 20px; color: #53655c; }
+.alert-item {
+    background: #fff1f1;
+    border-right: 5px solid #b94a48;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 12px;
+    color: #593535;
+}
+.alert-item strong { color: #a33f3f; }
+
+/* شريط التمرير للجداول */
+.table-container::-webkit-scrollbar { height: 9px; }
+.table-container::-webkit-scrollbar-track { background: #e4ece7; }
+.table-container::-webkit-scrollbar-thumb { background: #39745d; border-radius: 10px; }
+.table-container::-webkit-scrollbar-thumb:hover { background: #245c49; }
+
+/* التذييل */
+footer { background: #173f32; color: #dcebe3; text-align: center; padding: 18px; font-size: 13px; margin-top: 30px; }
+
+/* الجوال */
+@media (max-width: 900px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .form-grid { grid-template-columns: 1fr; }
+    .form-group.full { grid-column: auto; }
+    .navbar { flex-wrap: wrap; }
+    .navbar button { flex: 1; min-width: 130px; }
+}
+@media (max-width: 600px) {
+    .container { width: 94%; }
+    .stats-grid { grid-template-columns: 1fr; }
+    .main-header { padding: 20px; }
+    .main-header h1 { font-size: 19px; }
+    .search-row { flex-direction: column; align-items: stretch; }
+    .form-actions { flex-direction: column; }
+    .btn-primary, .btn-secondary { width: 100%; }
+    table { min-width: 900px; }
+}
