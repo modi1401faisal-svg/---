@@ -1,7 +1,7 @@
 /* =========================================================
    نظام مختبر جودة المشاريع
-   النسخة الكاملة: البيانات + الصور في Supabase
-   مع حفظ محلي تلقائي عند انقطاع الاتصال
+   النسخة المصححة: ضغط الصور + حماية من امتلاء المساحة
+   + نقل الصور المحلية القديمة إلى السحابة تلقائياً
    ========================================================= */
 
 /* =========================================================
@@ -23,6 +23,9 @@ let notes = JSON.parse(localStorage.getItem("notes")) || [];
 let editingClearance = -1;
 let editingEmergency = -1;
 let editingNote = -1;
+
+/* عداد الصور التي لم تُحفظ (لتنبيه المستخدم) */
+let skippedImagesCount = 0;
 
 /* =========================================================
    3) أدوات مساعدة
@@ -49,6 +52,32 @@ function withTimeout(promise, ms) {
             }, ms);
         })
     ]);
+}
+
+function readLocalImage(file) {
+    return new Promise(function (resolve) {
+        const reader = new FileReader();
+        reader.onload = function () {
+            resolve(reader.result);
+        };
+        reader.onerror = function () {
+            resolve("");
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+function blobToDataUrl(blob) {
+    return new Promise(function (resolve) {
+        const reader = new FileReader();
+        reader.onload = function () {
+            resolve(reader.result);
+        };
+        reader.onerror = function () {
+            resolve("");
+        };
+        reader.readAsDataURL(blob);
+    });
 }
 
 /* =========================================================
@@ -114,8 +143,7 @@ function initSupabase() {
 }
 
 /* =========================================================
-   5) طبقة قاعدة البيانات (Supabase Tables)
-   أي فشل هنا لا يوقف البرنامج — يعمل محلياً فقط
+   5) طبقة قاعدة البيانات (الجداول)
    ========================================================= */
 
 async function dbInsert(tableName, row) {
@@ -200,7 +228,7 @@ async function dbFetchAll(tableName) {
 }
 
 /* =========================================================
-   6) تحويل البيانات بين المشروع وقاعدة البيانات
+   6) محولات البيانات
    ========================================================= */
 
 function clearanceToRow(item) {
@@ -283,9 +311,77 @@ function rowToNote(row) {
 }
 
 /* =========================================================
-   7) المزامنة عند فتح الصفحة
-   تجلب البيانات من القاعدة + ترفع البيانات المحلية
-   القديمة تلقائياً (نقل لمرة واحدة)
+   7) حفظ محلي آمن — لا ينهار أبداً عند امتلاء المساحة
+   ========================================================= */
+
+function saveLocalData(key, arr) {
+
+    try {
+        localStorage.setItem(key, JSON.stringify(arr));
+        return true;
+    } catch (e) {
+
+        /* المساحة ممتلئة: نحذف الصور المحلية (Base64) ونحاول مجدداً */
+        console.warn("امتلأت مساحة التخزين — جاري التنظيف التلقائي");
+
+        let cleaned = 0;
+
+        arr.forEach(function (item) {
+
+            if (Array.isArray(item.images)) {
+                item.images = item.images.filter(function (img) {
+                    if (typeof img === "string" && img.indexOf("data:") === 0) {
+                        cleaned++;
+                        return false;
+                    }
+                    return true;
+                });
+            }
+
+            if (typeof item.before === "string" && item.before.indexOf("data:") === 0) {
+                item.before = "";
+                cleaned++;
+            }
+
+            if (typeof item.after === "string" && item.after.indexOf("data:") === 0) {
+                item.after = "";
+                cleaned++;
+            }
+        });
+
+        try {
+            localStorage.setItem(key, JSON.stringify(arr));
+            if (cleaned > 0) {
+                alert(
+                    "تم تنظيف " + cleaned + " صورة محلية قديمة لإتاحة المساحة.\n" +
+                    "الصور التي رُفعت للسحابة سابقاً لم تتأثر ✅"
+                );
+            }
+            return true;
+        } catch (e2) {
+            alert(
+                "تعذر الحفظ محلياً: مساحة التخزين في المتصفح ممتلئة.\n" +
+                "تأكد من وجود اتصال بالإنترنت حتى تُحفظ البيانات في السحابة."
+            );
+            return false;
+        }
+    }
+}
+
+function reportStorageUsage() {
+    try {
+        let total = 0;
+        ["clearances", "emergencies", "notes"].forEach(function (k) {
+            total += (localStorage.getItem(k) || "").length;
+        });
+        console.log("المساحة المحلية المستخدمة: " + Math.round(total / 1024) + " KB من حدود ~5120 KB");
+    } catch (e) {
+        /* تجاهل */
+    }
+}
+
+/* =========================================================
+   8) المزامنة مع السحابة
    ========================================================= */
 
 async function syncFromCloud() {
@@ -302,14 +398,12 @@ async function syncFromCloud() {
 
         const cloud = await dbFetchAll(task.table);
 
-        /* القاعدة غير متاحة (جداول غير موجودة أو لا إنترنت) — نتجاهل */
         if (cloud === null) {
             continue;
         }
 
         anySynced = true;
 
-        /* رفع السجلات المحلية التي لم تُرفع سابقاً */
         const notUploaded = [];
         for (const item of task.array) {
             if (!item.id) {
@@ -323,7 +417,6 @@ async function syncFromCloud() {
             }
         }
 
-        /* اعتماد بيانات القاعدة السحابية */
         const merged = cloud.map(task.fromRow);
         notUploaded.forEach(function (x) {
             merged.push(x);
@@ -334,7 +427,7 @@ async function syncFromCloud() {
             task.array.push(x);
         });
 
-        localStorage.setItem(task.key, JSON.stringify(task.array));
+        saveLocalData(task.key, task.array);
         task.render();
     }
 
@@ -345,10 +438,70 @@ async function syncFromCloud() {
 }
 
 /* =========================================================
-   8) الصور
+   9) الصور — ضغط + رفع + خطة بديلة مصغرة
    ========================================================= */
 
-async function uploadToSupabase(file) {
+/* ضغط الصورة باستخدام Canvas وإرجاع Blob أصغر */
+function compressImageToBlob(file, maxDim, quality) {
+    return new Promise(function (resolve) {
+
+        if (!file || !file.type || file.type.indexOf("image/") !== 0) {
+            resolve(null);
+            return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onload = function () {
+            const img = new Image();
+
+            img.onload = function () {
+                try {
+                    let w = img.width;
+                    let h = img.height;
+
+                    const scale = Math.min(1, maxDim / Math.max(w, h));
+                    w = Math.round(w * scale);
+                    h = Math.round(h * scale);
+
+                    const canvas = document.createElement("canvas");
+                    canvas.width = w;
+                    canvas.height = h;
+
+                    const ctx = canvas.getContext("2d");
+
+                    /* خلفية بيضاء للصور الشفافة */
+                    ctx.fillStyle = "#ffffff";
+                    ctx.fillRect(0, 0, w, h);
+
+                    ctx.drawImage(img, 0, 0, w, h);
+
+                    canvas.toBlob(function (blob) {
+                        resolve(blob || null);
+                    }, "image/jpeg", quality);
+
+                } catch (e) {
+                    resolve(null);
+                }
+            };
+
+            img.onerror = function () {
+                resolve(null);
+            };
+
+            img.src = reader.result;
+        };
+
+        reader.onerror = function () {
+            resolve(null);
+        };
+
+        reader.readAsDataURL(file);
+    });
+}
+
+/* رفع إلى Supabase Storage */
+async function uploadToSupabase(blobOrFile, mime) {
 
     const client = await initSupabase();
 
@@ -356,68 +509,86 @@ async function uploadToSupabase(file) {
         return "";
     }
 
-    const nameParts = String(file.name || "image").split(".");
-    const fileExt = nameParts.length > 1 ? nameParts.pop().toLowerCase() : "jpg";
-
     const fileName =
         Date.now() + "_" +
-        Math.random().toString(36).substring(2, 10) +
-        "." + fileExt;
+        Math.random().toString(36).substring(2, 10) + ".jpg";
 
     const filePath = "uploads/" + fileName;
 
-    const { error } = await client.storage
-        .from("images")
-        .upload(filePath, file, {
-            cacheControl: "3600",
-            upsert: false,
-            contentType: file.type || "image/jpeg"
-        });
+    try {
+        const { error } = await client.storage
+            .from("images")
+            .upload(filePath, blobOrFile, {
+                cacheControl: "3600",
+                upsert: false,
+                contentType: mime || (blobOrFile && blobOrFile.type) || "image/jpeg"
+            });
 
-    if (error) {
-        console.error("خطأ في رفع الصورة إلى Supabase:", error);
+        if (error) {
+            console.error("خطأ في رفع الصورة إلى السحابة:", error.message);
+            return "";
+        }
+
+        const { data: urlData } = client.storage
+            .from("images")
+            .getPublicUrl(filePath);
+
+        return urlData && urlData.publicUrl ? urlData.publicUrl : "";
+
+    } catch (e) {
+        console.error("استثناء أثناء رفع الصورة:", e);
         return "";
     }
-
-    const { data: urlData } = client.storage
-        .from("images")
-        .getPublicUrl(filePath);
-
-    return urlData && urlData.publicUrl ? urlData.publicUrl : "";
 }
 
-function readLocalImage(file) {
-    return new Promise(function (resolve) {
-        const reader = new FileReader();
-        reader.onload = function () {
-            resolve(reader.result);
-        };
-        reader.onerror = function () {
-            resolve("");
-        };
-        reader.readAsDataURL(file);
-    });
-}
-
+/* معالجة صورة واحدة:
+   1) ضغط ورفع للسحابة
+   2) عند الفشل: نسخة مصغرة محلياً (أقل من 200 كيلوبايت)
+   3) عند الاستحالة: تخطي الصورة وتنبيه المستخدم */
 async function readImage(file) {
 
     if (!file) {
         return "";
     }
 
+    /* نسخة مضغوطة للرفع (أبعاد أقل من 1400 بكسل) */
+    const uploadBlob = await compressImageToBlob(file, 1400, 0.85);
+
     let cloudUrl = "";
 
     try {
-        cloudUrl = await withTimeout(uploadToSupabase(file), 30000);
+        if (uploadBlob) {
+            cloudUrl = await withTimeout(uploadToSupabase(uploadBlob, "image/jpeg"), 60000);
+        }
+        if (!cloudUrl) {
+            /* محاولة ثانية بالملف الأصلي */
+            cloudUrl = await withTimeout(uploadToSupabase(file, file.type), 60000);
+        }
     } catch (error) {
-        console.warn("فشل رفع الصورة للسحابة — سيتم الحفظ محلياً");
+        console.warn("تعذر رفع الصورة للسحابة: " + (error && error.message ? error.message : error));
     }
 
     if (cloudUrl) {
+        console.log("تم رفع الصورة للسحابة ✅");
         return cloudUrl;
     }
 
-    return readLocalImage(file);
+    /* الخطة البديلة: نسخة مصغرة جداً محلياً */
+    let small = (uploadBlob && uploadBlob.size <= 200 * 1024)
+        ? uploadBlob
+        : await compressImageToBlob(file, 600, 0.6);
+
+    if (small && small.size <= 200 * 1024) {
+        const dataUrl = await blobToDataUrl(small);
+        if (dataUrl && dataUrl.length <= 300 * 1024) {
+            console.warn("تم حفظ نسخة مصغرة من الصورة على هذا الجهاز فقط");
+            return dataUrl;
+        }
+    }
+
+    /* لا يمكن حفظ الصورة إطلاقاً */
+    skippedImagesCount++;
+    return "";
 }
 
 async function readImages(files) {
@@ -436,6 +607,91 @@ async function readImages(files) {
     }
 
     return result;
+}
+
+/* إعادة رفع صورة محفوظة محلياً (Base64) إلى السحابة */
+async function reuploadDataUrl(dataUrl) {
+    try {
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        return await uploadToSupabase(blob, "image/jpeg");
+    } catch (e) {
+        return "";
+    }
+}
+
+/* نقل كل الصور المحلية القديمة إلى السحابة عند فتح الصفحة */
+async function migrateLocalImages() {
+
+    const client = await initSupabase();
+    if (!client) {
+        return;
+    }
+
+    const tasks = [
+        { arr: clearances, table: "clearances", key: "clearances", toRow: clearanceToRow },
+        { arr: emergencies, table: "emergencies", key: "emergencies", toRow: emergencyToRow },
+        { arr: notes, table: "notes", key: "notes", toRow: noteToRow }
+    ];
+
+    let migrated = 0;
+
+    for (const task of tasks) {
+
+        for (const item of task.arr) {
+
+            let itemChanged = false;
+
+            /* مصفوفة الصور (الرخص) */
+            if (Array.isArray(item.images)) {
+                for (let i = 0; i < item.images.length; i++) {
+                    const img = item.images[i];
+                    if (typeof img === "string" && img.indexOf("data:") === 0) {
+                        const url = await reuploadDataUrl(img);
+                        if (url) {
+                            item.images[i] = url;
+                            itemChanged = true;
+                            migrated++;
+                        }
+                    }
+                }
+            }
+
+            /* صور الملاحظات قبل/بعد */
+            const fields = ["before", "after"];
+            for (let f = 0; f < fields.length; f++) {
+                const fieldName = fields[f];
+                const value = item[fieldName];
+                if (typeof value === "string" && value.indexOf("data:") === 0) {
+                    const url = await reuploadDataUrl(value);
+                    if (url) {
+                        item[fieldName] = url;
+                        itemChanged = true;
+                        migrated++;
+                    }
+                }
+            }
+
+            if (itemChanged) {
+                if (item.id) {
+                    await dbUpdate(task.table, item.id, task.toRow(item));
+                } else {
+                    const inserted = await dbInsert(task.table, task.toRow(item));
+                    if (inserted && inserted.id) {
+                        item.id = inserted.id;
+                    }
+                }
+                saveLocalData(task.key, task.arr);
+            }
+        }
+    }
+
+    if (migrated > 0) {
+        console.log("تم نقل " + migrated + " صورة محلية إلى السحابة وتحرير المساحة ✅");
+        renderClearances();
+        renderEmergencies();
+        renderNotes();
+    }
 }
 
 function imageThumb(image, title = "عرض الصورة") {
@@ -478,7 +734,7 @@ function openImage(image) {
 }
 
 /* =========================================================
-   9) مؤشر (جاري الحفظ)
+   10) مؤشر (جاري الحفظ)
    ========================================================= */
 
 function setSaveBusy(busy) {
@@ -517,7 +773,7 @@ function setSaveBusy(busy) {
 }
 
 /* =========================================================
-   10) التنقل بين الصفحات
+   11) التنقل بين الصفحات
    ========================================================= */
 
 function showPage(page) {
@@ -548,7 +804,7 @@ function showPage(page) {
 }
 
 /* =========================================================
-   11) رؤوس الجداول — تُبنى من الكود لضمان تطابق الأعمدة
+   12) رؤوس الجداول من الكود
    ========================================================= */
 
 function ensureTableHeaders(bodyId, headers) {
@@ -590,7 +846,7 @@ function ensureTableHeaders(bodyId, headers) {
 }
 
 /* =========================================================
-   12) رخص الإخلاءات
+   13) رخص الإخلاءات
    ========================================================= */
 
 async function saveClearance() {
@@ -616,6 +872,7 @@ async function saveClearance() {
         const files = imagesEl ? imagesEl.files : [];
 
         setSaveBusy(true);
+        skippedImagesCount = 0;
 
         const images = await readImages(files);
 
@@ -656,17 +913,21 @@ async function saveClearance() {
             clearances.push(data);
         }
 
-        localStorage.setItem("clearances", JSON.stringify(clearances));
+        saveLocalData("clearances", clearances);
 
         clearClearance();
         renderClearances();
         updateDashboard();
 
-        if (cloudOk) {
-            alert("تم حفظ رخصة الإخلاء بنجاح ✅");
-        } else {
-            alert("تم الحفظ على هذا الجهاز فقط ⚠️\n(تعذر الاتصال بقاعدة البيانات السحابية)");
+        let msg = cloudOk
+            ? "تم حفظ رخصة الإخلاء بنجاح ✅"
+            : "تم الحفظ على هذا الجهاز فقط ⚠️\n(تعذر الاتصال بقاعدة البيانات السحابية)";
+
+        if (skippedImagesCount > 0) {
+            msg += "\n\n⚠️ لم تُحفظ " + skippedImagesCount + " صورة (تعذر رفعها)";
         }
+
+        alert(msg);
 
     } catch (error) {
         console.error("خطأ في حفظ رخصة الإخلاء:", error);
@@ -812,7 +1073,7 @@ async function deleteClearance(index) {
     }
 
     clearances.splice(index, 1);
-    localStorage.setItem("clearances", JSON.stringify(clearances));
+    saveLocalData("clearances", clearances);
 
     renderClearances();
     updateDashboard();
@@ -820,7 +1081,7 @@ async function deleteClearance(index) {
 }
 
 /* =========================================================
-   13) رخص الطوارئ
+   14) رخص الطوارئ
    ========================================================= */
 
 async function saveEmergency() {
@@ -848,6 +1109,7 @@ async function saveEmergency() {
         const files = imagesEl ? imagesEl.files : [];
 
         setSaveBusy(true);
+        skippedImagesCount = 0;
 
         const images = await readImages(files);
 
@@ -891,17 +1153,21 @@ async function saveEmergency() {
             emergencies.push(data);
         }
 
-        localStorage.setItem("emergencies", JSON.stringify(emergencies));
+        saveLocalData("emergencies", emergencies);
 
         clearEmergency();
         renderEmergencies();
         updateDashboard();
 
-        if (cloudOk) {
-            alert("تم حفظ رخصة الطوارئ بنجاح ✅");
-        } else {
-            alert("تم الحفظ على هذا الجهاز فقط ⚠️\n(تعذر الاتصال بقاعدة البيانات السحابية)");
+        let msg = cloudOk
+            ? "تم حفظ رخصة الطوارئ بنجاح ✅"
+            : "تم الحفظ على هذا الجهاز فقط ⚠️\n(تعذر الاتصال بقاعدة البيانات السحابية)";
+
+        if (skippedImagesCount > 0) {
+            msg += "\n\n⚠️ لم تُحفظ " + skippedImagesCount + " صورة (تعذر رفعها)";
         }
+
+        alert(msg);
 
     } catch (error) {
         console.error("خطأ في حفظ رخصة الطوارئ:", error);
@@ -1057,7 +1323,7 @@ async function deleteEmergency(index) {
     }
 
     emergencies.splice(index, 1);
-    localStorage.setItem("emergencies", JSON.stringify(emergencies));
+    saveLocalData("emergencies", emergencies);
 
     renderEmergencies();
     updateDashboard();
@@ -1065,7 +1331,7 @@ async function deleteEmergency(index) {
 }
 
 /* =========================================================
-   14) تصنيف الملاحظات
+   15) تصنيف الملاحظات
    ========================================================= */
 
 function setNoteType(type) {
@@ -1087,7 +1353,7 @@ function setNoteType(type) {
 }
 
 /* =========================================================
-   15) حفظ الملاحظة
+   16) حفظ الملاحظة
    ========================================================= */
 
 async function saveNote() {
@@ -1126,6 +1392,7 @@ async function saveNote() {
         const afterFile = afterEl && afterEl.files.length > 0 ? afterEl.files[0] : null;
 
         setSaveBusy(true);
+        skippedImagesCount = 0;
 
         const before = await readImage(beforeFile);
         const after = await readImage(afterFile);
@@ -1174,21 +1441,26 @@ async function saveNote() {
             notes.push(data);
         }
 
-        localStorage.setItem("notes", JSON.stringify(notes));
+        saveLocalData("notes", notes);
 
         clearNote();
         renderNotes();
         updateDashboard();
 
+        let msg;
         if (cloudOk) {
-            if (completed) {
-                alert("تم حفظ الملاحظة وتسجيلها كمعدلة ✅");
-            } else {
-                alert("تم حفظ الملاحظة بنجاح ✅");
-            }
+            msg = completed
+                ? "تم حفظ الملاحظة وتسجيلها كمعدلة ✅"
+                : "تم حفظ الملاحظة بنجاح ✅";
         } else {
-            alert("تم الحفظ على هذا الجهاز فقط ⚠️\n(تعذر الاتصال بقاعدة البيانات السحابية)");
+            msg = "تم الحفظ على هذا الجهاز فقط ⚠️\n(تعذر الاتصال بقاعدة البيانات السحابية)";
         }
+
+        if (skippedImagesCount > 0) {
+            msg += "\n\n⚠️ لم تُحفظ " + skippedImagesCount + " صورة (تعذر رفعها)";
+        }
+
+        alert(msg);
 
     } catch (error) {
         console.error("خطأ في حفظ الملاحظة:", error);
@@ -1226,7 +1498,7 @@ function clearNote() {
 }
 
 /* =========================================================
-   16) حساب الأيام والحالة
+   17) حساب الأيام والحالة
    ========================================================= */
 
 function daysPassed(date) {
@@ -1248,7 +1520,7 @@ function isLate(note) {
 }
 
 /* =========================================================
-   17) عرض الملاحظات (10 أعمدة تطابق الرأس تماماً)
+   18) عرض الملاحظات
    ========================================================= */
 
 function renderNotes() {
@@ -1399,7 +1671,7 @@ async function deleteNote(index) {
     }
 
     notes.splice(index, 1);
-    localStorage.setItem("notes", JSON.stringify(notes));
+    saveLocalData("notes", notes);
 
     renderNotes();
     updateDashboard();
@@ -1407,7 +1679,7 @@ async function deleteNote(index) {
 }
 
 /* =========================================================
-   18) التنبيهات ولوحة المتابعة
+   19) التنبيهات ولوحة المتابعة
    ========================================================= */
 
 function updateAlerts() {
@@ -1484,7 +1756,7 @@ function updateDashboard() {
 }
 
 /* =========================================================
-   19) ربط الأزرار تلقائياً
+   20) ربط الأزرار تلقائياً
    ========================================================= */
 
 function autoWireButtons() {
@@ -1579,7 +1851,7 @@ function autoWireButtons() {
 }
 
 /* =========================================================
-   20) إضافة أزرار التصدير تلقائياً
+   21) أزرار التصدير تلقائياً
    ========================================================= */
 
 function addExportButtons() {
@@ -1647,7 +1919,7 @@ function addExportButtons() {
 }
 
 /* =========================================================
-   21) التشغيل عند فتح الصفحة
+   22) التشغيل عند فتح الصفحة
    ========================================================= */
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -1694,15 +1966,21 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
-    /* جلب البيانات من القاعدة + نقل البيانات المحلية القديمة */
-    syncFromCloud();
+    /* المزامنة ثم نقل الصور المحلية القديمة للسحابة ثم تقرير المساحة */
+    syncFromCloud()
+        .then(function () {
+            return migrateLocalImages();
+        })
+        .then(function () {
+            reportStorageUsage();
+        });
 });
 
 setInterval(updateAlerts, 60 * 60 * 1000);
 
 /* =========================================================
    =========================================================
-   تصدير البيانات إلى Excel و PDF
+   تصدير Excel و PDF
    =========================================================
    ========================================================= */
 
