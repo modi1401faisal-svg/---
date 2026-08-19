@@ -3097,11 +3097,16 @@ async function resolveExportItems(items) {
    الإكمال التلقائي — يقترح الأسماء المدخلة سابقاً
    الصق هذا الكود في آخر ملف script.js
    ========================================================= */
+/* =========================================================
+   الإكمال التلقائي — النسخة المصححة
+   النقر يعمل + الأرقام تعمل + لوحة المفاتيح مدعومة
+   ========================================================= */
 
 (function () {
 
-    /* الحقول التي تعمل مع الإكمال التلقائي
-       المفتاح: معرف الحقل — القيمة: مصدر القيم المقترحة */
+    let activeList = null;
+    let activeInput = null;
+
     const AUTOCOMPLETE_FIELDS = [
         { id: "clearanceContractor", source: "contractor" },
         { id: "clearanceOwner", source: "owner" },
@@ -3113,7 +3118,6 @@ async function resolveExportItems(items) {
         { id: "noteOwner", source: "owner" }
     ];
 
-    /* جمع القيم الفريدة من كل البيانات المسجلة */
     function collectSuggestions(source) {
 
         const values = new Set();
@@ -3138,80 +3142,89 @@ async function resolveExportItems(items) {
         return Array.from(values).sort();
     }
 
-    /* التحقق من أن الكلمة تبدأ أو تحتوي النص المكتوب */
     function matches(value, typed) {
         try {
-            if (!typed) return false;
-            const v = value.toLowerCase();
-            const t = typed.toLowerCase();
-            return v.indexOf(t) !== -1;
+            const v = String(value).toLowerCase();
+            const t = String(typed).toLowerCase();
+            return t.length > 0 && v.indexOf(t) !== -1;
         } catch (e) {
             return false;
         }
     }
 
-    /* إنشاء قائمة الاقتراحات تحت الحقل */
+    function closeList() {
+        if (activeList) {
+            activeList.remove();
+            activeList = null;
+            activeInput = null;
+        }
+    }
+
+    /* استخدام mousedown بدل click — يعمل قبل blur
+       وهذا يمنع اختفاء القائمة قبل النقر */
+    function applyChoice(inputEl, value) {
+        inputEl.value = value;
+        closeList();
+        inputEl.focus();
+
+        /* إطلاق حدث input حتى تعمل أي معالجات أخرى */
+        try {
+            inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+        } catch (e) { }
+    }
+
     function createDropdown(inputEl, items) {
 
-        removeDropdown(inputEl);
+        closeList();
 
-        if (items.length === 0) {
+        if (!items || items.length === 0) {
             return;
         }
 
         const list = document.createElement("div");
-        list.className = "lab-autocomplete-list";
-        list.setAttribute("data-for", inputEl.id);
-
         list.style.cssText =
-            "position:absolute;z-index:99999;background:#fff;border:2px solid #173f32;" +
-            "border-radius:8px;max-height:220px;overflow-y:auto;width:" +
-            Math.max(inputEl.offsetWidth, 220) + "px;box-shadow:0 8px 25px rgba(0,0,0,.25);" +
-            "direction:rtl;font-family:inherit;";
+            "position:absolute;z-index:100000;background:#fff;border:2px solid #173f32;" +
+            "border-radius:8px;max-height:220px;overflow-y:auto;" +
+            "box-shadow:0 8px 25px rgba(0,0,0,.25);direction:rtl;font-family:inherit;";
 
-        items.forEach(function (item) {
+        items.forEach(function (item, index) {
 
             const option = document.createElement("div");
             option.textContent = item;
             option.style.cssText =
-                "padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid #eee;";
+                "padding:10px 14px;cursor:pointer;font-size:14px;" +
+                "border-bottom:1px solid #eee;user-select:none;";
 
-            option.onmouseenter = function () {
+            option.addEventListener("mouseenter", function () {
                 option.style.background = "#e8f2ee";
-            };
-            option.onmouseleave = function () {
+            });
+            option.addEventListener("mouseleave", function () {
                 option.style.background = "#fff";
-            };
-            option.onclick = function () {
-                inputEl.value = item;
-                removeDropdown(inputEl);
-                inputEl.focus();
-            };
+            });
+
+            /* mousedown هو الحل الجوهري — يُنفذ قبل blur */
+            option.addEventListener("mousedown", function (e) {
+                e.preventDefault();
+                applyChoice(inputEl, item);
+            });
 
             list.appendChild(option);
         });
 
         document.body.appendChild(list);
 
-        /* تحديد الموضع تحت الحقل مباشرة */
         const rect = inputEl.getBoundingClientRect();
-        const top = rect.bottom + window.scrollY + 4;
-        const left = rect.left + window.scrollX;
-        list.style.top = top + "px";
-        list.style.left = left + "px";
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+
+        list.style.top = (rect.bottom + scrollTop + 4) + "px";
+        list.style.left = (rect.left + scrollLeft) + "px";
+        list.style.width = Math.max(rect.width, 220) + "px";
+
+        activeList = list;
+        activeInput = inputEl;
     }
 
-    function removeDropdown(inputEl) {
-
-        const old = document.querySelector(
-            '.lab-autocomplete-list[data-for="' + inputEl.id + '"]'
-        );
-        if (old) {
-            old.remove();
-        }
-    }
-
-    /* تفعيل الإكمال التلقائي لحقل واحد */
     function setupField(config) {
 
         const inputEl = document.getElementById(config.id);
@@ -3219,6 +3232,59 @@ async function resolveExportItems(items) {
 
         let debounceTimer = null;
 
+        /* keydown: الأسهم + Enter + Escape */
+        inputEl.addEventListener("keydown", function (e) {
+
+            if (!activeList || activeInput !== inputEl) {
+                return;
+            }
+
+            const options = activeList.querySelectorAll("div");
+            let current = -1;
+
+            options.forEach(function (opt, i) {
+                if (opt.style.background === "rgb(232, 242, 238)") {
+                    current = i;
+                }
+            });
+
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                const next = (current + 1) % options.length;
+                options.forEach(function (o) { o.style.background = "#fff"; });
+                if (options[next]) {
+                    options[next].style.background = "#e8f2ee";
+                    options[next].scrollIntoView({ block: "nearest" });
+                }
+                return;
+            }
+
+            if (e.key === "ArrowUp") {
+                e.preventDefault();
+                const prev = (current - 1 + options.length) % options.length;
+                options.forEach(function (o) { o.style.background = "#fff"; });
+                if (options[prev]) {
+                    options[prev].style.background = "#e8f2ee";
+                    options[prev].scrollIntoView({ block: "nearest" });
+                }
+                return;
+            }
+
+            if (e.key === "Enter") {
+                if (current >= 0 && options[current]) {
+                    e.preventDefault();
+                    applyChoice(inputEl, options[current].textContent);
+                }
+                return;
+            }
+
+            if (e.key === "Escape") {
+                closeList();
+                return;
+            }
+        });
+
+        /* input: كل كتابة عادية — حروف وأرقام عادية ومن لوحة الأرقام */
         inputEl.addEventListener("input", function () {
 
             clearTimeout(debounceTimer);
@@ -3227,8 +3293,8 @@ async function resolveExportItems(items) {
 
                 const typed = inputEl.value.trim();
 
-                if (typed.length < 1) {
-                    removeDropdown(inputEl);
+                if (typed.length === 0) {
+                    closeList();
                     return;
                 }
 
@@ -3239,18 +3305,26 @@ async function resolveExportItems(items) {
 
                 createDropdown(inputEl, filtered);
 
-            }, 150);
+            }, 120);
         });
 
-        /* إخفاء القائمة عند الخروج من الحقل */
+        /* blur بتأخير أطول حتى يلحق mousedown بالنقر */
         inputEl.addEventListener("blur", function () {
             setTimeout(function () {
-                removeDropdown(inputEl);
-            }, 200);
+                if (activeInput === inputEl) {
+                    closeList();
+                }
+            }, 300);
         });
     }
 
-    /* تفعيل كل الحقول عند تحميل الصفحة */
+    /* إغلاق القائمة عند النقر خارجها */
+    document.addEventListener("mousedown", function (e) {
+        if (activeList && !activeList.contains(e.target) && e.target !== activeInput) {
+            closeList();
+        }
+    });
+
     function initAutocomplete() {
         AUTOCOMPLETE_FIELDS.forEach(function (config) {
             setupField(config);
