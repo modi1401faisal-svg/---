@@ -13,7 +13,8 @@
 ========================= */
 const SUPABASE_URL = "https://efceexzzjmvscjqlgmio.supabase.co/rest/v1/";
 
- const SUPABASE_ANON_KEY =  "sb_publishable_F40NK174mIl6_nAfFEGBYw_mPAA27Ft";
+const SUPABASE_ANON_KEY =  "sb_publishable_F40NK174mIl6_nAfFEGBYw_mPAA27Ft";
+
 let clearances = JSON.parse(localStorage.getItem("clearances")) || [];
 
 let emergencies = JSON.parse(localStorage.getItem("emergencies")) || [];
