@@ -183,7 +183,7 @@ async function storeImageInIdb(dataUrl) {
 }
 
 /* =========================================================
-   5) تهيئة Supabase
+   5) تهيئة Supabase (النسخة المضمونة)
    ========================================================= */
 
 let sbClient = null;
@@ -191,13 +191,8 @@ let sbLoadPromise = null;
 
 function createSbClient() {
     try {
-        if (typeof supabase !== "undefined" && supabase) {
-            if (supabase.storage) {
-                return supabase;
-            }
-            if (typeof supabase.createClient === "function") {
-                return supabase.createClient(LAB_SUPABASE_URL, LAB_SUPABASE_KEY);
-            }
+        if (typeof supabase !== "undefined" && supabase && typeof supabase.createClient === "function") {
+            return supabase.createClient(LAB_SUPABASE_URL, LAB_SUPABASE_KEY);
         }
         if (typeof createClient === "function") {
             return createClient(LAB_SUPABASE_URL, LAB_SUPABASE_KEY);
@@ -208,42 +203,102 @@ function createSbClient() {
     return null;
 }
 
+/* شارة حالة الاتصال — تظهر أسفل يسار الشاشة */
+function showCloudStatus(state, message) {
+    try {
+        if (!document.body) return;
+        let badge = document.getElementById("cloudStatusBadge");
+        if (!badge) {
+            badge = document.createElement("div");
+            badge.id = "cloudStatusBadge";
+            badge.style.cssText =
+                "position:fixed;bottom:10px;left:10px;z-index:99999;padding:6px 12px;" +
+                "border-radius:20px;font-size:12px;font-family:inherit;color:#fff;" +
+                "box-shadow:0 2px 8px rgba(0,0,0,.3);direction:rtl;";
+            document.body.appendChild(badge);
+        }
+        badge.innerText = message;
+        badge.style.background = state === "ok" ? "#1a7f4b" : "#b3402a";
+    } catch (e) { }
+}
+
+/* فحص فوري بعد الاتصال: هل الجداول تستجيب؟ */
+function checkCloudHealth(client) {
+    try {
+        client.from("clearances").select("id").limit(1).then(function (res) {
+            if (res.error) {
+                showCloudStatus("bad", "❌ سحابة متصلة — لكن الجداول ترفض: " + res.error.message);
+                console.log("خطأ الجداول:", res.error.message);
+            } else {
+                showCloudStatus("ok", "☁️ متصل بالسحابة ✅");
+                console.log("فحص الجداول: سليم ✅");
+            }
+        });
+    } catch (e) { }
+}
+
 function initSupabase() {
 
     if (sbClient) {
         return Promise.resolve(sbClient);
     }
 
+    /* إنشاء العميل فورًا إذا كانت المكتبة محملة */
     const immediate = createSbClient();
     if (immediate) {
         sbClient = immediate;
+        console.log("تم تهيئة Supabase بنجاح ✅");
+        checkCloudHealth(sbClient);
         return Promise.resolve(sbClient);
     }
 
     if (sbLoadPromise) {
         return sbLoadPromise;
     }
-   
+
     sbLoadPromise = new Promise(function (resolve) {
+
         const script = document.createElement("script");
-       script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
+        script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
+
         script.onload = function () {
             sbClient = createSbClient();
             if (sbClient) {
                 console.log("تم تهيئة Supabase بنجاح ✅");
+                checkCloudHealth(sbClient);
+            } else {
+                showCloudStatus("bad", "❌ المكتبة حُمّلت لكن إنشاء العميل فشل");
             }
             resolve(sbClient);
         };
+
         script.onerror = function () {
-            console.warn("تعذر تحميل مكتبة Supabase — سيتم العمل محلياً");
-            resolve(null);
+            /* المصدر البديل */
+            const alt = document.createElement("script");
+            alt.src = "https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js";
+            alt.onload = function () {
+                sbClient = createSbClient();
+                if (sbClient) {
+                    console.log("تم تهيئة Supabase عبر unpkg ✅");
+                    checkCloudHealth(sbClient);
+                } else {
+                    showCloudStatus("bad", "❌ تعذر إنشاء العميل");
+                }
+                resolve(sbClient);
+            };
+            alt.onerror = function () {
+                console.warn("تعذر تحميل مكتبة Supabase من كل المصادر");
+                showCloudStatus("bad", "❌ تعذر تحميل مكتبة Supabase");
+                resolve(null);
+            };
+            document.head.appendChild(alt);
         };
+
         document.head.appendChild(script);
     });
 
     return sbLoadPromise;
 }
-
 /* =========================================================
    6) طبقة قاعدة البيانات (الجداول)
    ========================================================= */
