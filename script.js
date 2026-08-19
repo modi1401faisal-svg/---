@@ -1,73 +1,17 @@
 /* =========================================================
    نظام مختبر جودة المشاريع
-   JavaScript - النسخة المصححة والمتوافقة مع Supabase
+   الملف الكامل — استبدل به ملف JavaScript بالكامل
    ========================================================= */
 
 /* =========================================================
-   1) إعدادات Supabase
+   1) الإعدادات العامة
    ========================================================= */
 
 const LAB_SUPABASE_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co";
 const LAB_SUPABASE_KEY = "sb_publishable_HM4vP8LSEZJaZC9Cyug5fg_fhQ05QqL";
 
-let labSupabase = null;
-let labSupabasePromise = null;
-
-function initSupabase() {
-
-    /* العميل جاهز مسبقاً */
-    if (labSupabase) {
-        return Promise.resolve(labSupabase);
-    }
-
-    /* إذا كان هناك عميل Supabase معرف في الصفحة نستخدمه */
-    try {
-        if (typeof supabase !== "undefined" && supabase && supabase.storage) {
-            labSupabase = supabase;
-            return Promise.resolve(labSupabase);
-        }
-    } catch (e) {
-        /* تجاهل */
-    }
-
-    /* المكتبة محملة مسبقاً؟ ننشئ العميل مباشرة */
-    if (typeof createClient === "function") {
-        try {
-            labSupabase = createClient(LAB_SUPABASE_URL, LAB_SUPABASE_KEY);
-        } catch (e) {
-            console.error("خطأ في تهيئة Supabase:", e);
-            labSupabase = null;
-        }
-        return Promise.resolve(labSupabase);
-    }
-
-    /* تحميل مكتبة Supabase تلقائياً (مرة واحدة فقط) */
-    if (labSupabasePromise) {
-        return labSupabasePromise;
-    }
-
-    labSupabasePromise = new Promise(function (resolve) {
-        var script = document.createElement("script");
-        script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
-        script.onload = function () {
-            try {
-                labSupabase = createClient(LAB_SUPABASE_URL, LAB_SUPABASE_KEY);
-                console.log("تم تهيئة Supabase بنجاح ✅");
-            } catch (e) {
-                console.error("خطأ في تهيئة Supabase:", e);
-                labSupabase = null;
-            }
-            resolve(labSupabase);
-        };
-        script.onerror = function () {
-            console.error("تعذر تحميل مكتبة Supabase - سيتم حفظ الصور محلياً");
-            resolve(null);
-        };
-        document.head.appendChild(script);
-    });
-
-    return labSupabasePromise;
-}
+/* النص الافتراضي لحقل (الإجراء المتخذ) في الملاحظات */
+const DEFAULT_ACTION_TEXT = "تم رفض الطلب وإبلاغ المقاول بالملاحظات";
 
 /* =========================================================
    2) البيانات
@@ -77,23 +21,307 @@ let clearances = JSON.parse(localStorage.getItem("clearances")) || [];
 let emergencies = JSON.parse(localStorage.getItem("emergencies")) || [];
 let notes = JSON.parse(localStorage.getItem("notes")) || [];
 
-/* مؤشرات التعديل */
 let editingClearance = -1;
 let editingEmergency = -1;
 let editingNote = -1;
 
 /* =========================================================
-   3) التنقل بين الصفحات
+   3) أدوات مساعدة عامة
+   ========================================================= */
+
+function val(id) {
+    const el = document.getElementById(id);
+    return el ? el.value : "";
+}
+
+function setVal(id, value) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.value = value || "";
+    }
+}
+
+/* مهلة زمنية لأي عملية قد تتعطل */
+function withTimeout(promise, ms) {
+    return Promise.race([
+        promise,
+        new Promise(function (resolve, reject) {
+            setTimeout(function () {
+                reject(new Error("انتهت المهلة"));
+            }, ms);
+        })
+    ]);
+}
+
+/* =========================================================
+   4) تهيئة Supabase (مصححة)
+   ========================================================= */
+
+let sbClient = null;
+let sbLoadPromise = null;
+
+function createSbClient() {
+    try {
+        /* إذا وُجد عميل جاهز في الصفحة نستخدمه مباشرة */
+        if (typeof supabase !== "undefined" && supabase) {
+            if (supabase.storage) {
+                return supabase;
+            }
+            if (typeof supabase.createClient === "function") {
+                return supabase.createClient(LAB_SUPABASE_URL, LAB_SUPABASE_KEY);
+            }
+        }
+        /* بعض الإصدارات تعرّف createClient مباشرة */
+        if (typeof createClient === "function") {
+            return createClient(LAB_SUPABASE_URL, LAB_SUPABASE_KEY);
+        }
+    } catch (e) {
+        console.error("خطأ في إنشاء عميل Supabase:", e);
+    }
+    return null;
+}
+
+function initSupabase() {
+
+    if (sbClient) {
+        return Promise.resolve(sbClient);
+    }
+
+    /* إنشاء العميل فورًا إذا كانت المكتبة محملة */
+    const immediate = createSbClient();
+    if (immediate) {
+        sbClient = immediate;
+        return Promise.resolve(sbClient);
+    }
+
+    if (sbLoadPromise) {
+        return sbLoadPromise;
+    }
+
+    /* تحميل المكتبة مرة واحدة فقط */
+    sbLoadPromise = new Promise(function (resolve) {
+
+        const script = document.createElement("script");
+        script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+
+        script.onload = function () {
+            sbClient = createSbClient();
+            if (sbClient) {
+                console.log("تم تهيئة Supabase بنجاح ✅");
+            } else {
+                console.warn("تعذر إنشاء عميل Supabase — سيتم حفظ الصور محلياً");
+            }
+            resolve(sbClient);
+        };
+
+        script.onerror = function () {
+            console.warn("تعذر تحميل مكتبة Supabase — سيتم حفظ الصور محلياً");
+            resolve(null);
+        };
+
+        document.head.appendChild(script);
+    });
+
+    return sbLoadPromise;
+}
+
+/* =========================================================
+   5) الصور
+   ========================================================= */
+
+async function uploadToSupabase(file) {
+
+    const client = await initSupabase();
+
+    if (!client) {
+        return "";
+    }
+
+    const nameParts = String(file.name || "image").split(".");
+    const fileExt = nameParts.length > 1 ? nameParts.pop().toLowerCase() : "jpg";
+
+    const fileName =
+        Date.now() + "_" +
+        Math.random().toString(36).substring(2, 10) +
+        "." + fileExt;
+
+    const filePath = "uploads/" + fileName;
+
+    const { error } = await client.storage
+        .from("images")
+        .upload(filePath, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type || "image/jpeg"
+        });
+
+    if (error) {
+        console.error("خطأ في رفع الصورة إلى Supabase:", error);
+        return "";
+    }
+
+    const { data: urlData } = client.storage
+        .from("images")
+        .getPublicUrl(filePath);
+
+    return urlData && urlData.publicUrl ? urlData.publicUrl : "";
+}
+
+/* حفظ الصورة محلياً داخل المتصفح (الخطة البديلة) */
+function readLocalImage(file) {
+    return new Promise(function (resolve) {
+        const reader = new FileReader();
+        reader.onload = function () {
+            resolve(reader.result);
+        };
+        reader.onerror = function () {
+            resolve("");
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+/* رفع صورة واحدة: السحابة أولاً ثم محلياً عند الفشل */
+async function readImage(file) {
+
+    if (!file) {
+        return "";
+    }
+
+    let cloudUrl = "";
+
+    try {
+        cloudUrl = await withTimeout(uploadToSupabase(file), 30000);
+    } catch (error) {
+        console.warn("فشل أو تأخر رفع الصورة للسحابة، سيتم الحفظ محلياً:", error);
+    }
+
+    if (cloudUrl) {
+        return cloudUrl;
+    }
+
+    return readLocalImage(file);
+}
+
+/* رفع عدة صور */
+async function readImages(files) {
+
+    const result = [];
+
+    if (!files || files.length === 0) {
+        return result;
+    }
+
+    for (let i = 0; i < files.length; i++) {
+        const imageUrl = await readImage(files[i]);
+        if (imageUrl) {
+            result.push(imageUrl);
+        }
+    }
+
+    return result;
+}
+
+/* عرض الصورة المصغرة */
+function imageThumb(image, title = "عرض الصورة") {
+    if (!image) {
+        return "<span>لا توجد صورة</span>";
+    }
+
+    return `
+        <img
+            src="${image}"
+            alt="${title}"
+            title="${title}"
+            onclick="openImage(this.src)"
+            style="width:70px;height:70px;object-fit:cover;border-radius:8px;cursor:pointer;margin:3px;"
+        >
+    `;
+}
+
+function openImage(image) {
+    const newWindow = window.open("", "_blank");
+
+    if (!newWindow) {
+        alert("يرجى السماح بفتح النوافذ المنبثقة");
+        return;
+    }
+
+    newWindow.document.write(`
+        <!DOCTYPE html>
+        <html lang="ar" dir="rtl">
+        <head>
+            <meta charset="UTF-8">
+            <title>عرض الصورة</title>
+            <style>
+                body {margin:0;background:#173f32;display:flex;justify-content:center;align-items:center;min-height:100vh;}
+                img {max-width:95%;max-height:95vh;object-fit:contain;border-radius:12px;}
+            </style>
+        </head>
+        <body>
+            <img src="${image}">
+        </body>
+        </html>
+    `);
+}
+
+/* =========================================================
+   6) مؤشر (جاري الحفظ) — لا يكسر عملية الحفظ أبداً
+   ========================================================= */
+
+function setSaveBusy(busy) {
+    try {
+        document.querySelectorAll("button, input[type='button'], input[type='submit']").forEach(function (el) {
+
+            const oc = el.getAttribute("onclick") || "";
+            const wired = el.dataset ? el.dataset.wiredSave : "";
+
+            const isSave =
+                oc.indexOf("saveClearance") !== -1 ||
+                oc.indexOf("saveEmergency") !== -1 ||
+                oc.indexOf("saveNote") !== -1 ||
+                wired === "1";
+
+            if (!isSave) {
+                return;
+            }
+
+            if (busy) {
+                if (!el.dataset.oldText) {
+                    el.dataset.oldText = el.innerText || el.value || "";
+                }
+                el.disabled = true;
+                if (el.tagName === "BUTTON") {
+                    el.innerText = "⏳ جاري الحفظ...";
+                } else {
+                    el.value = "⏳ جاري الحفظ...";
+                }
+            } else {
+                el.disabled = false;
+                if (el.dataset.oldText) {
+                    if (el.tagName === "BUTTON") {
+                        el.innerText = el.dataset.oldText;
+                    } else {
+                        el.value = el.dataset.oldText;
+                    }
+                }
+            }
+        });
+    } catch (e) {
+        /* تجاهل — هذه الوظيفة تجميلية فقط */
+    }
+}
+
+/* =========================================================
+   7) التنقل بين الصفحات
    ========================================================= */
 
 function showPage(page) {
 
-    /* إخفاء كل الصفحات */
     document.querySelectorAll(".page").forEach(function (p) {
         p.classList.remove("active");
     });
 
-    /* إظهار الصفحة المطلوبة */
     const selectedPage = document.getElementById(page);
     if (selectedPage) {
         selectedPage.classList.add("active");
@@ -117,215 +345,75 @@ function showPage(page) {
 }
 
 /* =========================================================
-   4) مؤشر "جاري الحفظ" أثناء رفع الصور
+   8) رأس الجدول — يُبنى من الكود لضمان تطابق الأعمدة
    ========================================================= */
 
-function setSaveBusy(busy) {
-    document.querySelectorAll("button").forEach(function (btn) {
-        const onclick = btn.getAttribute("onclick") || "";
-        if (
-            onclick.indexOf("saveClearance") !== -1 ||
-            onclick.indexOf("saveEmergency") !== -1 ||
-            onclick.indexOf("saveNote") !== -1
-        ) {
-            if (busy) {
-                if (!btn.dataset.oldText) {
-                    btn.dataset.oldText = btn.innerText;
-                }
-                btn.disabled = true;
-                btn.innerText = "⏳ جاري الحفظ...";
-            } else {
-                btn.disabled = false;
-                if (btn.dataset.oldText) {
-                    btn.innerText = btn.dataset.oldText;
-                }
-            }
+function ensureTableHeaders(bodyId, headers) {
+
+    const bodyEl = document.getElementById(bodyId);
+    if (!bodyEl) {
+        return null;
+    }
+
+    let parentTable = null;
+    let tbody = bodyEl;
+
+    if (bodyEl.tagName === "TABLE") {
+        parentTable = bodyEl;
+        tbody = bodyEl.querySelector("tbody");
+        if (!tbody) {
+            tbody = document.createElement("tbody");
+            bodyEl.appendChild(tbody);
         }
-    });
+    } else if (bodyEl.tagName === "TBODY") {
+        parentTable = bodyEl.closest("table");
+    }
+
+    if (parentTable) {
+        let thead = parentTable.querySelector("thead");
+        if (!thead) {
+            thead = document.createElement("thead");
+            parentTable.insertBefore(thead, parentTable.firstChild);
+        }
+        thead.innerHTML =
+            "<tr>" +
+            headers.map(function (h) {
+                return "<th>" + h + "</th>";
+            }).join("") +
+            "</tr>";
+    }
+
+    return tbody;
 }
 
 /* =========================================================
-   5) الصور
-   ========================================================= */
-
-/* رفع صورة واحدة إلى Supabase Storage
-   وإذا فشل الرفع تُحفظ الصورة محلياً (Base64) كخطة بديلة */
-async function readImage(file) {
-
-    if (!file) {
-        return "";
-    }
-
-    /* محاولة الرفع إلى Supabase */
-    try {
-        const client = await initSupabase();
-
-        if (client) {
-            const nameParts = file.name.split(".");
-            const fileExt = nameParts.length > 1 ? nameParts.pop().toLowerCase() : "jpg";
-
-            const fileName =
-                Date.now() + "_" +
-                Math.random().toString(36).substring(2, 10) +
-                "." + fileExt;
-
-            const filePath = "uploads/" + fileName;
-
-            const { error } = await client.storage
-                .from("images")
-                .upload(filePath, file, {
-                    cacheControl: "3600",
-                    upsert: false,
-                    contentType: file.type || "image/jpeg"
-                });
-
-            if (!error) {
-                const { data: urlData } = client.storage
-                    .from("images")
-                    .getPublicUrl(filePath);
-
-                if (urlData && urlData.publicUrl) {
-                    return urlData.publicUrl;
-                }
-            } else {
-                console.error("خطأ في رفع الصورة إلى Supabase:", error);
-            }
-        }
-    } catch (error) {
-        console.error("خطأ غير متوقع أثناء رفع الصورة:", error);
-    }
-
-    /* الخطة البديلة: حفظ الصورة داخل المتصفح */
-    return new Promise(function (resolve) {
-        const reader = new FileReader();
-        reader.onload = function () {
-            resolve(reader.result);
-        };
-        reader.onerror = function () {
-            resolve("");
-        };
-        reader.readAsDataURL(file);
-    });
-}
-
-/* رفع عدة صور */
-async function readImages(files) {
-    const result = [];
-
-    if (!files || files.length === 0) {
-        return result;
-    }
-
-    for (const file of files) {
-        const imageUrl = await readImage(file);
-        if (imageUrl) {
-            result.push(imageUrl);
-        }
-    }
-
-    return result;
-}
-
-/* عرض الصورة المصغرة */
-function imageThumb(image, title = "عرض الصورة") {
-    if (!image) {
-        return "<span>لا توجد صورة</span>";
-    }
-
-    return `
-        <img
-            src="${image}"
-            alt="${title}"
-            title="${title}"
-            onclick="openImage(this.src)"
-            style="
-                width:70px;
-                height:70px;
-                object-fit:cover;
-                border-radius:8px;
-                cursor:pointer;
-                margin:3px;
-            "
-        >
-    `;
-}
-
-function openImage(image) {
-    const newWindow = window.open("", "_blank");
-
-    if (!newWindow) {
-        alert("يرجى السماح بفتح النوافذ المنبثقة");
-        return;
-    }
-
-    newWindow.document.write(`
-        <!DOCTYPE html>
-        <html lang="ar" dir="rtl">
-        <head>
-            <meta charset="UTF-8">
-            <title>عرض الصورة</title>
-            <style>
-                body {
-                    margin:0;
-                    background:#173f32;
-                    display:flex;
-                    justify-content:center;
-                    align-items:center;
-                    min-height:100vh;
-                }
-                img {
-                    max-width:95%;
-                    max-height:95vh;
-                    object-fit:contain;
-                    border-radius:12px;
-                }
-            </style>
-        </head>
-        <body>
-            <img src="${image}">
-        </body>
-        </html>
-    `);
-}
-
-/* =========================================================
-   6) رخص الإخلاءات
+   9) رخص الإخلاءات
    ========================================================= */
 
 async function saveClearance() {
 
-    const permitEl = document.getElementById("clearancePermit");
-    const contractorEl = document.getElementById("clearanceContractor");
-    const ownerEl = document.getElementById("clearanceOwner");
-    const locationEl = document.getElementById("clearanceLocation");
-    const imagesEl = document.getElementById("clearanceImages");
-
-    if (!permitEl || !contractorEl || !ownerEl || !locationEl) {
-        alert("يوجد خطأ في حقول رخصة الإخلاء");
-        return;
-    }
-
-    const permit = permitEl.value.trim();
-    const contractor = contractorEl.value.trim();
-    const owner = ownerEl.value.trim();
-    const location = locationEl.value.trim();
-
-    let missing = [];
-    if (!permit) missing.push("رقم التصريح");
-    if (!contractor) missing.push("اسم المقاول");
-    if (!owner) missing.push("الجهة المالكة");
-    if (!location) missing.push("الموقع");
-
-    if (missing.length > 0) {
-        alert("يرجى تعبئة البيانات التالية:\n\n" + missing.join("\n"));
-        return;
-    }
-
-    const files = imagesEl ? imagesEl.files : [];
-
-    setSaveBusy(true);
-
     try {
+        const permit = val("clearancePermit").trim();
+        const contractor = val("clearanceContractor").trim();
+        const owner = val("clearanceOwner").trim();
+        const location = val("clearanceLocation").trim();
+
+        let missing = [];
+        if (!permit) missing.push("رقم التصريح");
+        if (!contractor) missing.push("اسم المقاول");
+        if (!owner) missing.push("الجهة المالكة");
+        if (!location) missing.push("الموقع");
+
+        if (missing.length > 0) {
+            alert("يرجى تعبئة البيانات التالية:\n\n" + missing.join("\n"));
+            return;
+        }
+
+        const imagesEl = document.getElementById("clearanceImages");
+        const files = imagesEl ? imagesEl.files : [];
+
+        setSaveBusy(true);
+
         const images = await readImages(files);
 
         const data = {
@@ -353,25 +441,24 @@ async function saveClearance() {
         updateDashboard();
 
         alert("تم حفظ رخصة الإخلاء بنجاح ✅");
+
+    } catch (error) {
+        console.error("خطأ في حفظ رخصة الإخلاء:", error);
+        alert(
+            "حدث خطأ أثناء الحفظ:\n" +
+            (error && error.message ? error.message : error)
+        );
     } finally {
         setSaveBusy(false);
     }
 }
 
 function clearClearance() {
-    const fields = [
-        "clearancePermit",
-        "clearanceContractor",
-        "clearanceOwner",
-        "clearanceLocation"
-    ];
 
-    fields.forEach(function (id) {
-        const el = document.getElementById(id);
-        if (el) {
-            el.value = "";
-        }
-    });
+    ["clearancePermit", "clearanceContractor", "clearanceOwner", "clearanceLocation"]
+        .forEach(function (id) {
+            setVal(id, "");
+        });
 
     const images = document.getElementById("clearanceImages");
     if (images) {
@@ -382,24 +469,29 @@ function clearClearance() {
 }
 
 function renderClearances(data = clearances) {
-    const table = document.getElementById("clearanceTable");
 
-    if (!table) {
+    const tbody = ensureTableHeaders("clearanceTable", [
+        "رقم التصريح",
+        "اسم المقاول",
+        "الجهة المالكة",
+        "الموقع",
+        "الصور",
+        "الإجراءات"
+    ]);
+
+    if (!tbody) {
         return;
     }
 
-    table.innerHTML = "";
+    tbody.innerHTML = "";
 
     if (data.length === 0) {
-        table.innerHTML = `
-            <tr>
-                <td colspan="6">لا توجد رخص إخلاء مسجلة</td>
-            </tr>
-        `;
+        tbody.innerHTML = '<tr><td colspan="6">لا توجد رخص إخلاء مسجلة</td></tr>';
         return;
     }
 
     data.forEach(function (item) {
+
         const originalIndex = clearances.indexOf(item);
 
         let imagesHTML = "";
@@ -411,7 +503,7 @@ function renderClearances(data = clearances) {
             imagesHTML = "<span>لا توجد صور</span>";
         }
 
-        table.innerHTML += `
+        tbody.innerHTML += `
             <tr>
                 <td>${item.permit || ""}</td>
                 <td>${item.contractor || ""}</td>
@@ -428,6 +520,7 @@ function renderClearances(data = clearances) {
 }
 
 function searchClearance() {
+
     const input = document.getElementById("clearanceSearch");
     const result = document.getElementById("clearanceSearchResult");
 
@@ -438,7 +531,7 @@ function searchClearance() {
     const value = input.value.trim().toLowerCase();
 
     if (!value) {
-        result.innerHTML = `<div class="search-error">اكتب رقم رخصة الإخلاء أولاً</div>`;
+        result.innerHTML = '<div class="search-error">اكتب رقم رخصة الإخلاء أولاً</div>';
         renderClearances();
         return;
     }
@@ -448,16 +541,17 @@ function searchClearance() {
     });
 
     if (results.length === 0) {
-        result.innerHTML = `<div class="search-error">لم يتم العثور على رخصة بهذا الرقم</div>`;
+        result.innerHTML = '<div class="search-error">لم يتم العثور على رخصة بهذا الرقم</div>';
         renderClearances([]);
         return;
     }
 
-    result.innerHTML = `<div class="search-success">تم العثور على ${results.length} رخصة إخلاء</div>`;
+    result.innerHTML = '<div class="search-success">تم العثور على ' + results.length + ' رخصة إخلاء</div>';
     renderClearances(results);
 }
 
 function clearClearanceSearch() {
+
     const input = document.getElementById("clearanceSearch");
     const result = document.getElementById("clearanceSearchResult");
 
@@ -472,16 +566,16 @@ function clearClearanceSearch() {
 }
 
 function editClearance(index) {
-    const item = clearances[index];
 
+    const item = clearances[index];
     if (!item) {
         return;
     }
 
-    document.getElementById("clearancePermit").value = item.permit || "";
-    document.getElementById("clearanceContractor").value = item.contractor || "";
-    document.getElementById("clearanceOwner").value = item.owner || "";
-    document.getElementById("clearanceLocation").value = item.location || "";
+    setVal("clearancePermit", item.permit);
+    setVal("clearanceContractor", item.contractor);
+    setVal("clearanceOwner", item.owner);
+    setVal("clearanceLocation", item.location);
 
     editingClearance = index;
 
@@ -490,6 +584,7 @@ function editClearance(index) {
 }
 
 function deleteClearance(index) {
+
     if (!confirm("هل تريد حذف رخصة الإخلاء؟")) {
         return;
     }
@@ -503,33 +598,35 @@ function deleteClearance(index) {
 }
 
 /* =========================================================
-   7) رخص الطوارئ
+   10) رخص الطوارئ
    ========================================================= */
 
 async function saveEmergency() {
 
-    const permit = document.getElementById("emergencyPermit").value.trim();
-    const contractor = document.getElementById("emergencyContractor").value.trim();
-    const owner = document.getElementById("emergencyOwner").value.trim();
-    const labReceive = document.getElementById("labReceiveDate").value;
-    const start = document.getElementById("workStartDate").value;
-    const end = document.getElementById("workEndDate").value;
-    const location = document.getElementById("emergencyLocation").value.trim();
-    const files = document.getElementById("emergencyImages").files;
-
-    let missing = [];
-    if (!permit) missing.push("رقم التصريح");
-    if (!contractor) missing.push("اسم المقاول");
-    if (!owner) missing.push("الجهة المالكة");
-
-    if (missing.length > 0) {
-        alert("يرجى تعبئة البيانات التالية:\n\n" + missing.join("\n"));
-        return;
-    }
-
-    setSaveBusy(true);
-
     try {
+        const permit = val("emergencyPermit").trim();
+        const contractor = val("emergencyContractor").trim();
+        const owner = val("emergencyOwner").trim();
+        const labReceive = val("labReceiveDate");
+        const start = val("workStartDate");
+        const end = val("workEndDate");
+        const location = val("emergencyLocation").trim();
+
+        let missing = [];
+        if (!permit) missing.push("رقم التصريح");
+        if (!contractor) missing.push("اسم المقاول");
+        if (!owner) missing.push("الجهة المالكة");
+
+        if (missing.length > 0) {
+            alert("يرجى تعبئة البيانات التالية:\n\n" + missing.join("\n"));
+            return;
+        }
+
+        const imagesEl = document.getElementById("emergencyImages");
+        const files = imagesEl ? imagesEl.files : [];
+
+        setSaveBusy(true);
+
         const images = await readImages(files);
 
         const data = {
@@ -560,28 +657,25 @@ async function saveEmergency() {
         updateDashboard();
 
         alert("تم حفظ رخصة الطوارئ بنجاح ✅");
+
+    } catch (error) {
+        console.error("خطأ في حفظ رخصة الطوارئ:", error);
+        alert(
+            "حدث خطأ أثناء الحفظ:\n" +
+            (error && error.message ? error.message : error)
+        );
     } finally {
         setSaveBusy(false);
     }
 }
 
 function clearEmergency() {
-    const fields = [
-        "emergencyPermit",
-        "emergencyContractor",
-        "emergencyOwner",
-        "labReceiveDate",
-        "workStartDate",
-        "workEndDate",
-        "emergencyLocation"
-    ];
 
-    fields.forEach(function (id) {
-        const el = document.getElementById(id);
-        if (el) {
-            el.value = "";
-        }
-    });
+    ["emergencyPermit", "emergencyContractor", "emergencyOwner",
+     "labReceiveDate", "workStartDate", "workEndDate", "emergencyLocation"]
+        .forEach(function (id) {
+            setVal(id, "");
+        });
 
     const images = document.getElementById("emergencyImages");
     if (images) {
@@ -592,24 +686,32 @@ function clearEmergency() {
 }
 
 function renderEmergencies(data = emergencies) {
-    const table = document.getElementById("emergencyTable");
 
-    if (!table) {
+    const tbody = ensureTableHeaders("emergencyTable", [
+        "رقم التصريح",
+        "اسم المقاول",
+        "الجهة المالكة",
+        "تاريخ الاستلام بالمختبر",
+        "تاريخ بداية العمل",
+        "تاريخ انتهاء العمل",
+        "الموقع",
+        "الصور",
+        "الإجراءات"
+    ]);
+
+    if (!tbody) {
         return;
     }
 
-    table.innerHTML = "";
+    tbody.innerHTML = "";
 
     if (data.length === 0) {
-        table.innerHTML = `
-            <tr>
-                <td colspan="9">لا توجد رخص طوارئ مسجلة</td>
-            </tr>
-        `;
+        tbody.innerHTML = '<tr><td colspan="9">لا توجد رخص طوارئ مسجلة</td></tr>';
         return;
     }
 
     data.forEach(function (item) {
+
         const originalIndex = emergencies.indexOf(item);
 
         let imagesHTML = "";
@@ -621,7 +723,7 @@ function renderEmergencies(data = emergencies) {
             imagesHTML = "<span>لا توجد صور</span>";
         }
 
-        table.innerHTML += `
+        tbody.innerHTML += `
             <tr>
                 <td>${item.permit || ""}</td>
                 <td>${item.contractor || ""}</td>
@@ -641,6 +743,7 @@ function renderEmergencies(data = emergencies) {
 }
 
 function searchEmergency() {
+
     const input = document.getElementById("emergencySearch");
     const result = document.getElementById("emergencySearchResult");
 
@@ -651,7 +754,7 @@ function searchEmergency() {
     const value = input.value.trim().toLowerCase();
 
     if (!value) {
-        result.innerHTML = `<div class="search-error">اكتب رقم رخصة الطوارئ أولاً</div>`;
+        result.innerHTML = '<div class="search-error">اكتب رقم رخصة الطوارئ أولاً</div>';
         renderEmergencies();
         return;
     }
@@ -661,16 +764,17 @@ function searchEmergency() {
     });
 
     if (results.length === 0) {
-        result.innerHTML = `<div class="search-error">لم يتم العثور على رخصة بهذا الرقم</div>`;
+        result.innerHTML = '<div class="search-error">لم يتم العثور على رخصة بهذا الرقم</div>';
         renderEmergencies([]);
         return;
     }
 
-    result.innerHTML = `<div class="search-success">تم العثور على ${results.length} رخصة طوارئ</div>`;
+    result.innerHTML = '<div class="search-success">تم العثور على ' + results.length + ' رخصة طوارئ</div>';
     renderEmergencies(results);
 }
 
 function clearEmergencySearch() {
+
     const input = document.getElementById("emergencySearch");
     const result = document.getElementById("emergencySearchResult");
 
@@ -685,19 +789,19 @@ function clearEmergencySearch() {
 }
 
 function editEmergency(index) {
-    const item = emergencies[index];
 
+    const item = emergencies[index];
     if (!item) {
         return;
     }
 
-    document.getElementById("emergencyPermit").value = item.permit || "";
-    document.getElementById("emergencyContractor").value = item.contractor || "";
-    document.getElementById("emergencyOwner").value = item.owner || "";
-    document.getElementById("labReceiveDate").value = item.labReceive || "";
-    document.getElementById("workStartDate").value = item.start || "";
-    document.getElementById("workEndDate").value = item.end || "";
-    document.getElementById("emergencyLocation").value = item.location || "";
+    setVal("emergencyPermit", item.permit);
+    setVal("emergencyContractor", item.contractor);
+    setVal("emergencyOwner", item.owner);
+    setVal("labReceiveDate", item.labReceive);
+    setVal("workStartDate", item.start);
+    setVal("workEndDate", item.end);
+    setVal("emergencyLocation", item.location);
 
     editingEmergency = index;
 
@@ -706,6 +810,7 @@ function editEmergency(index) {
 }
 
 function deleteEmergency(index) {
+
     if (!confirm("هل تريد حذف رخصة الطوارئ؟")) {
         return;
     }
@@ -719,17 +824,16 @@ function deleteEmergency(index) {
 }
 
 /* =========================================================
-   8) تصنيف الملاحظات
+   11) تصنيف الملاحظات
    ========================================================= */
 
 function setNoteType(type) {
-    const noteType = document.getElementById("noteType");
 
+    const noteType = document.getElementById("noteType");
     if (noteType) {
         noteType.value = type;
     }
 
-    /* تمييز الزر المختار */
     document.querySelectorAll(".note-types button").forEach(function (button) {
         button.classList.remove("active");
     });
@@ -742,67 +846,53 @@ function setNoteType(type) {
 }
 
 /* =========================================================
-   9) حفظ الملاحظة
+   12) حفظ الملاحظة
    ========================================================= */
 
 async function saveNote() {
 
-    const dateEl = document.getElementById("noteDate");
-    const permitEl = document.getElementById("notePermit");
-    const contractorEl = document.getElementById("noteContractor");
-    const ownerEl = document.getElementById("noteOwner");
-    const reasonEl = document.getElementById("noteReason");
-    const actionEl = document.getElementById("noteAction");
-    const typeEl = document.getElementById("noteType");
-    const beforeEl = document.getElementById("beforeImage");
-    const afterEl = document.getElementById("afterImage");
-
-    if (!dateEl || !permitEl || !contractorEl || !ownerEl || !reasonEl || !actionEl || !typeEl) {
-        alert("حدث خطأ في حقول الملاحظة.\nتأكد من أن HTML مطابق للكود.");
-        return;
-    }
-
-    const date = dateEl.value;
-    const permit = permitEl.value.trim();
-    const contractor = contractorEl.value.trim();
-    const owner = ownerEl.value.trim();
-    const reason = reasonEl.value.trim();
-    const action = actionEl.value.trim();
-    const type = typeEl.value || "مشاريع الأمانة";
-
-    let missing = [];
-    if (!date) missing.push("تاريخ الملاحظة");
-    if (!permit) missing.push("رقم التصريح");
-    if (!contractor) missing.push("اسم المقاول");
-    if (!owner) missing.push("الجهة المالكة");
-    if (!reason) missing.push("أسباب الرفض");
-    if (!action) missing.push("الإجراء المتخذ");
-
-    if (missing.length > 0) {
-        alert("يرجى تعبئة البيانات التالية:\n\n" + missing.join("\n"));
-        return;
-    }
-
-    /* البيانات القديمة عند التعديل */
-    let oldNote = null;
-    if (editingNote >= 0) {
-        oldNote = notes[editingNote] || null;
-    }
-
-    setSaveBusy(true);
-
     try {
+        const date = val("noteDate");
+        const permit = val("notePermit").trim();
+        const contractor = val("noteContractor").trim();
+        const owner = val("noteOwner").trim();
+        const reason = val("noteReason").trim();
+        const action = val("noteAction").trim();
+        const type = val("noteType") || "مشاريع الأمانة";
+
+        let missing = [];
+        if (!date) missing.push("تاريخ الملاحظة");
+        if (!permit) missing.push("رقم التصريح");
+        if (!contractor) missing.push("اسم المقاول");
+        if (!owner) missing.push("الجهة المالكة");
+        if (!reason) missing.push("أسباب الرفض");
+        if (!action) missing.push("الإجراء المتخذ");
+
+        if (missing.length > 0) {
+            alert("يرجى تعبئة البيانات التالية:\n\n" + missing.join("\n"));
+            return;
+        }
+
+        let oldNote = null;
+        if (editingNote >= 0) {
+            oldNote = notes[editingNote] || null;
+        }
+
+        const beforeEl = document.getElementById("beforeImage");
+        const afterEl = document.getElementById("afterImage");
+
         const beforeFile = beforeEl && beforeEl.files.length > 0 ? beforeEl.files[0] : null;
         const afterFile = afterEl && afterEl.files.length > 0 ? afterEl.files[0] : null;
+
+        setSaveBusy(true);
 
         const before = await readImage(beforeFile);
         const after = await readImage(afterFile);
 
-        /* الاحتفاظ بالصور القديمة إذا لم يتم اختيار صور جديدة */
+        /* الاحتفاظ بالصور القديمة عند التعديل */
         const beforeImage = before || (oldNote ? oldNote.before || "" : "");
         const afterImage = after || (oldNote ? oldNote.after || "" : "");
 
-        /* تحديد الحالة */
         const completed = afterImage !== "";
 
         const data = {
@@ -818,7 +908,6 @@ async function saveNote() {
             completed: completed
         };
 
-        /* حفظ أو تعديل */
         if (editingNote >= 0) {
             notes[editingNote] = data;
             editingNote = -1;
@@ -837,27 +926,24 @@ async function saveNote() {
         } else {
             alert("تم حفظ الملاحظة بنجاح ✅");
         }
+
+    } catch (error) {
+        console.error("خطأ في حفظ الملاحظة:", error);
+        alert(
+            "حدث خطأ أثناء الحفظ:\n" +
+            (error && error.message ? error.message : error)
+        );
     } finally {
         setSaveBusy(false);
     }
 }
 
-/* تفريغ نموذج الملاحظات */
 function clearNote() {
-    const fields = [
-        "noteDate",
-        "notePermit",
-        "noteContractor",
-        "noteOwner",
-        "noteReason"
-    ];
 
-    fields.forEach(function (id) {
-        const el = document.getElementById(id);
-        if (el) {
-            el.value = "";
-        }
-    });
+    ["noteDate", "notePermit", "noteContractor", "noteOwner", "noteReason"]
+        .forEach(function (id) {
+            setVal(id, "");
+        });
 
     const before = document.getElementById("beforeImage");
     const after = document.getElementById("afterImage");
@@ -869,15 +955,9 @@ function clearNote() {
         after.value = "";
     }
 
-    const action = document.getElementById("noteAction");
-    if (action) {
-        action.value = "تم إبلاغ المقاول بالملاحظات واتخاذ الإجراء اللازم";
-    }
-
-    const type = document.getElementById("noteType");
-    if (type) {
-        type.value = "مشاريع الأمانة";
-    }
+    /* النص الافتراضي الجديد */
+    setVal("noteAction", DEFAULT_ACTION_TEXT);
+    setVal("noteType", "مشاريع الأمانة");
 
     document.querySelectorAll(".note-types button").forEach(function (button) {
         button.classList.remove("active");
@@ -887,10 +967,11 @@ function clearNote() {
 }
 
 /* =========================================================
-   10) حساب الأيام والحالة
+   13) حساب الأيام والحالة
    ========================================================= */
 
 function daysPassed(date) {
+
     if (!date) {
         return 0;
     }
@@ -901,9 +982,7 @@ function daysPassed(date) {
     const noteDate = new Date(date);
     noteDate.setHours(0, 0, 0, 0);
 
-    const difference = today - noteDate;
-
-    return Math.floor(difference / (1000 * 60 * 60 * 24));
+    return Math.floor((today - noteDate) / (1000 * 60 * 60 * 24));
 }
 
 function isLate(note) {
@@ -914,67 +993,32 @@ function isLate(note) {
 }
 
 /* =========================================================
-   11) عرض الملاحظات وتصنيفها
-   ملاحظة: رأس الجدول يُبنى هنا من الكود نفسه
-   حتى تتطابق العناوين مع الأعمدة دائماً
+   14) عرض الملاحظات (10 أعمدة تطابق الرأس تماماً)
    ========================================================= */
 
 function renderNotes() {
 
-    const notesTable = document.getElementById("notesTable");
+    const tbody = ensureTableHeaders("notesTable", [
+        "م",
+        "التاريخ",
+        "رقم التصريح",
+        "اسم المقاول",
+        "الجهة المالكة",
+        "أسباب الرفض",
+        "الإجراء المتخذ",
+        "الحالة",
+        "الصور",
+        "الإجراءات"
+    ]);
 
-    if (!notesTable) {
+    if (!tbody) {
         return;
-    }
-
-    /* تحديد الجدول الأب وجسم الجدول */
-    let parentTable = null;
-    let tbody = notesTable;
-
-    if (notesTable.tagName === "TABLE") {
-        parentTable = notesTable;
-        tbody = notesTable.querySelector("tbody");
-        if (!tbody) {
-            tbody = document.createElement("tbody");
-            notesTable.appendChild(tbody);
-        }
-    } else if (notesTable.tagName === "TBODY") {
-        parentTable = notesTable.closest("table");
-    }
-
-    /* إعادة بناء رأس الجدول (10 أعمدة) */
-    if (parentTable) {
-        let thead = parentTable.querySelector("thead");
-
-        if (!thead) {
-            thead = document.createElement("thead");
-            parentTable.insertBefore(thead, parentTable.firstChild);
-        }
-
-        thead.innerHTML = `
-            <tr>
-                <th>م</th>
-                <th>التاريخ</th>
-                <th>رقم التصريح</th>
-                <th>اسم المقاول</th>
-                <th>الجهة المالكة</th>
-                <th>أسباب الرفض</th>
-                <th>الإجراء المتخذ</th>
-                <th>الحالة</th>
-                <th>الصور</th>
-                <th>الإجراءات</th>
-            </tr>
-        `;
     }
 
     tbody.innerHTML = "";
 
     if (!notes || notes.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="10">لا توجد ملاحظات مسجلة</td>
-            </tr>
-        `;
+        tbody.innerHTML = '<tr><td colspan="10">لا توجد ملاحظات مسجلة</td></tr>';
         return;
     }
 
@@ -996,7 +1040,6 @@ function renderNotes() {
             return;
         }
 
-        /* عنوان التصنيف */
         tbody.innerHTML += `
             <tr class="note-category-row">
                 <td colspan="10" style="font-weight:bold;text-align:right;padding:12px;">
@@ -1005,7 +1048,6 @@ function renderNotes() {
             </tr>
         `;
 
-        /* الملاحظات داخل التصنيف */
         categoryNotes.forEach(function (item) {
 
             const index = notes.indexOf(item);
@@ -1013,14 +1055,13 @@ function renderNotes() {
 
             let status = "";
             if (item.completed) {
-                status = `<span class="status-done">✅ تم التعديل</span>`;
+                status = '<span class="status-done">✅ تم التعديل</span>';
             } else if (late) {
-                status = `<span class="status-open">🔴 متأخرة</span>`;
+                status = '<span class="status-open">🔴 متأخرة</span>';
             } else {
-                status = `<span class="status-follow">قيد المتابعة</span>`;
+                status = '<span class="status-follow">قيد المتابعة</span>';
             }
 
-            /* الصور */
             let imagesHTML = "";
 
             if (item.before) {
@@ -1047,7 +1088,6 @@ function renderNotes() {
                 imagesHTML = "<span>لا توجد صور</span>";
             }
 
-            /* صف الملاحظة (10 أعمدة تطابق الرأس تماماً) */
             tbody.innerHTML += `
                 <tr ${late ? 'style="background:#fff0f0;"' : ""}>
                     <td>${index + 1}</td>
@@ -1069,25 +1109,20 @@ function renderNotes() {
     });
 }
 
-/* =========================================================
-   12) تعديل وحذف الملاحظة
-   ========================================================= */
-
 function editNote(index) {
-    const item = notes[index];
 
+    const item = notes[index];
     if (!item) {
         return;
     }
 
-    document.getElementById("noteType").value = item.type || "مشاريع الأمانة";
-    document.getElementById("noteDate").value = item.date || "";
-    document.getElementById("notePermit").value = item.permit || "";
-    document.getElementById("noteContractor").value = item.contractor || "";
-    document.getElementById("noteOwner").value = item.owner || "";
-    document.getElementById("noteReason").value = item.reason || "";
-    document.getElementById("noteAction").value =
-        item.action || "تم إبلاغ المقاول بالملاحظات واتخاذ الإجراء اللازم";
+    setVal("noteType", item.type || "مشاريع الأمانة");
+    setVal("noteDate", item.date);
+    setVal("notePermit", item.permit);
+    setVal("noteContractor", item.contractor);
+    setVal("noteOwner", item.owner);
+    setVal("noteReason", item.reason);
+    setVal("noteAction", item.action || DEFAULT_ACTION_TEXT);
 
     editingNote = index;
 
@@ -1098,6 +1133,7 @@ function editNote(index) {
 }
 
 function deleteNote(index) {
+
     if (!confirm("هل تريد حذف الملاحظة؟")) {
         return;
     }
@@ -1111,7 +1147,7 @@ function deleteNote(index) {
 }
 
 /* =========================================================
-   13) التنبيهات ولوحة المتابعة
+   15) التنبيهات ولوحة المتابعة
    ========================================================= */
 
 function updateAlerts() {
@@ -1146,6 +1182,7 @@ function updateAlerts() {
     alertsBox.innerHTML = "";
 
     late.forEach(function (note) {
+
         const days = daysPassed(note.date);
         const index = notes.indexOf(note);
 
@@ -1188,18 +1225,245 @@ function updateDashboard() {
 }
 
 /* =========================================================
-   14) التشغيل عند فتح الصفحة
+   16) ربط الأزرار تلقائياً (يضمن عمل أزرار الحفظ والتنقل)
+   ========================================================= */
+
+function autoWireButtons() {
+
+    /* أزرار الحفظ والمسح والبحث داخل كل صفحة */
+    const pageWiring = [
+        {
+            pageId: "clearance",
+            save: saveClearance,
+            clear: clearClearance,
+            search: searchClearance,
+            resetSearch: clearClearanceSearch
+        },
+        {
+            pageId: "emergency",
+            save: saveEmergency,
+            clear: clearEmergency,
+            search: searchEmergency,
+            resetSearch: clearEmergencySearch
+        },
+        {
+            pageId: "notes",
+            save: saveNote,
+            clear: clearNote,
+            search: null,
+            resetSearch: null
+        }
+    ];
+
+    pageWiring.forEach(function (w) {
+
+        const page = document.getElementById(w.pageId);
+        if (!page) {
+            return;
+        }
+
+        page.querySelectorAll("button, input[type='button'], input[type='submit']").forEach(function (btn) {
+
+            /* الأزرار المرتبطة بـ onclick تعمل أصلاً */
+            if (btn.getAttribute("onclick")) {
+                return;
+            }
+            if (btn.dataset.autoWired) {
+                return;
+            }
+
+            const text = ((btn.innerText || btn.value || "") + "").trim();
+
+            if (text.indexOf("حفظ") !== -1) {
+                btn.dataset.autoWired = "1";
+                btn.dataset.wiredSave = "1";
+                btn.addEventListener("click", function (event) {
+                    event.preventDefault();
+                    w.save();
+                });
+            } else if (
+                text.indexOf("مسح") !== -1 ||
+                text.indexOf("تفريغ") !== -1 ||
+                text.indexOf("جديد") !== -1
+            ) {
+                btn.dataset.autoWired = "1";
+                btn.addEventListener("click", function (event) {
+                    event.preventDefault();
+                    w.clear();
+                });
+            } else if (text.indexOf("بحث") !== -1 && w.search) {
+                btn.dataset.autoWired = "1";
+                btn.addEventListener("click", function (event) {
+                    event.preventDefault();
+                    w.search();
+                });
+            } else if (
+                (text.indexOf("الكل") !== -1 || text.indexOf("إلغاء") !== -1) &&
+                w.resetSearch
+            ) {
+                btn.dataset.autoWired = "1";
+                btn.addEventListener("click", function (event) {
+                    event.preventDefault();
+                    w.resetSearch();
+                });
+            }
+        });
+    });
+
+    /* أزرار التنقل بين الصفحات */
+    const navMap = [
+        { keyword: "لوحة المتابعة", page: "dashboard" },
+        { keyword: "الرئيسية", page: "dashboard" },
+        { keyword: "الإخلاء", page: "clearance" },
+        { keyword: "الطوارئ", page: "emergency" },
+        { keyword: "الملاحظات", page: "notes" }
+    ];
+
+    document.querySelectorAll("button").forEach(function (btn) {
+
+        if (btn.getAttribute("onclick")) {
+            return;
+        }
+        if (btn.dataset.autoWired || btn.dataset.navWired) {
+            return;
+        }
+
+        const text = (btn.textContent || "").trim();
+
+        /* تجاوز أزرار النماذج والجداول */
+        if (
+            text.indexOf("حفظ") !== -1 ||
+            text.indexOf("مسح") !== -1 ||
+            text.indexOf("تعديل") !== -1 ||
+            text.indexOf("حذف") !== -1 ||
+            text.indexOf("بحث") !== -1 ||
+            text.indexOf("فتح") !== -1 ||
+            text.indexOf("تصدير") !== -1
+        ) {
+            return;
+        }
+
+        navMap.forEach(function (m) {
+            if (text.indexOf(m.keyword) !== -1 && document.getElementById(m.page)) {
+                btn.dataset.navWired = "1";
+                btn.addEventListener("click", function () {
+                    showPage(m.page);
+                });
+            }
+        });
+    });
+}
+
+/* =========================================================
+   17) إضافة أزرار تصدير Excel و PDF تلقائياً
+   ========================================================= */
+
+function addExportButtons() {
+
+    const configs = [
+        {
+            pageId: "clearance",
+            buttons: [
+                {
+                    text: "📥 تصدير Excel",
+                    handler: function () {
+                        exportClearancesToExcel();
+                    }
+                },
+                {
+                    text: "📄 تصدير PDF",
+                    handler: function () {
+                        exportClearancesToPDF(this);
+                    }
+                }
+            ]
+        },
+        {
+            pageId: "emergency",
+            buttons: [
+                {
+                    text: "📥 تصدير Excel",
+                    handler: function () {
+                        exportEmergenciesToExcel();
+                    }
+                },
+                {
+                    text: "📄 تصدير PDF",
+                    handler: function () {
+                        exportEmergenciesToPDF(this);
+                    }
+                }
+            ]
+        },
+        {
+            pageId: "notes",
+            buttons: [
+                {
+                    text: "📥 تصدير Excel",
+                    handler: function () {
+                        exportNotesToExcel();
+                    }
+                },
+                {
+                    text: "📄 تصدير PDF",
+                    handler: function () {
+                        exportNotesToPDF(this);
+                    }
+                }
+            ]
+        }
+    ];
+
+    configs.forEach(function (cfg) {
+
+        const page = document.getElementById(cfg.pageId);
+        if (!page) {
+            return;
+        }
+
+        /* عدم التكرار إذا كانت هناك أزرار تصدير موجودة */
+        let exists = false;
+        page.querySelectorAll("button").forEach(function (btn) {
+            const content = (btn.getAttribute("onclick") || "") + (btn.textContent || "");
+            if (content.indexOf("export") !== -1 || content.indexOf("تصدير") !== -1) {
+                exists = true;
+            }
+        });
+        if (exists) {
+            return;
+        }
+
+        const bar = document.createElement("div");
+        bar.style.cssText =
+            "display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;padding:10px;" +
+            "background:#f4f7f5;border-radius:10px;";
+
+        cfg.buttons.forEach(function (b) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.innerText = b.text;
+            btn.style.cssText =
+                "background:#173f32;color:#ffffff;border:none;padding:9px 18px;" +
+                "border-radius:8px;cursor:pointer;font-size:14px;font-family:inherit;";
+            btn.addEventListener("click", b.handler);
+            bar.appendChild(btn);
+        });
+
+        page.insertBefore(bar, page.firstChild);
+    });
+}
+
+/* =========================================================
+   18) التشغيل عند فتح الصفحة
    ========================================================= */
 
 document.addEventListener("DOMContentLoaded", function () {
 
-    /* تحميل مكتبة Supabase مبكراً */
+    /* تهيئة Supabase مبكراً */
     initSupabase();
 
-    /* البحث */
+    /* البحث عند الضغط على Enter */
     const clearanceSearch = document.getElementById("clearanceSearch");
-    const emergencySearch = document.getElementById("emergencySearch");
-
     if (clearanceSearch) {
         clearanceSearch.addEventListener("keydown", function (event) {
             if (event.key === "Enter") {
@@ -1208,6 +1472,7 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
+    const emergencySearch = document.getElementById("emergencySearch");
     if (emergencySearch) {
         emergencySearch.addEventListener("keydown", function (event) {
             if (event.key === "Enter") {
@@ -1215,6 +1480,18 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         });
     }
+
+    /* النص الافتراضي الجديد للإجراء المتخذ */
+    const actionEl = document.getElementById("noteAction");
+    if (actionEl && !actionEl.value.trim()) {
+        actionEl.value = DEFAULT_ACTION_TEXT;
+    }
+
+    /* ربط الأزرار تلقائياً */
+    autoWireButtons();
+
+    /* إضافة أزرار التصدير */
+    addExportButtons();
 
     /* عرض البيانات */
     renderClearances();
@@ -1224,9 +1501,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
     /* التصنيف الافتراضي */
     setNoteType("مشاريع الأمانة");
+
+    /* التأكد من وجود صفحة ظاهرة */
+    if (!document.querySelector(".page.active")) {
+        const firstPage = document.querySelector(".page");
+        if (firstPage) {
+            firstPage.classList.add("active");
+        }
+    }
 });
 
-/* تحديث التنبيهات تلقائياً كل ساعة */
+/* تحديث التنبيهات كل ساعة */
 setInterval(updateAlerts, 60 * 60 * 1000);
 
 /* =========================================================
@@ -1332,7 +1617,7 @@ function downloadExcel(rows, sheetName, cols, filename) {
     XLSX.writeFile(wb, filename);
 }
 
-/* رخص الإخلاء - Excel */
+/* ===== رخص الإخلاء - Excel ===== */
 function exportClearancesToExcel() {
     if (typeof XLSX === "undefined") {
         alert("جاري تحميل مكتبة Excel...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
@@ -1360,7 +1645,7 @@ function exportClearancesToExcel() {
     );
 }
 
-/* رخص الإخلاء - PDF */
+/* ===== رخص الإخلاء - PDF ===== */
 function exportClearancesToPDF(btn) {
     if (typeof html2pdf === "undefined") {
         alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
@@ -1374,10 +1659,10 @@ function exportClearancesToPDF(btn) {
     clearances.forEach(function (item, index) {
         var imagesHTML = "";
         (item.images || []).forEach(function (img) {
-            imagesHTML += `<img src="${img}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">`;
+            imagesHTML += '<img src="' + img + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
         });
         if (!imagesHTML) {
-            imagesHTML = `<span style="color:#999;font-size:11px;">لا توجد صور</span>`;
+            imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
         }
         rows += `
             <tr>
@@ -1410,7 +1695,7 @@ function exportClearancesToPDF(btn) {
     generatePDFFromHTML(content, "رخص_الإخلاء_" + exportDate() + ".pdf", "landscape", btn);
 }
 
-/* رخص الطوارئ - Excel */
+/* ===== رخص الطوارئ - Excel ===== */
 function exportEmergenciesToExcel() {
     if (typeof XLSX === "undefined") {
         alert("جاري تحميل مكتبة Excel...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
@@ -1441,7 +1726,7 @@ function exportEmergenciesToExcel() {
     );
 }
 
-/* رخص الطوارئ - PDF */
+/* ===== رخص الطوارئ - PDF ===== */
 function exportEmergenciesToPDF(btn) {
     if (typeof html2pdf === "undefined") {
         alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
@@ -1455,10 +1740,10 @@ function exportEmergenciesToPDF(btn) {
     emergencies.forEach(function (item, index) {
         var imagesHTML = "";
         (item.images || []).forEach(function (img) {
-            imagesHTML += `<img src="${img}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">`;
+            imagesHTML += '<img src="' + img + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
         });
         if (!imagesHTML) {
-            imagesHTML = `<span style="color:#999;font-size:11px;">لا توجد صور</span>`;
+            imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
         }
         rows += `
             <tr>
@@ -1497,7 +1782,7 @@ function exportEmergenciesToPDF(btn) {
     generatePDFFromHTML(content, "رخص_الطوارئ_" + exportDate() + ".pdf", "landscape", btn);
 }
 
-/* الملاحظات - Excel */
+/* ===== الملاحظات - Excel ===== */
 function exportNotesToExcel() {
     if (typeof XLSX === "undefined") {
         alert("جاري تحميل مكتبة Excel...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
@@ -1528,7 +1813,7 @@ function exportNotesToExcel() {
     );
 }
 
-/* الملاحظات - PDF */
+/* ===== الملاحظات - PDF ===== */
 function exportNotesToPDF(btn) {
     if (typeof html2pdf === "undefined") {
         alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
@@ -1548,20 +1833,22 @@ function exportNotesToPDF(btn) {
 
     var rows = "";
     notes.forEach(function (item, index) {
+
         var imagesHTML = "";
         if (item.before) {
-            imagesHTML += `<div style="text-align:center;"><small>قبل</small><br><img src="${item.before}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;"></div>`;
+            imagesHTML += '<div style="text-align:center;"><small>قبل</small><br><img src="' + item.before + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;"></div>';
         }
         if (item.after) {
-            imagesHTML += `<div style="text-align:center;"><small>بعد</small><br><img src="${item.after}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;"></div>`;
+            imagesHTML += '<div style="text-align:center;"><small>بعد</small><br><img src="' + item.after + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;"></div>';
         }
         if (!imagesHTML) {
-            imagesHTML = `<span style="color:#999;font-size:11px;">لا توجد صور</span>`;
+            imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
         }
 
         rows += `
             <tr>
                 <td style="${PDF_TD_CENTER}">${index + 1}</td>
+                <td style="${PDF_TD}">${item.type || "مشاريع الأمانة"}</td>
                 <td style="${PDF_TD_CENTER}">${item.date || ""}</td>
                 <td style="${PDF_TD}">${item.permit || ""}</td>
                 <td style="${PDF_TD}">${item.contractor || ""}</td>
@@ -1582,6 +1869,7 @@ function exportNotesToPDF(btn) {
             <thead>
                 <tr>
                     <th style="${PDF_TH}">م</th>
+                    <th style="${PDF_TH}">التصنيف</th>
                     <th style="${PDF_TH}">التاريخ</th>
                     <th style="${PDF_TH}">رقم التصريح</th>
                     <th style="${PDF_TH}">اسم المقاول</th>
