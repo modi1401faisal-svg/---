@@ -3093,3 +3093,169 @@ async function resolveExportItems(items) {
 
     return out;
 }
+/* =========================================================
+   الإكمال التلقائي — يقترح الأسماء المدخلة سابقاً
+   الصق هذا الكود في آخر ملف script.js
+   ========================================================= */
+
+(function () {
+
+    /* الحقول التي تعمل مع الإكمال التلقائي
+       المفتاح: معرف الحقل — القيمة: مصدر القيم المقترحة */
+    const AUTOCOMPLETE_FIELDS = [
+        { id: "clearanceContractor", source: "contractor" },
+        { id: "clearanceOwner", source: "owner" },
+        { id: "clearanceLocation", source: "location" },
+        { id: "emergencyContractor", source: "contractor" },
+        { id: "emergencyOwner", source: "owner" },
+        { id: "emergencyLocation", source: "location" },
+        { id: "noteContractor", source: "contractor" },
+        { id: "noteOwner", source: "owner" }
+    ];
+
+    /* جمع القيم الفريدة من كل البيانات المسجلة */
+    function collectSuggestions(source) {
+
+        const values = new Set();
+
+        clearances.forEach(function (item) {
+            if (source === "contractor" && item.contractor) values.add(item.contractor);
+            if (source === "owner" && item.owner) values.add(item.owner);
+            if (source === "location" && item.location) values.add(item.location);
+        });
+
+        emergencies.forEach(function (item) {
+            if (source === "contractor" && item.contractor) values.add(item.contractor);
+            if (source === "owner" && item.owner) values.add(item.owner);
+            if (source === "location" && item.location) values.add(item.location);
+        });
+
+        notes.forEach(function (item) {
+            if (source === "contractor" && item.contractor) values.add(item.contractor);
+            if (source === "owner" && item.owner) values.add(item.owner);
+        });
+
+        return Array.from(values).sort();
+    }
+
+    /* التحقق من أن الكلمة تبدأ أو تحتوي النص المكتوب */
+    function matches(value, typed) {
+        try {
+            if (!typed) return false;
+            const v = value.toLowerCase();
+            const t = typed.toLowerCase();
+            return v.indexOf(t) !== -1;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /* إنشاء قائمة الاقتراحات تحت الحقل */
+    function createDropdown(inputEl, items) {
+
+        removeDropdown(inputEl);
+
+        if (items.length === 0) {
+            return;
+        }
+
+        const list = document.createElement("div");
+        list.className = "lab-autocomplete-list";
+        list.setAttribute("data-for", inputEl.id);
+
+        list.style.cssText =
+            "position:absolute;z-index:99999;background:#fff;border:2px solid #173f32;" +
+            "border-radius:8px;max-height:220px;overflow-y:auto;width:" +
+            Math.max(inputEl.offsetWidth, 220) + "px;box-shadow:0 8px 25px rgba(0,0,0,.25);" +
+            "direction:rtl;font-family:inherit;";
+
+        items.forEach(function (item) {
+
+            const option = document.createElement("div");
+            option.textContent = item;
+            option.style.cssText =
+                "padding:10px 14px;cursor:pointer;font-size:14px;border-bottom:1px solid #eee;";
+
+            option.onmouseenter = function () {
+                option.style.background = "#e8f2ee";
+            };
+            option.onmouseleave = function () {
+                option.style.background = "#fff";
+            };
+            option.onclick = function () {
+                inputEl.value = item;
+                removeDropdown(inputEl);
+                inputEl.focus();
+            };
+
+            list.appendChild(option);
+        });
+
+        document.body.appendChild(list);
+
+        /* تحديد الموضع تحت الحقل مباشرة */
+        const rect = inputEl.getBoundingClientRect();
+        const top = rect.bottom + window.scrollY + 4;
+        const left = rect.left + window.scrollX;
+        list.style.top = top + "px";
+        list.style.left = left + "px";
+    }
+
+    function removeDropdown(inputEl) {
+
+        const old = document.querySelector(
+            '.lab-autocomplete-list[data-for="' + inputEl.id + '"]'
+        );
+        if (old) {
+            old.remove();
+        }
+    }
+
+    /* تفعيل الإكمال التلقائي لحقل واحد */
+    function setupField(config) {
+
+        const inputEl = document.getElementById(config.id);
+        if (!inputEl) return;
+
+        let debounceTimer = null;
+
+        inputEl.addEventListener("input", function () {
+
+            clearTimeout(debounceTimer);
+
+            debounceTimer = setTimeout(function () {
+
+                const typed = inputEl.value.trim();
+
+                if (typed.length < 1) {
+                    removeDropdown(inputEl);
+                    return;
+                }
+
+                const all = collectSuggestions(config.source);
+                const filtered = all.filter(function (v) {
+                    return matches(v, typed);
+                }).slice(0, 15);
+
+                createDropdown(inputEl, filtered);
+
+            }, 150);
+        });
+
+        /* إخفاء القائمة عند الخروج من الحقل */
+        inputEl.addEventListener("blur", function () {
+            setTimeout(function () {
+                removeDropdown(inputEl);
+            }, 200);
+        });
+    }
+
+    /* تفعيل كل الحقول عند تحميل الصفحة */
+    function initAutocomplete() {
+        AUTOCOMPLETE_FIELDS.forEach(function (config) {
+            setupField(config);
+        });
+    }
+
+    document.addEventListener("DOMContentLoaded", initAutocomplete);
+})();
