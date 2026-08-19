@@ -13,8 +13,7 @@
 ========================= */
 const SUPABASE_URL = "https://efceexzzjmvscjqlgmio.supabase.co/rest/v1/";
 
-const SUPABASE_ANON_KEY =  "sb_publishable_F40NK174mIl6_nAfFEGBYw_mPAA27Ft";
-
+ const SUPABASE_ANON_KEY =  "sb_publishable_F40NK174mIl6_nAfFEGBYw_mPAA27Ft";
 let clearances = JSON.parse(localStorage.getItem("clearances")) || [];
 
 let emergencies = JSON.parse(localStorage.getItem("emergencies")) || [];
@@ -2695,13 +2694,37 @@ document.addEventListener(
 
 ========================================================= */
 /* =========================================================
-   نظام تصدير البيانات إلى Excel و PDF - النسخة المحسّنة
-   الصق في آخر ملف JavaScript بعد حذف الكود القديم
+   =========================================================
+   تصدير البيانات إلى Excel و PDF
+   الصق هذا الكود في آخر ملف JavaScript (بعد آخر سطر)
+   لا يعدّل أي كود قديم - فقط يضيف مزايا جديدة
+   =========================================================
    ========================================================= */
 
-/* =========================
-   دوال مساعدة
-========================= */
+/* ---------------------------------------------------------
+   1) تحميل المكتبات المطلوبة تلقائياً
+   SheetJS لملفات Excel + html2pdf لملفات PDF
+--------------------------------------------------------- */
+(function loadExportLibraries() {
+    if (!document.getElementById("xlsxLibScript")) {
+        var s1 = document.createElement("script");
+        s1.id = "xlsxLibScript";
+        s1.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+        document.head.appendChild(s1);
+    }
+    if (!document.getElementById("html2pdfLibScript")) {
+        var s2 = document.createElement("script");
+        s2.id = "html2pdfLibScript";
+        s2.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+        document.head.appendChild(s2);
+    }
+})();
+
+/* ---------------------------------------------------------
+   2) دوال مساعدة
+--------------------------------------------------------- */
+
+/* تاريخ اليوم بصيغة صالحة لأسماء الملفات */
 function exportDate() {
     var d = new Date();
     var day = ("0" + d.getDate()).slice(-2);
@@ -2709,272 +2732,182 @@ function exportDate() {
     return d.getFullYear() + "-" + month + "-" + day;
 }
 
+/* تنظيف النصوص لاستخدامها في أسماء الملفات */
 function safeFileName(text) {
     return String(text || "بدون").replace(/[\\\/:*?"<>|]/g, "-");
 }
 
+/* نص حالة الملاحظة */
 function noteStatusText(item) {
-    if (item.completed) { return "تم التعديل"; }
-    if (isLate(item)) { return "متأخرة"; }
+    if (item.completed) {
+        return "تم التعديل";
+    }
+    if (isLate(item)) {
+        return "متأخرة";
+    }
     return "قيد المتابعة";
 }
 
+/* أنماط خلايا جداول PDF */
 var PDF_TH = "padding:8px;border:1px solid #999;background:#173f32;color:#ffffff;font-size:12px;text-align:center;";
 var PDF_TD = "padding:6px 8px;border:1px solid #999;font-size:12px;";
 var PDF_TD_CENTER = "padding:6px 8px;border:1px solid #999;font-size:12px;text-align:center;";
 
+/* رأس موحد للتقارير */
 function pdfReportHeader(title, info) {
-    return '<div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;">' +
-        '<div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:12px;">' +
-        '<h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2>' +
-        '<h3 style="color:#333;margin:8px 0 4px;">' + title + '</h3>' +
-        '<p style="color:#666;margin:0;font-size:12px;">' + info + ' | تاريخ التقرير: ' + exportDate() + '</p>' +
-        '</div>';
+    return `
+        <div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;">
+            <div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:12px;">
+                <h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2>
+                <h3 style="color:#333;margin:8px 0 4px;">${title}</h3>
+                <p style="color:#666;margin:0;font-size:12px;">${info} &nbsp;|&nbsp; تاريخ التقرير: ${exportDate()}</p>
+            </div>
+    `;
 }
 
-function pdfReportFooter() {
-    return '<p style="text-align:center;color:#999;font-size:11px;margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p></div>';
-}
-
-/* =========================
-   فحص النظام - للتشخيص
-   اضغط F12 ثم اكتب: checkExportSystem()
-========================= */
-function checkExportSystem() {
-    var lines = [];
-    lines.push("===== فحص نظام التصدير =====");
-    lines.push("مكتبة Excel: " + (typeof XLSX !== "undefined" ? "محملة بنجاح" : "غير محملة"));
-    lines.push("مكتبة PDF: " + (typeof html2pdf !== "undefined" ? "محملة بنجاح" : "غير محملة"));
-    lines.push("جدول الإخلاءات: " + (document.getElementById("clearanceTable") ? "موجود" : "غير موجود"));
-    lines.push("جدول الطوارئ: " + (document.getElementById("emergencyTable") ? "موجود" : "غير موجود"));
-    lines.push("جدول الملاحظات: " + (document.getElementById("notesTable") ? "موجود" : "غير موجود"));
-    lines.push("عدد رخص الإخلاء: " + (typeof clearances !== "undefined" ? clearances.length : "غير معرف"));
-    lines.push("عدد رخص الطوارئ: " + (typeof emergencies !== "undefined" ? emergencies.length : "غير معرف"));
-    lines.push("عدد الملاحظات: " + (typeof notes !== "undefined" ? notes.length : "غير معرف"));
-    var msg = lines.join("\n");
-    console.log(msg);
-    alert(msg);
-}
-
-/* =========================
-   تحميل المكتبات الاحتياطي
-========================= */
-var __triedXLSX = false;
-var __triedPdf = false;
-
-function ensureLibraries() {
-    if (typeof XLSX === "undefined" && !__triedXLSX) {
-        __triedXLSX = true;
-        var s1 = document.createElement("script");
-        s1.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
-        document.head.appendChild(s1);
-    }
-    if (typeof html2pdf === "undefined" && !__triedPdf) {
-        __triedPdf = true;
-        var s2 = document.createElement("script");
-        s2.src = "https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js";
-        document.head.appendChild(s2);
-    }
-}
-
-/* =========================
-   بديل PDF: نافذة طباعة
-========================= */
-function printHTMLFallback(content) {
-    var w = window.open("", "_blank");
-    if (!w) {
-        alert("يرجى السماح بالنوافذ المنبثقة للمتصفح");
-        return;
-    }
-    w.document.open();
-    w.document.write('<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>تقرير</title></head><body>' + content + '</body></html>');
-    w.document.close();
-    setTimeout(function () {
-        try { w.print(); } catch (e) { }
-    }, 800);
-}
-
-/* =========================
-   بديل Excel: ملف CSV
-========================= */
-function downloadCSV(rows, filename) {
-    if (!rows || rows.length === 0) { return; }
-    var headers = [];
-    var key;
-    for (key in rows[0]) {
-        if (rows[0].hasOwnProperty(key)) { headers.push(key); }
-    }
-    var lines = [];
-    lines.push(headers.join(","));
-    for (var i = 0; i < rows.length; i++) {
-        var vals = [];
-        for (var j = 0; j < headers.length; j++) {
-            var v = String(rows[i][headers[j]] == null ? "" : rows[i][headers[j]]);
-            v = v.replace(/"/g, '""');
-            vals.push('"' + v + '"');
-        }
-        lines.push(vals.join(","));
-    }
-    var csv = "\uFEFF" + lines.join("\r\n");
-    var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    var link = document.createElement("a");
-    var url = URL.createObjectURL(blob);
-    link.href = url;
-    link.download = filename.replace(/\.xlsx$/i, "") + ".csv";
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(function () {
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-    }, 100);
-}
-
-/* =========================
-   إنشاء PDF مع حماية كاملة
-========================= */
+/* إنشاء وتحميل ملف PDF من محتوى HTML */
 function generatePDFFromHTML(content, filename, orientation, btn) {
-    var oldText = "";
     if (btn) {
-        oldText = btn.innerText;
         btn.disabled = true;
+        btn.setAttribute("data-old-text", btn.innerText);
         btn.innerText = "جاري الإنشاء...";
     }
-    function restore() {
+    var element = document.createElement("div");
+    element.innerHTML = content;
+    html2pdf().set({
+        margin: 10,
+        filename: filename,
+        image: { type: "jpeg", quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm", format: "a4", orientation: orientation || "landscape" },
+        pagebreak: { mode: ["css", "legacy"], avoid: ["tr", ".pdf-avoid-break"] }
+    }).from(element).save().then(function () {
         if (btn) {
             btn.disabled = false;
-            btn.innerText = oldText;
+            btn.innerText = btn.getAttribute("data-old-text");
         }
-    }
-    if (typeof html2pdf === "undefined") {
-        restore();
-        alert("مكتبة PDF غير محملة.\nسيتم فتح نافذة الطباعة - اختر (حفظ كـ PDF).");
-        printHTMLFallback(content);
-        return;
-    }
-    try {
-        var element = document.createElement("div");
-        element.innerHTML = content;
-        html2pdf().set({
-            margin: 10,
-            filename: filename,
-            image: { type: "jpeg", quality: 0.95 },
-            html2canvas: { scale: 2, useCORS: true },
-            jsPDF: { unit: "mm", format: "a4", orientation: orientation || "landscape" },
-            pagebreak: { mode: ["css", "legacy"], avoid: ["tr"] }
-        }).from(element).save().then(function () {
-            restore();
-        }).catch(function (err) {
-            restore();
-            console.error("خطأ PDF:", err);
-            alert("تعذر إنشاء PDF.\nسيتم فتح نافذة الطباعة كبديل.");
-            printHTMLFallback(content);
-        });
-    } catch (err) {
-        restore();
-        console.error("خطأ PDF:", err);
-        printHTMLFallback(content);
-    }
+    }).catch(function () {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = btn.getAttribute("data-old-text");
+        }
+        alert("حدث خطأ أثناء إنشاء ملف PDF، حاول مرة أخرى");
+    });
 }
 
-/* =========================
-   إنشاء Excel
-========================= */
+/* إنشاء وتحميل ملف Excel باتجاه عربي */
 function downloadExcel(rows, sheetName, cols, filename) {
-    if (typeof XLSX === "undefined") {
-        downloadCSV(rows, filename);
-        return;
+    var ws = XLSX.utils.json_to_sheet(rows);
+    ws["!cols"] = cols;
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    if (!wb.Workbook) {
+        wb.Workbook = {};
     }
-    try {
-        var ws = XLSX.utils.json_to_sheet(rows);
-        ws["!cols"] = cols;
-        var wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
-        if (!wb.Workbook) { wb.Workbook = {}; }
-        if (!wb.Workbook.Views) { wb.Workbook.Views = []; }
-        wb.Workbook.Views.push({ RTL: true });
-        XLSX.writeFile(wb, filename);
-    } catch (err) {
-        console.error("خطأ Excel:", err);
-        alert("حدث خطأ في تصدير Excel، سيتم التصدير بصيغة CSV");
-        downloadCSV(rows, filename);
+    if (!wb.Workbook.Views) {
+        wb.Workbook.Views = [];
     }
+    wb.Workbook.Views.push({ RTL: true });
+    XLSX.writeFile(wb, filename);
 }
 
 /* =========================================================
-   رخص الإخلاء
+   3) رخص الإخلاء - Excel
 ========================================================= */
 function exportClearancesToExcel() {
-    if (!clearances || clearances.length === 0) {
+    if (typeof XLSX === "undefined") {
+        alert("جاري تحميل مكتبة Excel...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
+        return;
+    }
+    if (clearances.length === 0) {
         alert("لا توجد رخص إخلاء للتصدير");
         return;
     }
-    var rows = [];
-    for (var i = 0; i < clearances.length; i++) {
-        var item = clearances[i];
-        rows.push({
-            "م": i + 1,
+    var rows = clearances.map(function (item, index) {
+        return {
+            "م": index + 1,
             "رقم التصريح": item.permit || "",
             "اسم المقاول": item.contractor || "",
             "الجهة المالكة": item.owner || "",
             "الموقع": item.location || "",
             "عدد الصور": (item.images || []).length
-        });
-    }
-    downloadExcel(rows, "رخص الإخلاء",
+        };
+    });
+    downloadExcel(
+        rows,
+        "رخص الإخلاء",
         [{ wch: 5 }, { wch: 18 }, { wch: 28 }, { wch: 28 }, { wch: 32 }, { wch: 10 }],
-        "رخص_الإخلاء_" + exportDate() + ".xlsx");
+        "رخص_الإخلاء_" + exportDate() + ".xlsx"
+    );
 }
 
+/* =========================================================
+   4) رخص الإخلاء - PDF
+========================================================= */
 function exportClearancesToPDF(btn) {
-    if (!clearances || clearances.length === 0) {
+    if (typeof html2pdf === "undefined") {
+        alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
+        return;
+    }
+    if (clearances.length === 0) {
         alert("لا توجد رخص إخلاء للتصدير");
         return;
     }
     var rows = "";
-    for (var i = 0; i < clearances.length; i++) {
-        var item = clearances[i];
+    clearances.forEach(function (item, index) {
         var imagesHTML = "";
-        var imgs = item.images || [];
-        for (var j = 0; j < imgs.length; j++) {
-            imagesHTML += '<img src="' + imgs[j] + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
-        }
+        (item.images || []).forEach(function (img) {
+            imagesHTML += `<img src="${img}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">`;
+        });
         if (!imagesHTML) {
-            imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
+            imagesHTML = `<span style="color:#999;font-size:11px;">لا توجد صور</span>`;
         }
-        rows += '<tr>' +
-            '<td style="' + PDF_TD_CENTER + '">' + (i + 1) + '</td>' +
-            '<td style="' + PDF_TD + '">' + (item.permit || "") + '</td>' +
-            '<td style="' + PDF_TD + '">' + (item.contractor || "") + '</td>' +
-            '<td style="' + PDF_TD + '">' + (item.owner || "") + '</td>' +
-            '<td style="' + PDF_TD + '">' + (item.location || "") + '</td>' +
-            '<td style="' + PDF_TD + '">' + imagesHTML + '</td>' +
-            '</tr>';
-    }
-    var content = pdfReportHeader("تقرير رخص الإخلاء", "إجمالي الرخص: " + clearances.length) +
-        '<table style="width:100%;border-collapse:collapse;"><thead><tr>' +
-        '<th style="' + PDF_TH + '">م</th>' +
-        '<th style="' + PDF_TH + '">رقم التصريح</th>' +
-        '<th style="' + PDF_TH + '">اسم المقاول</th>' +
-        '<th style="' + PDF_TH + '">الجهة المالكة</th>' +
-        '<th style="' + PDF_TH + '">الموقع</th>' +
-        '<th style="' + PDF_TH + '">الصور</th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table>' + pdfReportFooter();
+        rows += `
+            <tr>
+                <td style="${PDF_TD_CENTER}">${index + 1}</td>
+                <td style="${PDF_TD}">${item.permit || ""}</td>
+                <td style="${PDF_TD}">${item.contractor || ""}</td>
+                <td style="${PDF_TD}">${item.owner || ""}</td>
+                <td style="${PDF_TD}">${item.location || ""}</td>
+                <td style="${PDF_TD}">${imagesHTML}</td>
+            </tr>
+        `;
+    });
+    var content = pdfReportHeader("تقرير رخص الإخلاء", "إجمالي الرخص: " + clearances.length) + `
+        <table style="width:100%;border-collapse:collapse;">
+            <thead>
+                <tr>
+                    <th style="${PDF_TH}">م</th>
+                    <th style="${PDF_TH}">رقم التصريح</th>
+                    <th style="${PDF_TH}">اسم المقاول</th>
+                    <th style="${PDF_TH}">الجهة المالكة</th>
+                    <th style="${PDF_TH}">الموقع</th>
+                    <th style="${PDF_TH}">الصور</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+        <p style="text-align:center;color:#999;font-size:11px;margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p>
+        </div>
+    `;
     generatePDFFromHTML(content, "رخص_الإخلاء_" + exportDate() + ".pdf", "landscape", btn);
 }
 
 /* =========================================================
-   رخص الطوارئ
+   5) رخص الطوارئ - Excel
 ========================================================= */
 function exportEmergenciesToExcel() {
-    if (!emergencies || emergencies.length === 0) {
+    if (typeof XLSX === "undefined") {
+        alert("جاري تحميل مكتبة Excel...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
+        return;
+    }
+    if (emergencies.length === 0) {
         alert("لا توجد رخص طوارئ للتصدير");
         return;
     }
-    var rows = [];
-    for (var i = 0; i < emergencies.length; i++) {
-        var item = emergencies[i];
-        rows.push({
-            "م": i + 1,
+    var rows = emergencies.map(function (item, index) {
+        return {
+            "م": index + 1,
             "رقم التصريح": item.permit || "",
             "اسم المقاول": item.contractor || "",
             "الجهة المالكة": item.owner || "",
@@ -2983,69 +2916,89 @@ function exportEmergenciesToExcel() {
             "تاريخ انتهاء العمل": item.end || "",
             "الموقع": item.location || "",
             "عدد الصور": (item.images || []).length
-        });
-    }
-    downloadExcel(rows, "رخص الطوارئ",
+        };
+    });
+    downloadExcel(
+        rows,
+        "رخص الطوارئ",
         [{ wch: 5 }, { wch: 18 }, { wch: 25 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 30 }, { wch: 10 }],
-        "رخص_الطوارئ_" + exportDate() + ".xlsx");
+        "رخص_الطوارئ_" + exportDate() + ".xlsx"
+    );
 }
 
+/* =========================================================
+   6) رخص الطوارئ - PDF
+========================================================= */
 function exportEmergenciesToPDF(btn) {
-    if (!emergencies || emergencies.length === 0) {
+    if (typeof html2pdf === "undefined") {
+        alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
+        return;
+    }
+    if (emergencies.length === 0) {
         alert("لا توجد رخص طوارئ للتصدير");
         return;
     }
     var rows = "";
-    for (var i = 0; i < emergencies.length; i++) {
-        var item = emergencies[i];
+    emergencies.forEach(function (item, index) {
         var imagesHTML = "";
-        var imgs = item.images || [];
-        for (var j = 0; j < imgs.length; j++) {
-            imagesHTML += '<img src="' + imgs[j] + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
-        }
+        (item.images || []).forEach(function (img) {
+            imagesHTML += `<img src="${img}" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">`;
+        });
         if (!imagesHTML) {
-            imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
+            imagesHTML = `<span style="color:#999;font-size:11px;">لا توجد صور</span>`;
         }
-        rows += '<tr>' +
-            '<td style="' + PDF_TD_CENTER + '">' + (i + 1) + '</td>' +
-            '<td style="' + PDF_TD + '">' + (item.permit || "") + '</td>' +
-            '<td style="' + PDF_TD + '">' + (item.contractor || "") + '</td>' +
-            '<td style="' + PDF_TD + '">' + (item.owner || "") + '</td>' +
-            '<td style="' + PDF_TD_CENTER + '">' + (item.labReceive || "") + '</td>' +
-            '<td style="' + PDF_TD_CENTER + '">' + (item.start || "") + '</td>' +
-            '<td style="' + PDF_TD_CENTER + '">' + (item.end || "") + '</td>' +
-            '<td style="' + PDF_TD + '">' + (item.location || "") + '</td>' +
-            '<td style="' + PDF_TD + '">' + imagesHTML + '</td>' +
-            '</tr>';
-    }
-    var content = pdfReportHeader("تقرير رخص الطوارئ", "إجمالي الرخص: " + emergencies.length) +
-        '<table style="width:100%;border-collapse:collapse;"><thead><tr>' +
-        '<th style="' + PDF_TH + '">م</th>' +
-        '<th style="' + PDF_TH + '">رقم التصريح</th>' +
-        '<th style="' + PDF_TH + '">اسم المقاول</th>' +
-        '<th style="' + PDF_TH + '">الجهة المالكة</th>' +
-        '<th style="' + PDF_TH + '">تاريخ الاستلام</th>' +
-        '<th style="' + PDF_TH + '">بداية العمل</th>' +
-        '<th style="' + PDF_TH + '">انتهاء العمل</th>' +
-        '<th style="' + PDF_TH + '">الموقع</th>' +
-        '<th style="' + PDF_TH + '">الصور</th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table>' + pdfReportFooter();
+        rows += `
+            <tr>
+                <td style="${PDF_TD_CENTER}">${index + 1}</td>
+                <td style="${PDF_TD}">${item.permit || ""}</td>
+                <td style="${PDF_TD}">${item.contractor || ""}</td>
+                <td style="${PDF_TD}">${item.owner || ""}</td>
+                <td style="${PDF_TD_CENTER}">${item.labReceive || ""}</td>
+                <td style="${PDF_TD_CENTER}">${item.start || ""}</td>
+                <td style="${PDF_TD_CENTER}">${item.end || ""}</td>
+                <td style="${PDF_TD}">${item.location || ""}</td>
+                <td style="${PDF_TD}">${imagesHTML}</td>
+            </tr>
+        `;
+    });
+    var content = pdfReportHeader("تقرير رخص الطوارئ", "إجمالي الرخص: " + emergencies.length) + `
+        <table style="width:100%;border-collapse:collapse;">
+            <thead>
+                <tr>
+                    <th style="${PDF_TH}">م</th>
+                    <th style="${PDF_TH}">رقم التصريح</th>
+                    <th style="${PDF_TH}">اسم المقاول</th>
+                    <th style="${PDF_TH}">الجهة المالكة</th>
+                    <th style="${PDF_TH}">تاريخ الاستلام</th>
+                    <th style="${PDF_TH}">بداية العمل</th>
+                    <th style="${PDF_TH}">انتهاء العمل</th>
+                    <th style="${PDF_TH}">الموقع</th>
+                    <th style="${PDF_TH}">الصور</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+        <p style="text-align:center;color:#999;font-size:11px;margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p>
+        </div>
+    `;
     generatePDFFromHTML(content, "رخص_الطوارئ_" + exportDate() + ".pdf", "landscape", btn);
 }
 
 /* =========================================================
-   الملاحظات (الكل)
+   7) الملاحظات - Excel
 ========================================================= */
 function exportNotesToExcel() {
-    if (!notes || notes.length === 0) {
+    if (typeof XLSX === "undefined") {
+        alert("جاري تحميل مكتبة Excel...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
+        return;
+    }
+    if (notes.length === 0) {
         alert("لا توجد ملاحظات للتصدير");
         return;
     }
-    var rows = [];
-    for (var i = 0; i < notes.length; i++) {
-        var item = notes[i];
-        rows.push({
-            "م": i + 1,
+    var rows = notes.map(function (item, index) {
+        return {
+            "م": index + 1,
             "التصنيف": item.type || "مشاريع الأمانة",
             "تاريخ الملاحظة": item.date || "",
             "رقم التصريح": item.permit || "",
@@ -3057,74 +3010,117 @@ function exportNotesToExcel() {
             "عدد الأيام المنقضية": daysPassed(item.date),
             "صورة قبل التعديل": item.before ? "يوجد" : "لا يوجد",
             "صورة بعد التعديل": item.after ? "يوجد" : "لا يوجد"
-        });
-    }
-    downloadExcel(rows, "الملاحظات",
+        };
+    });
+    downloadExcel(
+        rows,
+        "الملاحظات",
         [{ wch: 5 }, { wch: 18 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 22 }, { wch: 35 }, { wch: 35 }, { wch: 14 }, { wch: 16 }, { wch: 15 }, { wch: 15 }],
-        "الملاحظات_" + exportDate() + ".xlsx");
+        "الملاحظات_" + exportDate() + ".xlsx"
+    );
 }
 
+/* =========================================================
+   8) الملاحظات - PDF (مقسمة حسب التصنيف)
+========================================================= */
 function exportNotesToPDF(btn) {
-    if (!notes || notes.length === 0) {
+    if (typeof html2pdf === "undefined") {
+        alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
+        return;
+    }
+    if (notes.length === 0) {
         alert("لا توجد ملاحظات للتصدير");
         return;
     }
-    var categories = ["مشاريع الأمانة", "المياه الوطنية", "الكهرباء", "الاتصالات", "مشاريع خاصة"];
+    var categories = [
+        "مشاريع الأمانة",
+        "المياه الوطنية",
+        "الكهرباء",
+        "الاتصالات",
+        "مشاريع خاصة"
+    ];
     var rows = "";
-    for (var c = 0; c < categories.length; c++) {
-        var category = categories[c];
-        var categoryNotes = [];
-        for (var i = 0; i < notes.length; i++) {
-            if ((notes[i].type || "مشاريع الأمانة") === category) {
-                categoryNotes.push(notes[i]);
-            }
+    categories.forEach(function (category) {
+        var categoryNotes = notes.filter(function (item) {
+            return (item.type || "مشاريع الأمانة") === category;
+        });
+        if (categoryNotes.length === 0) {
+            return;
         }
-        if (categoryNotes.length === 0) { continue; }
-        rows += '<tr><td colspan="8" style="padding:10px;border:1px solid #999;background:#e8f5ee;color:#173f32;font-weight:bold;font-size:14px;text-align:right;">' + category + ' (عدد الملاحظات: ' + categoryNotes.length + ')</td></tr>';
-        for (var n = 0; n < categoryNotes.length; n++) {
-            var item = categoryNotes[n];
+        rows += `
+            <tr>
+                <td colspan="8" style="padding:10px;border:1px solid #999;background:#e8f5ee;color:#173f32;font-weight:bold;font-size:14px;text-align:right;">
+                    📁 ${category} (عدد الملاحظات: ${categoryNotes.length})
+                </td>
+            </tr>
+        `;
+        categoryNotes.forEach(function (item) {
             var imagesHTML = "";
             if (item.before) {
-                imagesHTML += '<div style="text-align:center;"><small style="color:#666;">قبل</small><br><img src="' + item.before + '" style="width:55px;height:55px;object-fit:cover;border-radius:4px;margin:2px;"></div>';
+                imagesHTML += `
+                    <div style="text-align:center;">
+                        <small style="color:#666;">قبل</small><br>
+                        <img src="${item.before}" style="width:55px;height:55px;object-fit:cover;border-radius:4px;margin:2px;">
+                    </div>
+                `;
             }
             if (item.after) {
-                imagesHTML += '<div style="text-align:center;"><small style="color:#666;">بعد</small><br><img src="' + item.after + '" style="width:55px;height:55px;object-fit:cover;border-radius:4px;margin:2px;"></div>';
+                imagesHTML += `
+                    <div style="text-align:center;">
+                        <small style="color:#666;">بعد</small><br>
+                        <img src="${item.after}" style="width:55px;height:55px;object-fit:cover;border-radius:4px;margin:2px;">
+                    </div>
+                `;
             }
             if (!imagesHTML) {
-                imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
+                imagesHTML = `<span style="color:#999;font-size:11px;">لا توجد صور</span>`;
             }
-            var rowStyle = isLate(item) ? ' style="background:#fff0f0;"' : "";
-            rows += '<tr' + rowStyle + '>' +
-                '<td style="' + PDF_TD_CENTER + '">' + (item.date || "") + '</td>' +
-                '<td style="' + PDF_TD + '">' + (item.permit || "") + '</td>' +
-                '<td style="' + PDF_TD + '">' + (item.contractor || "") + '</td>' +
-                '<td style="' + PDF_TD + '">' + (item.owner || "") + '</td>' +
-                '<td style="' + PDF_TD + '">' + (item.reason || "") + '</td>' +
-                '<td style="' + PDF_TD + '">' + (item.action || "") + '</td>' +
-                '<td style="' + PDF_TD_CENTER + '">' + noteStatusText(item) + '</td>' +
-                '<td style="' + PDF_TD + '">' + imagesHTML + '</td>' +
-                '</tr>';
-        }
-    }
-    var content = pdfReportHeader("تقرير الملاحظات", "إجمالي الملاحظات: " + notes.length) +
-        '<table style="width:100%;border-collapse:collapse;"><thead><tr>' +
-        '<th style="' + PDF_TH + '">التاريخ</th>' +
-        '<th style="' + PDF_TH + '">رقم التصريح</th>' +
-        '<th style="' + PDF_TH + '">اسم المقاول</th>' +
-        '<th style="' + PDF_TH + '">الجهة المالكة</th>' +
-        '<th style="' + PDF_TH + '">أسباب الرفض</th>' +
-        '<th style="' + PDF_TH + '">الإجراء المتخذ</th>' +
-        '<th style="' + PDF_TH + '">الحالة</th>' +
-        '<th style="' + PDF_TH + '">الصور</th>' +
-        '</tr></thead><tbody>' + rows + '</tbody></table>' + pdfReportFooter();
+            var rowStyle = isLate(item) ? "background:#fff0f0;" : "";
+            rows += `
+                <tr style="${rowStyle}">
+                    <td style="${PDF_TD_CENTER}">${item.date || ""}</td>
+                    <td style="${PDF_TD}">${item.permit || ""}</td>
+                    <td style="${PDF_TD}">${item.contractor || ""}</td>
+                    <td style="${PDF_TD}">${item.owner || ""}</td>
+                    <td style="${PDF_TD}">${item.reason || ""}</td>
+                    <td style="${PDF_TD}">${item.action || ""}</td>
+                    <td style="${PDF_TD_CENTER}">${noteStatusText(item)}</td>
+                    <td style="${PDF_TD}">${imagesHTML}</td>
+                </tr>
+            `;
+        });
+    });
+    var content = pdfReportHeader("تقرير الملاحظات", "إجمالي الملاحظات: " + notes.length) + `
+        <table style="width:100%;border-collapse:collapse;">
+            <thead>
+                <tr>
+                    <th style="${PDF_TH}">التاريخ</th>
+                    <th style="${PDF_TH}">رقم التصريح</th>
+                    <th style="${PDF_TH}">اسم المقاول</th>
+                    <th style="${PDF_TH}">الجهة المالكة</th>
+                    <th style="${PDF_TH}">أسباب الرفض</th>
+                    <th style="${PDF_TH}">الإجراء المتخذ</th>
+                    <th style="${PDF_TH}">الحالة</th>
+                    <th style="${PDF_TH}">الصور</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+        <p style="text-align:center;color:#999;font-size:11px;margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p>
+        </div>
+    `;
     generatePDFFromHTML(content, "الملاحظات_" + exportDate() + ".pdf", "landscape", btn);
 }
 
 /* =========================================================
-   ملاحظة واحدة
+   9) ملاحظة واحدة - Excel
 ========================================================= */
 function exportSingleNoteToExcel(index) {
-    var item = notes ? notes[index] : null;
+    if (typeof XLSX === "undefined") {
+        alert("جاري تحميل مكتبة Excel...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
+        return;
+    }
+    var item = notes[index];
     if (!item) {
         alert("الملاحظة غير موجودة");
         return;
@@ -3142,147 +3138,195 @@ function exportSingleNoteToExcel(index) {
         "صورة قبل التعديل": item.before ? "يوجد" : "لا يوجد",
         "صورة بعد التعديل": item.after ? "يوجد" : "لا يوجد"
     }];
-    downloadExcel(rows, "الملاحظة",
+    downloadExcel(
+        rows,
+        "الملاحظة",
         [{ wch: 18 }, { wch: 15 }, { wch: 18 }, { wch: 22 }, { wch: 22 }, { wch: 35 }, { wch: 35 }, { wch: 14 }, { wch: 16 }, { wch: 15 }, { wch: 15 }],
-        "ملاحظة_" + safeFileName(item.permit) + ".xlsx");
+        "ملاحظة_" + safeFileName(item.permit || "بدون_رقم") + ".xlsx"
+    );
 }
 
+/* =========================================================
+   10) ملاحظة واحدة - PDF (تفاصيل كاملة + الصور)
+========================================================= */
 function exportSingleNoteToPDF(index, btn) {
-    var item = notes ? notes[index] : null;
+    if (typeof html2pdf === "undefined") {
+        alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
+        return;
+    }
+    var item = notes[index];
     if (!item) {
         alert("الملاحظة غير موجودة");
         return;
     }
     var labelStyle = "padding:10px;border:1px solid #999;background:#173f32;color:#ffffff;font-weight:bold;font-size:13px;width:30%;";
-    var valueStyle = "padding:10px;border:1px solid #999;font-size:13px;";
-
-    function row(label, value) {
-        return '<tr><td style="' + labelStyle + '">' + label + '</td><td style="' + valueStyle + '">' + value + '</td></tr>';
-    }
+    var valueStyle = "padding:10px;border:1px solid #999;font-size:13px;width:70%;";
 
     var imagesHTML = "";
     if (item.before || item.after) {
-        imagesHTML = '<div style="text-align:center;margin-top:20px;">';
+        imagesHTML = `<div class="pdf-avoid-break" style="display:flex;gap:15px;flex-wrap:wrap;justify-content:center;margin-top:20px;">`;
         if (item.before) {
-            imagesHTML += '<div style="display:inline-block;vertical-align:top;margin:10px;"><h4 style="color:#173f32;margin:0 0 8px;">صورة قبل التعديل</h4><img src="' + item.before + '" style="max-width:300px;width:90%;border:1px solid #ccc;border-radius:8px;"></div>';
+            imagesHTML += `
+                <div style="text-align:center;">
+                    <h4 style="color:#173f32;margin:0 0 8px;">صورة قبل التعديل</h4>
+                    <img src="${item.before}" style="max-width:320px;width:90%;border:1px solid #ccc;border-radius:8px;">
+                </div>
+            `;
         }
         if (item.after) {
-            imagesHTML += '<div style="display:inline-block;vertical-align:top;margin:10px;"><h4 style="color:#173f32;margin:0 0 8px;">صورة بعد التعديل</h4><img src="' + item.after + '" style="max-width:300px;width:90%;border:1px solid #ccc;border-radius:8px;"></div>';
+            imagesHTML += `
+                <div style="text-align:center;">
+                    <h4 style="color:#173f32;margin:0 0 8px;">صورة بعد التعديل</h4>
+                    <img src="${item.after}" style="max-width:320px;width:90%;border:1px solid #ccc;border-radius:8px;">
+                </div>
+            `;
         }
-        imagesHTML += '</div>';
+        imagesHTML += `</div>`;
     } else {
-        imagesHTML = '<p style="text-align:center;color:#999;">لا توجد صور لهذه الملاحظة</p>';
+        imagesHTML = `<p style="text-align:center;color:#999;">لا توجد صور لهذه الملاحظة</p>`;
     }
 
-    var content = pdfReportHeader("تفاصيل الملاحظة", "رقم التصريح: " + (item.permit || "")) +
-        '<table style="width:100%;border-collapse:collapse;margin-top:5px;">' +
-        row("التصنيف", item.type || "مشاريع الأمانة") +
-        row("تاريخ الملاحظة", item.date || "") +
-        row("رقم التصريح", item.permit || "") +
-        row("اسم المقاول", item.contractor || "") +
-        row("الجهة المالكة", item.owner || "") +
-        row("أسباب الرفض", item.reason || "") +
-        row("الإجراء المتخذ", item.action || "") +
-        row("الحالة", noteStatusText(item)) +
-        row("مضى على الملاحظة", daysPassed(item.date) + " يوم") +
-        '</table>' + imagesHTML +
-        '<p style="text-align:center;color:#999;font-size:11px;margin-top:25px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع - ' + exportDate() + '</p></div>';
+    var content = pdfReportHeader("تفاصيل الملاحظة", "رقم التصريح: " + (item.permit || "")) + `
+        <table style="width:100%;border-collapse:collapse;margin-top:5px;">
+            <tr><td style="${labelStyle}">التصنيف</td><td style="${valueStyle}">${item.type || "مشاريع الأمانة"}</td></tr>
+            <tr><td style="${labelStyle}">تاريخ الملاحظة</td><td style="${valueStyle}">${item.date || ""}</td></tr>
+            <tr><td style="${labelStyle}">رقم التصريح</td><td style="${valueStyle}">${item.permit || ""}</td></tr>
+            <tr><td style="${labelStyle}">اسم المقاول</td><td style="${valueStyle}">${item.contractor || ""}</td></tr>
+            <tr><td style="${labelStyle}">الجهة المالكة</td><td style="${valueStyle}">${item.owner || ""}</td></tr>
+            <tr><td style="${labelStyle}">أسباب الرفض</td><td style="${valueStyle}">${item.reason || ""}</td></tr>
+            <tr><td style="${labelStyle}">الإجراء المتخذ</td><td style="${valueStyle}">${item.action || ""}</td></tr>
+            <tr><td style="${labelStyle}">الحالة</td><td style="${valueStyle}">${noteStatusText(item)}</td></tr>
+            <tr><td style="${labelStyle}">مضى على الملاحظة</td><td style="${valueStyle}">${daysPassed(item.date)} يوم</td></tr>
+        </table>
+        ${imagesHTML}
+        <p style="text-align:center;color:#999;font-size:11px;margin-top:25px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع - ${exportDate()}</p>
+        </div>
+    `;
 
-    generatePDFFromHTML(content, "ملاحظة_" + safeFileName(item.permit) + "_" + exportDate() + ".pdf", "portrait", btn);
+    generatePDFFromHTML(
+        content,
+        "ملاحظة_" + safeFileName(item.permit || "بدون_رقم") + "_" + exportDate() + ".pdf",
+        "portrait",
+        btn
+    );
 }
 
 /* =========================================================
-   إضافة الأزرار تلقائياً
+   11) إضافة أزرار التصدير تلقائياً للصفحة
 ========================================================= */
 var EXPORT_BTN_STYLE = "background:#173f32;color:#ffffff;border:none;padding:10px 18px;border-radius:8px;cursor:pointer;font-size:14px;font-family:inherit;margin:3px;";
 var EXPORT_BTN_SMALL = "background:#173f32;color:#ffffff;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit;margin:2px;";
 
-function insertButtonsHTML(tableId, divId, buttonsHTML) {
-    var tableEl = document.getElementById(tableId);
-    if (!tableEl) { return; }
+function insertBeforeTableElement(tableEl, element) {
     var target = tableEl;
-    if (tableEl.tagName === "TBODY") {
-        target = tableEl.parentElement || tableEl;
+    if (tableEl && tableEl.tagName === "TBODY") {
+        target = tableEl.parentElement;
     }
-    var container = document.createElement("div");
-    container.id = divId;
-    container.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin:15px 0;";
-    container.innerHTML = buttonsHTML;
     if (target && target.parentNode) {
-        target.parentNode.insertBefore(container, target);
+        target.parentNode.insertBefore(element, target);
     }
 }
 
 function injectSectionExportButtons() {
-    if (document.getElementById("clearanceTable") && !document.getElementById("clearanceExportButtons")) {
-        insertButtonsHTML("clearanceTable", "clearanceExportButtons",
-            '<button type="button" style="' + EXPORT_BTN_STYLE + '" onclick="exportClearancesToExcel()">📥 تصدير رخص الإخلاء - Excel</button>' +
-            '<button type="button" style="' + EXPORT_BTN_STYLE + '" onclick="exportClearancesToPDF(this)">📄 تصدير رخص الإخلاء - PDF</button>');
+    /* أزرار رخص الإخلاء */
+    var clearanceTable = document.getElementById("clearanceTable");
+    if (clearanceTable && !document.getElementById("clearanceExportButtons")) {
+        var cBtns = document.createElement("div");
+        cBtns.id = "clearanceExportButtons";
+        cBtns.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin:15px 0;";
+        cBtns.innerHTML =
+            `<button style="${EXPORT_BTN_STYLE}" onclick="exportClearancesToExcel()">📥 تصدير رخص الإخلاء - Excel</button>` +
+            `<button style="${EXPORT_BTN_STYLE}" onclick="exportClearancesToPDF(this)">📄 تصدير رخص الإخلاء - PDF</button>`;
+        insertBeforeTableElement(clearanceTable, cBtns);
     }
-    if (document.getElementById("emergencyTable") && !document.getElementById("emergencyExportButtons")) {
-        insertButtonsHTML("emergencyTable", "emergencyExportButtons",
-            '<button type="button" style="' + EXPORT_BTN_STYLE + '" onclick="exportEmergenciesToExcel()">📥 تصدير رخص الطوارئ - Excel</button>' +
-            '<button type="button" style="' + EXPORT_BTN_STYLE + '" onclick="exportEmergenciesToPDF(this)">📄 تصدير رخص الطوارئ - PDF</button>');
+
+    /* أزرار رخص الطوارئ */
+    var emergencyTable = document.getElementById("emergencyTable");
+    if (emergencyTable && !document.getElementById("emergencyExportButtons")) {
+        var eBtns = document.createElement("div");
+        eBtns.id = "emergencyExportButtons";
+        eBtns.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin:15px 0;";
+        eBtns.innerHTML =
+            `<button style="${EXPORT_BTN_STYLE}" onclick="exportEmergenciesToExcel()">📥 تصدير رخص الطوارئ - Excel</button>` +
+            `<button style="${EXPORT_BTN_STYLE}" onclick="exportEmergenciesToPDF(this)">📄 تصدير رخص الطوارئ - PDF</button>`;
+        insertBeforeTableElement(emergencyTable, eBtns);
     }
-    if (document.getElementById("notesTable") && !document.getElementById("notesExportButtons")) {
-        insertButtonsHTML("notesTable", "notesExportButtons",
-            '<button type="button" style="' + EXPORT_BTN_STYLE + '" onclick="exportNotesToExcel()">📥 تصدير الملاحظات - Excel</button>' +
-            '<button type="button" style="' + EXPORT_BTN_STYLE + '" onclick="exportNotesToPDF(this)">📄 تصدير الملاحظات - PDF</button>');
+
+    /* أزرار الملاحظات */
+    var notesTable = document.getElementById("notesTable");
+    if (notesTable && !document.getElementById("notesExportButtons")) {
+        var nBtns = document.createElement("div");
+        nBtns.id = "notesExportButtons";
+        nBtns.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;margin:15px 0;";
+        nBtns.innerHTML =
+            `<button style="${EXPORT_BTN_STYLE}" onclick="exportNotesToExcel()">📥 تصدير الملاحظات - Excel</button>` +
+            `<button style="${EXPORT_BTN_STYLE}" onclick="exportNotesToPDF(this)">📄 تصدير الملاحظات - PDF</button>`;
+        insertBeforeTableElement(notesTable, nBtns);
     }
 }
 
+/* إضافة زر PDF و Excel لكل ملاحظة داخل جدول الملاحظات */
 function addNoteExportButtons() {
     var table = document.getElementById("notesTable");
-    if (!table) { return; }
+    if (!table) {
+        return;
+    }
     var deleteButtons = table.querySelectorAll("button.delete");
-    for (var i = 0; i < deleteButtons.length; i++) {
-        var deleteBtn = deleteButtons[i];
+    deleteButtons.forEach(function (deleteBtn) {
         var cell = deleteBtn.parentElement;
-        if (!cell || cell.querySelector(".note-export-btn")) { continue; }
+        if (!cell || cell.querySelector(".note-export-btn")) {
+            return;
+        }
         var onclickAttr = deleteBtn.getAttribute("onclick") || "";
         var match = onclickAttr.match(/deleteNote\((\d+)\)/);
-        if (!match) { continue; }
+        if (!match) {
+            return;
+        }
         var index = match[1];
 
         var pdfBtn = document.createElement("button");
-        pdfBtn.type = "button";
         pdfBtn.className = "note-export-btn";
         pdfBtn.style.cssText = EXPORT_BTN_SMALL;
         pdfBtn.setAttribute("onclick", "exportSingleNoteToPDF(" + index + ", this)");
         pdfBtn.innerText = "📄 PDF";
+        pdfBtn.title = "تصدير هذه الملاحظة إلى PDF";
 
         var excelBtn = document.createElement("button");
-        excelBtn.type = "button";
         excelBtn.className = "note-export-btn";
         excelBtn.style.cssText = EXPORT_BTN_SMALL;
         excelBtn.setAttribute("onclick", "exportSingleNoteToExcel(" + index + ")");
         excelBtn.innerText = "📊 Excel";
+        excelBtn.title = "تصدير هذه الملاحظة إلى Excel";
 
         cell.appendChild(pdfBtn);
         cell.appendChild(excelBtn);
-    }
+    });
 }
 
-/* =========================
-   التشغيل التلقائي
-   يفحص كل ثانيتين ويضمن بقاء الأزرار دائماً
-========================= */
-function injectAllExportButtons() {
+/* =========================================================
+   12) التشغيل التلقائي بعد تحميل الصفحة
+========================================================= */
+function setupExportFeatures() {
+    /* تغليف renderNotes حتى تُضاف الأزرار بعد كل عرض للملاحظات */
+    if (!window.__renderNotesWrapped) {
+        window.__renderNotesWrapped = true;
+        if (typeof renderNotes === "function") {
+            var originalRenderNotes = renderNotes;
+            renderNotes = function () {
+                originalRenderNotes.apply(this, arguments);
+                addNoteExportButtons();
+            };
+            renderNotes();
+        }
+    }
     injectSectionExportButtons();
     addNoteExportButtons();
 }
 
-function setupExportFeatures() {
-    injectAllExportButtons();
-    setInterval(function () {
-        injectAllExportButtons();
-    }, 2000);
-}
-
 if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
-        setTimeout(setupExportFeatures, 200);
+        setTimeout(setupExportFeatures, 0);
     });
 } else {
-    setTimeout(setupExportFeatures, 200);
+    setTimeout(setupExportFeatures, 0);
 }
