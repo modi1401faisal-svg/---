@@ -8,8 +8,8 @@
    1) الإعدادات
    ========================================================= */
 
-const LAB_SUPABASE_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co";
-const LAB_SUPABASE_KEY = "sb_publishable_HM4vP8LSEZJaZC9Cyug5fg_fhQ05QqL";
+const LAB_SUPABASE_KEY = "sb_publishable_HM4vP8LsEZJaZC9Cyug5fg_fhQ050qL";
+const LAB_SUPABASE_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co/rest/v1/";
 const DEFAULT_ACTION_TEXT = "تم رفض الطلب وإبلاغ المقاول بالملاحظات";
 
 /* =========================================================
