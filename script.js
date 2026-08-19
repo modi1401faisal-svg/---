@@ -2963,3 +2963,261 @@ document.addEventListener("DOMContentLoaded", function () {
         createLoginScreen();
     }
 });
+/* =========================================================
+   إصلاح عرض الصور — يُلصق في آخر الملف
+   هذه النسخ تتجاوز أي نسخ قديمة أو معطوبة
+   ========================================================= */
+
+function openImageDB() {
+    if (window.__labIdbPromise) {
+        return window.__labIdbPromise;
+    }
+    window.__labIdbPromise = new Promise(function (resolve) {
+        try {
+            const req = indexedDB.open("labImagesDB", 1);
+            req.onupgradeneeded = function (e) {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains("images")) {
+                    db.createObjectStore("images");
+                }
+            };
+            req.onsuccess = function (e) {
+                resolve(e.target.result);
+            };
+            req.onerror = function () {
+                resolve(null);
+            };
+        } catch (e) {
+            resolve(null);
+        }
+    });
+    return window.__labIdbPromise;
+}
+
+async function idbPut(key, dataUrl) {
+    const db = await openImageDB();
+    if (!db) return false;
+    return new Promise(function (resolve) {
+        try {
+            const tx = db.transaction("images", "readwrite");
+            tx.objectStore("images").put(dataUrl, key);
+            tx.oncomplete = function () { resolve(true); };
+            tx.onerror = function () { resolve(false); };
+        } catch (e) {
+            resolve(false);
+        }
+    });
+}
+
+async function idbGet(key) {
+    const db = await openImageDB();
+    if (!db) return null;
+    return new Promise(function (resolve) {
+        try {
+            const tx = db.transaction("images", "readonly");
+            const req = tx.objectStore("images").get(key);
+            req.onsuccess = function () { resolve(req.result || null); };
+            req.onerror = function () { resolve(null); };
+        } catch (e) {
+            resolve(null);
+        }
+    });
+}
+
+async function idbDelete(key) {
+    const db = await openImageDB();
+    if (!db) return;
+    return new Promise(function (resolve) {
+        try {
+            const tx = db.transaction("images", "readwrite");
+            tx.objectStore("images").delete(key);
+            tx.oncomplete = function () { resolve(true); };
+            tx.onerror = function () { resolve(false); };
+        } catch (e) {
+            resolve(false);
+        }
+    });
+}
+
+function newImageRef() {
+    return "idb://img_" + Date.now() + "_" +
+        Math.random().toString(36).substring(2, 10);
+}
+
+function isIdbRef(value) {
+    return typeof value === "string" && value.indexOf("idb://") === 0;
+}
+
+function idbKeyFromRef(ref) {
+    return ref.substring(6);
+}
+
+async function storeImageInIdb(dataUrl) {
+    const ref = newImageRef();
+    const ok = await idbPut(idbKeyFromRef(ref), dataUrl);
+    return ok ? ref : "";
+}
+
+function blobToDataUrl(blob) {
+    return new Promise(function (resolve) {
+        const reader = new FileReader();
+        reader.onload = function () { resolve(reader.result); };
+        reader.onerror = function () { resolve(""); };
+        reader.readAsDataURL(blob);
+    });
+}
+
+function imageThumb(image, title) {
+    title = title || "عرض الصورة";
+    if (!image) {
+        return "<span>لا توجد صورة</span>";
+    }
+    if (isIdbRef(image)) {
+        return '<img data-idb="' + image + '" alt="' + title + '" title="' + title +
+            '" onclick="openImageRef(this)" ' +
+            'style="width:70px;height:70px;object-fit:cover;border-radius:8px;cursor:pointer;margin:3px;background:#eee;">';
+    }
+    return '<img src="' + image + '" alt="' + title + '" title="' + title +
+        '" onclick="openImage(this.src)" ' +
+        'style="width:70px;height:70px;object-fit:cover;border-radius:8px;cursor:pointer;margin:3px;">';
+}
+
+async function resolveIdbImages() {
+    const imgs = document.querySelectorAll("img[data-idb]");
+    for (let i = 0; i < imgs.length; i++) {
+        const img = imgs[i];
+        if (img.getAttribute("data-loaded")) continue;
+        const ref = img.getAttribute("data-idb");
+        const data = await idbGet(idbKeyFromRef(ref));
+        if (data) {
+            img.src = data;
+            img.setAttribute("data-loaded", "1");
+        }
+    }
+}
+
+async function openImageRef(imgEl) {
+    let src = imgEl.getAttribute("src") || "";
+    if (!imgEl.getAttribute("data-loaded")) {
+        const ref = imgEl.getAttribute("data-idb");
+        if (ref) {
+            src = (await idbGet(idbKeyFromRef(ref))) || src;
+        }
+    }
+    if (src) openImage(src);
+}
+
+function openImage(image) {
+    const w = window.open("", "_blank");
+    if (!w) {
+        alert("يرجى السماح بفتح النوافذ المنبثقة");
+        return;
+    }
+    w.document.write(`
+        <!DOCTYPE html>
+        <html lang="ar" dir="rtl">
+        <head>
+            <meta charset="UTF-8">
+            <title>عرض الصورة</title>
+            <style>
+                body {margin:0;background:#173f32;display:flex;justify-content:center;align-items:center;min-height:100vh;}
+                img {max-width:95%;max-height:95vh;object-fit:contain;border-radius:12px;}
+            </style>
+        </head>
+        <body>
+            <img src="${image}">
+        </body>
+        </html>
+    `);
+}
+
+/* ===== إصلاح ظهور الصور في ملف PDF ===== */
+
+function loadImageAsDataUrl(url) {
+    return new Promise(function (resolve) {
+        try {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = function () {
+                try {
+                    const canvas = document.createElement("canvas");
+                    const maxDim = 900;
+                    const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+                    canvas.width = Math.round(img.naturalWidth * scale);
+                    canvas.height = Math.round(img.naturalHeight * scale);
+                    const ctx = canvas.getContext("2d");
+                    ctx.fillStyle = "#ffffff";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL("image/jpeg", 0.85));
+                } catch (e) {
+                    resolve("");
+                }
+            };
+            img.onerror = function () {
+                resolve("");
+            };
+            img.src = url;
+        } catch (e) {
+            resolve("");
+        }
+    });
+}
+
+async function resolveImageForExport(ref) {
+    try {
+        if (!ref) return "";
+
+        if (isIdbRef(ref)) {
+            return await idbGet(idbKeyFromRef(ref)) || "";
+        }
+
+        if (ref.indexOf("data:") === 0) {
+            return ref;
+        }
+
+        try {
+            const res = await fetch(ref);
+            if (res.ok) {
+                const blob = await res.blob();
+                const dataUrl = await blobToDataUrl(blob);
+                if (dataUrl) return dataUrl;
+            }
+        } catch (e1) {
+        }
+
+        return await loadImageAsDataUrl(ref);
+
+    } catch (e) {
+        return "";
+    }
+}
+
+async function resolveExportItems(items) {
+
+    const out = [];
+
+    for (const item of items) {
+        const copy = Object.assign({}, item);
+
+        if (Array.isArray(copy.images)) {
+            const imgs = [];
+            for (const img of copy.images) {
+                imgs.push(await resolveImageForExport(img));
+            }
+            copy.images = imgs;
+        }
+
+        if (copy.before) {
+            copy.before = await resolveImageForExport(copy.before);
+        }
+
+        if (copy.after) {
+            copy.after = await resolveImageForExport(copy.after);
+        }
+
+        out.push(copy);
+    }
+
+    return out;
+}
