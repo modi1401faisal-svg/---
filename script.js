@@ -7,8 +7,7 @@
    ========================================================= */
 
 /* =========================
-
-   تحميل البيانات
+  تحميل البيانات
 
 ========================= */
 
@@ -24,7 +23,7 @@ let notes = JSON.parse(localStorage.getItem("notes")) || [];
 
 /* =========================
 
-   مؤشرات التعديل
+ مؤشرات التعديل
 
 ========================= */
 
@@ -98,11 +97,91 @@ function readImage(file) {
 
 }
 
+/* =========================
+
+   رفع الصورة إلى Supabase Storage
+
+========================= */
+
+async function readImage(file) {
+
+    if (!file) {
+
+        return "";
+
+    }
+
+    try {
+
+        // إنشاء اسم فريد للصورة
+
+        const fileExt = file.name.split(".").pop();
+
+        const fileName =
+
+            Date.now() + "_" +
+
+            Math.random().toString(36).substring(2, 10) +
+
+            "." + fileExt;
+
+        // المسار داخل Bucket images
+
+        const filePath = "uploads/" + fileName;
+
+        // رفع الصورة
+
+        const { data, error } = await supabase.storage
+
+            .from("images")
+
+            .upload(filePath, file, {
+
+                cacheControl: "3600",
+
+                upsert: false
+
+            });
+
+        if (error) {
+
+            console.error("خطأ رفع الصورة:", error);
+
+            return "";
+
+        }
+
+        // الحصول على الرابط العام
+
+        const { data: publicUrlData } = supabase.storage
+
+            .from("images")
+
+            .getPublicUrl(filePath);
+
+        return publicUrlData.publicUrl;
+
+    } catch (error) {
+
+        console.error("خطأ في رفع الصورة:", error);
+
+        return "";
+
+    }
+
+}
+
+/* =========================
+
+   رفع عدة صور
+
+========================= */
+
 async function readImages(files) {
 
     const result = [];
 
-    if (!files) {
+    if (!files || files.length === 0) {
 
         return result;
 
@@ -110,7 +189,19 @@ async function readImages(files) {
 
     for (const file of files) {
 
-        const image = await readImage(file);
+        const imageUrl = await readImage(file);
+
+        if (imageUrl) {
+
+            result.push(imageUrl);
+
+        }
+
+    }
+
+    return result;
+
+}
 
         if (image) {
 
