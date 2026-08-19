@@ -9,7 +9,7 @@
    ========================================================= */
 
 const LAB_SUPABASE_KEY = "sb_publishable_HM4vP8LsEZJaZC9Cyug5fg_fhQ050qL";
-const LAB_SUPABASE_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co/rest/v1/";
+const LAB_SUPABASE_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co"
 const DEFAULT_ACTION_TEXT = "تم رفض الطلب وإبلاغ المقاول بالملاحظات";
 
 /* =========================================================
