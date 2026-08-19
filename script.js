@@ -1,16 +1,15 @@
 /* =========================================================
    نظام مختبر جودة المشاريع
-   الملف الكامل — استبدل به ملف JavaScript بالكامل
+   النسخة الكاملة: البيانات + الصور في Supabase
+   مع حفظ محلي تلقائي عند انقطاع الاتصال
    ========================================================= */
 
 /* =========================================================
-   1) الإعدادات العامة
+   1) الإعدادات
    ========================================================= */
 
 const LAB_SUPABASE_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co";
 const LAB_SUPABASE_KEY = "sb_publishable_HM4vP8LSEZJaZC9Cyug5fg_fhQ05QqL";
-
-/* النص الافتراضي لحقل (الإجراء المتخذ) في الملاحظات */
 const DEFAULT_ACTION_TEXT = "تم رفض الطلب وإبلاغ المقاول بالملاحظات";
 
 /* =========================================================
@@ -26,7 +25,7 @@ let editingEmergency = -1;
 let editingNote = -1;
 
 /* =========================================================
-   3) أدوات مساعدة عامة
+   3) أدوات مساعدة
    ========================================================= */
 
 function val(id) {
@@ -41,11 +40,10 @@ function setVal(id, value) {
     }
 }
 
-/* مهلة زمنية لأي عملية قد تتعطل */
 function withTimeout(promise, ms) {
     return Promise.race([
         promise,
-        new Promise(function (resolve, reject) {
+        new Promise(function (_, reject) {
             setTimeout(function () {
                 reject(new Error("انتهت المهلة"));
             }, ms);
@@ -54,7 +52,7 @@ function withTimeout(promise, ms) {
 }
 
 /* =========================================================
-   4) تهيئة Supabase (مصححة)
+   4) تهيئة Supabase
    ========================================================= */
 
 let sbClient = null;
@@ -62,7 +60,6 @@ let sbLoadPromise = null;
 
 function createSbClient() {
     try {
-        /* إذا وُجد عميل جاهز في الصفحة نستخدمه مباشرة */
         if (typeof supabase !== "undefined" && supabase) {
             if (supabase.storage) {
                 return supabase;
@@ -71,7 +68,6 @@ function createSbClient() {
                 return supabase.createClient(LAB_SUPABASE_URL, LAB_SUPABASE_KEY);
             }
         }
-        /* بعض الإصدارات تعرّف createClient مباشرة */
         if (typeof createClient === "function") {
             return createClient(LAB_SUPABASE_URL, LAB_SUPABASE_KEY);
         }
@@ -87,7 +83,6 @@ function initSupabase() {
         return Promise.resolve(sbClient);
     }
 
-    /* إنشاء العميل فورًا إذا كانت المكتبة محملة */
     const immediate = createSbClient();
     if (immediate) {
         sbClient = immediate;
@@ -98,27 +93,20 @@ function initSupabase() {
         return sbLoadPromise;
     }
 
-    /* تحميل المكتبة مرة واحدة فقط */
     sbLoadPromise = new Promise(function (resolve) {
-
         const script = document.createElement("script");
         script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
-
         script.onload = function () {
             sbClient = createSbClient();
             if (sbClient) {
                 console.log("تم تهيئة Supabase بنجاح ✅");
-            } else {
-                console.warn("تعذر إنشاء عميل Supabase — سيتم حفظ الصور محلياً");
             }
             resolve(sbClient);
         };
-
         script.onerror = function () {
-            console.warn("تعذر تحميل مكتبة Supabase — سيتم حفظ الصور محلياً");
+            console.warn("تعذر تحميل مكتبة Supabase — سيتم العمل محلياً");
             resolve(null);
         };
-
         document.head.appendChild(script);
     });
 
@@ -126,7 +114,238 @@ function initSupabase() {
 }
 
 /* =========================================================
-   5) الصور
+   5) طبقة قاعدة البيانات (Supabase Tables)
+   أي فشل هنا لا يوقف البرنامج — يعمل محلياً فقط
+   ========================================================= */
+
+async function dbInsert(tableName, row) {
+    const client = await initSupabase();
+    if (!client) {
+        return null;
+    }
+    try {
+        const { data, error } = await client
+            .from(tableName)
+            .insert(row)
+            .select()
+            .single();
+        if (error) {
+            console.warn("خطأ إضافة في " + tableName + ": " + error.message);
+            return null;
+        }
+        return data;
+    } catch (e) {
+        return null;
+    }
+}
+
+async function dbUpdate(tableName, id, changes) {
+    const client = await initSupabase();
+    if (!client || !id) {
+        return false;
+    }
+    try {
+        const { error } = await client
+            .from(tableName)
+            .update(changes)
+            .eq("id", id);
+        if (error) {
+            console.warn("خطأ تعديل في " + tableName + ": " + error.message);
+            return false;
+        }
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+async function dbDelete(tableName, id) {
+    const client = await initSupabase();
+    if (!client || !id) {
+        return false;
+    }
+    try {
+        const { error } = await client
+            .from(tableName)
+            .delete()
+            .eq("id", id);
+        if (error) {
+            console.warn("خطأ حذف في " + tableName + ": " + error.message);
+            return false;
+        }
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+async function dbFetchAll(tableName) {
+    const client = await initSupabase();
+    if (!client) {
+        return null;
+    }
+    try {
+        const { data, error } = await client
+            .from(tableName)
+            .select("*")
+            .order("id", { ascending: true });
+        if (error) {
+            console.warn("خطأ قراءة " + tableName + ": " + error.message);
+            return null;
+        }
+        return data || [];
+    } catch (e) {
+        return null;
+    }
+}
+
+/* =========================================================
+   6) تحويل البيانات بين المشروع وقاعدة البيانات
+   ========================================================= */
+
+function clearanceToRow(item) {
+    return {
+        permit: item.permit || "",
+        contractor: item.contractor || "",
+        owner: item.owner || "",
+        location: item.location || "",
+        images: item.images || []
+    };
+}
+
+function rowToClearance(row) {
+    return {
+        id: row.id,
+        permit: row.permit || "",
+        contractor: row.contractor || "",
+        owner: row.owner || "",
+        location: row.location || "",
+        images: Array.isArray(row.images) ? row.images : []
+    };
+}
+
+function emergencyToRow(item) {
+    return {
+        permit: item.permit || "",
+        contractor: item.contractor || "",
+        owner: item.owner || "",
+        lab_receive: item.labReceive || "",
+        work_start: item.start || "",
+        work_end: item.end || "",
+        location: item.location || "",
+        images: item.images || []
+    };
+}
+
+function rowToEmergency(row) {
+    return {
+        id: row.id,
+        permit: row.permit || "",
+        contractor: row.contractor || "",
+        owner: row.owner || "",
+        labReceive: row.lab_receive || "",
+        start: row.work_start || "",
+        end: row.work_end || "",
+        location: row.location || "",
+        images: Array.isArray(row.images) ? row.images : []
+    };
+}
+
+function noteToRow(item) {
+    return {
+        type: item.type || "مشاريع الأمانة",
+        note_date: item.date || "",
+        permit: item.permit || "",
+        contractor: item.contractor || "",
+        owner: item.owner || "",
+        reason: item.reason || "",
+        action: item.action || "",
+        before_image: item.before || "",
+        after_image: item.after || "",
+        completed: !!item.completed
+    };
+}
+
+function rowToNote(row) {
+    return {
+        id: row.id,
+        type: row.type || "مشاريع الأمانة",
+        date: row.note_date || "",
+        permit: row.permit || "",
+        contractor: row.contractor || "",
+        owner: row.owner || "",
+        reason: row.reason || "",
+        action: row.action || "",
+        before: row.before_image || "",
+        after: row.after_image || "",
+        completed: !!row.completed
+    };
+}
+
+/* =========================================================
+   7) المزامنة عند فتح الصفحة
+   تجلب البيانات من القاعدة + ترفع البيانات المحلية
+   القديمة تلقائياً (نقل لمرة واحدة)
+   ========================================================= */
+
+async function syncFromCloud() {
+
+    const tasks = [
+        { table: "clearances", array: clearances, toRow: clearanceToRow, fromRow: rowToClearance, key: "clearances", render: renderClearances },
+        { table: "emergencies", array: emergencies, toRow: emergencyToRow, fromRow: rowToEmergency, key: "emergencies", render: renderEmergencies },
+        { table: "notes", array: notes, toRow: noteToRow, fromRow: rowToNote, key: "notes", render: renderNotes }
+    ];
+
+    let anySynced = false;
+
+    for (const task of tasks) {
+
+        const cloud = await dbFetchAll(task.table);
+
+        /* القاعدة غير متاحة (جداول غير موجودة أو لا إنترنت) — نتجاهل */
+        if (cloud === null) {
+            continue;
+        }
+
+        anySynced = true;
+
+        /* رفع السجلات المحلية التي لم تُرفع سابقاً */
+        const notUploaded = [];
+        for (const item of task.array) {
+            if (!item.id) {
+                const inserted = await dbInsert(task.table, task.toRow(item));
+                if (inserted && inserted.id) {
+                    item.id = inserted.id;
+                    cloud.push(inserted);
+                } else {
+                    notUploaded.push(item);
+                }
+            }
+        }
+
+        /* اعتماد بيانات القاعدة السحابية */
+        const merged = cloud.map(task.fromRow);
+        notUploaded.forEach(function (x) {
+            merged.push(x);
+        });
+
+        task.array.length = 0;
+        merged.forEach(function (x) {
+            task.array.push(x);
+        });
+
+        localStorage.setItem(task.key, JSON.stringify(task.array));
+        task.render();
+    }
+
+    if (anySynced) {
+        updateDashboard();
+        console.log("تمت مزامنة البيانات مع Supabase ✅");
+    }
+}
+
+/* =========================================================
+   8) الصور
    ========================================================= */
 
 async function uploadToSupabase(file) {
@@ -167,7 +386,6 @@ async function uploadToSupabase(file) {
     return urlData && urlData.publicUrl ? urlData.publicUrl : "";
 }
 
-/* حفظ الصورة محلياً داخل المتصفح (الخطة البديلة) */
 function readLocalImage(file) {
     return new Promise(function (resolve) {
         const reader = new FileReader();
@@ -181,7 +399,6 @@ function readLocalImage(file) {
     });
 }
 
-/* رفع صورة واحدة: السحابة أولاً ثم محلياً عند الفشل */
 async function readImage(file) {
 
     if (!file) {
@@ -193,7 +410,7 @@ async function readImage(file) {
     try {
         cloudUrl = await withTimeout(uploadToSupabase(file), 30000);
     } catch (error) {
-        console.warn("فشل أو تأخر رفع الصورة للسحابة، سيتم الحفظ محلياً:", error);
+        console.warn("فشل رفع الصورة للسحابة — سيتم الحفظ محلياً");
     }
 
     if (cloudUrl) {
@@ -203,7 +420,6 @@ async function readImage(file) {
     return readLocalImage(file);
 }
 
-/* رفع عدة صور */
 async function readImages(files) {
 
     const result = [];
@@ -222,12 +438,10 @@ async function readImages(files) {
     return result;
 }
 
-/* عرض الصورة المصغرة */
 function imageThumb(image, title = "عرض الصورة") {
     if (!image) {
         return "<span>لا توجد صورة</span>";
     }
-
     return `
         <img
             src="${image}"
@@ -241,12 +455,10 @@ function imageThumb(image, title = "عرض الصورة") {
 
 function openImage(image) {
     const newWindow = window.open("", "_blank");
-
     if (!newWindow) {
         alert("يرجى السماح بفتح النوافذ المنبثقة");
         return;
     }
-
     newWindow.document.write(`
         <!DOCTYPE html>
         <html lang="ar" dir="rtl">
@@ -266,7 +478,7 @@ function openImage(image) {
 }
 
 /* =========================================================
-   6) مؤشر (جاري الحفظ) — لا يكسر عملية الحفظ أبداً
+   9) مؤشر (جاري الحفظ)
    ========================================================= */
 
 function setSaveBusy(busy) {
@@ -291,29 +503,21 @@ function setSaveBusy(busy) {
                     el.dataset.oldText = el.innerText || el.value || "";
                 }
                 el.disabled = true;
-                if (el.tagName === "BUTTON") {
-                    el.innerText = "⏳ جاري الحفظ...";
-                } else {
-                    el.value = "⏳ جاري الحفظ...";
-                }
+                el.innerText = "⏳ جاري الحفظ...";
             } else {
                 el.disabled = false;
                 if (el.dataset.oldText) {
-                    if (el.tagName === "BUTTON") {
-                        el.innerText = el.dataset.oldText;
-                    } else {
-                        el.value = el.dataset.oldText;
-                    }
+                    el.innerText = el.dataset.oldText;
                 }
             }
         });
     } catch (e) {
-        /* تجاهل — هذه الوظيفة تجميلية فقط */
+        /* تجاهل */
     }
 }
 
 /* =========================================================
-   7) التنقل بين الصفحات
+   10) التنقل بين الصفحات
    ========================================================= */
 
 function showPage(page) {
@@ -327,7 +531,6 @@ function showPage(page) {
         selectedPage.classList.add("active");
     }
 
-    /* تمييز زر التنقل الحالي */
     document.querySelectorAll("button").forEach(function (btn) {
         const onclick = btn.getAttribute("onclick") || "";
         if (onclick.indexOf("showPage") !== -1) {
@@ -345,7 +548,7 @@ function showPage(page) {
 }
 
 /* =========================================================
-   8) رأس الجدول — يُبنى من الكود لضمان تطابق الأعمدة
+   11) رؤوس الجداول — تُبنى من الكود لضمان تطابق الأعمدة
    ========================================================= */
 
 function ensureTableHeaders(bodyId, headers) {
@@ -387,7 +590,7 @@ function ensureTableHeaders(bodyId, headers) {
 }
 
 /* =========================================================
-   9) رخص الإخلاءات
+   12) رخص الإخلاءات
    ========================================================= */
 
 async function saveClearance() {
@@ -424,13 +627,32 @@ async function saveClearance() {
             images: images
         };
 
+        let cloudOk = true;
+
         if (editingClearance >= 0) {
+            const old = clearances[editingClearance] || {};
             if (images.length === 0) {
-                data.images = clearances[editingClearance].images || [];
+                data.images = old.images || [];
             }
+            data.id = old.id || null;
             clearances[editingClearance] = data;
             editingClearance = -1;
+
+            if (data.id) {
+                cloudOk = await dbUpdate("clearances", data.id, clearanceToRow(data));
+            } else {
+                const inserted = await dbInsert("clearances", clearanceToRow(data));
+                if (inserted && inserted.id) {
+                    data.id = inserted.id;
+                }
+                cloudOk = !!(inserted && inserted.id);
+            }
         } else {
+            const inserted = await dbInsert("clearances", clearanceToRow(data));
+            if (inserted && inserted.id) {
+                data.id = inserted.id;
+            }
+            cloudOk = !!(inserted && inserted.id);
             clearances.push(data);
         }
 
@@ -440,31 +662,29 @@ async function saveClearance() {
         renderClearances();
         updateDashboard();
 
-        alert("تم حفظ رخصة الإخلاء بنجاح ✅");
+        if (cloudOk) {
+            alert("تم حفظ رخصة الإخلاء بنجاح ✅");
+        } else {
+            alert("تم الحفظ على هذا الجهاز فقط ⚠️\n(تعذر الاتصال بقاعدة البيانات السحابية)");
+        }
 
     } catch (error) {
         console.error("خطأ في حفظ رخصة الإخلاء:", error);
-        alert(
-            "حدث خطأ أثناء الحفظ:\n" +
-            (error && error.message ? error.message : error)
-        );
+        alert("حدث خطأ أثناء الحفظ:\n" + (error && error.message ? error.message : error));
     } finally {
         setSaveBusy(false);
     }
 }
 
 function clearClearance() {
-
     ["clearancePermit", "clearanceContractor", "clearanceOwner", "clearanceLocation"]
         .forEach(function (id) {
             setVal(id, "");
         });
-
     const images = document.getElementById("clearanceImages");
     if (images) {
         images.value = "";
     }
-
     editingClearance = -1;
 }
 
@@ -551,17 +771,14 @@ function searchClearance() {
 }
 
 function clearClearanceSearch() {
-
     const input = document.getElementById("clearanceSearch");
     const result = document.getElementById("clearanceSearchResult");
-
     if (input) {
         input.value = "";
     }
     if (result) {
         result.innerHTML = "";
     }
-
     renderClearances();
 }
 
@@ -583,10 +800,15 @@ function editClearance(index) {
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function deleteClearance(index) {
+async function deleteClearance(index) {
 
     if (!confirm("هل تريد حذف رخصة الإخلاء؟")) {
         return;
+    }
+
+    const item = clearances[index];
+    if (item && item.id) {
+        await dbDelete("clearances", item.id);
     }
 
     clearances.splice(index, 1);
@@ -598,7 +820,7 @@ function deleteClearance(index) {
 }
 
 /* =========================================================
-   10) رخص الطوارئ
+   13) رخص الطوارئ
    ========================================================= */
 
 async function saveEmergency() {
@@ -640,13 +862,32 @@ async function saveEmergency() {
             images: images
         };
 
+        let cloudOk = true;
+
         if (editingEmergency >= 0) {
+            const old = emergencies[editingEmergency] || {};
             if (images.length === 0) {
-                data.images = emergencies[editingEmergency].images || [];
+                data.images = old.images || [];
             }
+            data.id = old.id || null;
             emergencies[editingEmergency] = data;
             editingEmergency = -1;
+
+            if (data.id) {
+                cloudOk = await dbUpdate("emergencies", data.id, emergencyToRow(data));
+            } else {
+                const inserted = await dbInsert("emergencies", emergencyToRow(data));
+                if (inserted && inserted.id) {
+                    data.id = inserted.id;
+                }
+                cloudOk = !!(inserted && inserted.id);
+            }
         } else {
+            const inserted = await dbInsert("emergencies", emergencyToRow(data));
+            if (inserted && inserted.id) {
+                data.id = inserted.id;
+            }
+            cloudOk = !!(inserted && inserted.id);
             emergencies.push(data);
         }
 
@@ -656,32 +897,30 @@ async function saveEmergency() {
         renderEmergencies();
         updateDashboard();
 
-        alert("تم حفظ رخصة الطوارئ بنجاح ✅");
+        if (cloudOk) {
+            alert("تم حفظ رخصة الطوارئ بنجاح ✅");
+        } else {
+            alert("تم الحفظ على هذا الجهاز فقط ⚠️\n(تعذر الاتصال بقاعدة البيانات السحابية)");
+        }
 
     } catch (error) {
         console.error("خطأ في حفظ رخصة الطوارئ:", error);
-        alert(
-            "حدث خطأ أثناء الحفظ:\n" +
-            (error && error.message ? error.message : error)
-        );
+        alert("حدث خطأ أثناء الحفظ:\n" + (error && error.message ? error.message : error));
     } finally {
         setSaveBusy(false);
     }
 }
 
 function clearEmergency() {
-
     ["emergencyPermit", "emergencyContractor", "emergencyOwner",
      "labReceiveDate", "workStartDate", "workEndDate", "emergencyLocation"]
         .forEach(function (id) {
             setVal(id, "");
         });
-
     const images = document.getElementById("emergencyImages");
     if (images) {
         images.value = "";
     }
-
     editingEmergency = -1;
 }
 
@@ -774,17 +1013,14 @@ function searchEmergency() {
 }
 
 function clearEmergencySearch() {
-
     const input = document.getElementById("emergencySearch");
     const result = document.getElementById("emergencySearchResult");
-
     if (input) {
         input.value = "";
     }
     if (result) {
         result.innerHTML = "";
     }
-
     renderEmergencies();
 }
 
@@ -809,10 +1045,15 @@ function editEmergency(index) {
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function deleteEmergency(index) {
+async function deleteEmergency(index) {
 
     if (!confirm("هل تريد حذف رخصة الطوارئ؟")) {
         return;
+    }
+
+    const item = emergencies[index];
+    if (item && item.id) {
+        await dbDelete("emergencies", item.id);
     }
 
     emergencies.splice(index, 1);
@@ -824,7 +1065,7 @@ function deleteEmergency(index) {
 }
 
 /* =========================================================
-   11) تصنيف الملاحظات
+   14) تصنيف الملاحظات
    ========================================================= */
 
 function setNoteType(type) {
@@ -846,7 +1087,7 @@ function setNoteType(type) {
 }
 
 /* =========================================================
-   12) حفظ الملاحظة
+   15) حفظ الملاحظة
    ========================================================= */
 
 async function saveNote() {
@@ -889,7 +1130,6 @@ async function saveNote() {
         const before = await readImage(beforeFile);
         const after = await readImage(afterFile);
 
-        /* الاحتفاظ بالصور القديمة عند التعديل */
         const beforeImage = before || (oldNote ? oldNote.before || "" : "");
         const afterImage = after || (oldNote ? oldNote.after || "" : "");
 
@@ -908,10 +1148,29 @@ async function saveNote() {
             completed: completed
         };
 
+        let cloudOk = true;
+
         if (editingNote >= 0) {
+            const old = notes[editingNote] || {};
+            data.id = old.id || null;
             notes[editingNote] = data;
             editingNote = -1;
+
+            if (data.id) {
+                cloudOk = await dbUpdate("notes", data.id, noteToRow(data));
+            } else {
+                const inserted = await dbInsert("notes", noteToRow(data));
+                if (inserted && inserted.id) {
+                    data.id = inserted.id;
+                }
+                cloudOk = !!(inserted && inserted.id);
+            }
         } else {
+            const inserted = await dbInsert("notes", noteToRow(data));
+            if (inserted && inserted.id) {
+                data.id = inserted.id;
+            }
+            cloudOk = !!(inserted && inserted.id);
             notes.push(data);
         }
 
@@ -921,18 +1180,19 @@ async function saveNote() {
         renderNotes();
         updateDashboard();
 
-        if (completed) {
-            alert("تم حفظ الملاحظة وتسجيلها كمعدلة ✅");
+        if (cloudOk) {
+            if (completed) {
+                alert("تم حفظ الملاحظة وتسجيلها كمعدلة ✅");
+            } else {
+                alert("تم حفظ الملاحظة بنجاح ✅");
+            }
         } else {
-            alert("تم حفظ الملاحظة بنجاح ✅");
+            alert("تم الحفظ على هذا الجهاز فقط ⚠️\n(تعذر الاتصال بقاعدة البيانات السحابية)");
         }
 
     } catch (error) {
         console.error("خطأ في حفظ الملاحظة:", error);
-        alert(
-            "حدث خطأ أثناء الحفظ:\n" +
-            (error && error.message ? error.message : error)
-        );
+        alert("حدث خطأ أثناء الحفظ:\n" + (error && error.message ? error.message : error));
     } finally {
         setSaveBusy(false);
     }
@@ -955,7 +1215,6 @@ function clearNote() {
         after.value = "";
     }
 
-    /* النص الافتراضي الجديد */
     setVal("noteAction", DEFAULT_ACTION_TEXT);
     setVal("noteType", "مشاريع الأمانة");
 
@@ -967,21 +1226,17 @@ function clearNote() {
 }
 
 /* =========================================================
-   13) حساب الأيام والحالة
+   16) حساب الأيام والحالة
    ========================================================= */
 
 function daysPassed(date) {
-
     if (!date) {
         return 0;
     }
-
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
     const noteDate = new Date(date);
     noteDate.setHours(0, 0, 0, 0);
-
     return Math.floor((today - noteDate) / (1000 * 60 * 60 * 24));
 }
 
@@ -993,7 +1248,7 @@ function isLate(note) {
 }
 
 /* =========================================================
-   14) عرض الملاحظات (10 أعمدة تطابق الرأس تماماً)
+   17) عرض الملاحظات (10 أعمدة تطابق الرأس تماماً)
    ========================================================= */
 
 function renderNotes() {
@@ -1132,10 +1387,15 @@ function editNote(index) {
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function deleteNote(index) {
+async function deleteNote(index) {
 
     if (!confirm("هل تريد حذف الملاحظة؟")) {
         return;
+    }
+
+    const item = notes[index];
+    if (item && item.id) {
+        await dbDelete("notes", item.id);
     }
 
     notes.splice(index, 1);
@@ -1147,7 +1407,7 @@ function deleteNote(index) {
 }
 
 /* =========================================================
-   15) التنبيهات ولوحة المتابعة
+   18) التنبيهات ولوحة المتابعة
    ========================================================= */
 
 function updateAlerts() {
@@ -1216,7 +1476,6 @@ function updateDashboard() {
     if (clearanceCounter) {
         clearanceCounter.innerText = clearances.length;
     }
-
     if (emergencyCounter) {
         emergencyCounter.innerText = emergencies.length;
     }
@@ -1225,34 +1484,15 @@ function updateDashboard() {
 }
 
 /* =========================================================
-   16) ربط الأزرار تلقائياً (يضمن عمل أزرار الحفظ والتنقل)
+   19) ربط الأزرار تلقائياً
    ========================================================= */
 
 function autoWireButtons() {
 
-    /* أزرار الحفظ والمسح والبحث داخل كل صفحة */
     const pageWiring = [
-        {
-            pageId: "clearance",
-            save: saveClearance,
-            clear: clearClearance,
-            search: searchClearance,
-            resetSearch: clearClearanceSearch
-        },
-        {
-            pageId: "emergency",
-            save: saveEmergency,
-            clear: clearEmergency,
-            search: searchEmergency,
-            resetSearch: clearEmergencySearch
-        },
-        {
-            pageId: "notes",
-            save: saveNote,
-            clear: clearNote,
-            search: null,
-            resetSearch: null
-        }
+        { pageId: "clearance", save: saveClearance, clear: clearClearance, search: searchClearance, resetSearch: clearClearanceSearch },
+        { pageId: "emergency", save: saveEmergency, clear: clearEmergency, search: searchEmergency, resetSearch: clearEmergencySearch },
+        { pageId: "notes", save: saveNote, clear: clearNote, search: null, resetSearch: null }
     ];
 
     pageWiring.forEach(function (w) {
@@ -1264,11 +1504,7 @@ function autoWireButtons() {
 
         page.querySelectorAll("button, input[type='button'], input[type='submit']").forEach(function (btn) {
 
-            /* الأزرار المرتبطة بـ onclick تعمل أصلاً */
-            if (btn.getAttribute("onclick")) {
-                return;
-            }
-            if (btn.dataset.autoWired) {
+            if (btn.getAttribute("onclick") || btn.dataset.autoWired) {
                 return;
             }
 
@@ -1281,11 +1517,7 @@ function autoWireButtons() {
                     event.preventDefault();
                     w.save();
                 });
-            } else if (
-                text.indexOf("مسح") !== -1 ||
-                text.indexOf("تفريغ") !== -1 ||
-                text.indexOf("جديد") !== -1
-            ) {
+            } else if (text.indexOf("مسح") !== -1 || text.indexOf("تفريغ") !== -1 || text.indexOf("جديد") !== -1) {
                 btn.dataset.autoWired = "1";
                 btn.addEventListener("click", function (event) {
                     event.preventDefault();
@@ -1297,10 +1529,7 @@ function autoWireButtons() {
                     event.preventDefault();
                     w.search();
                 });
-            } else if (
-                (text.indexOf("الكل") !== -1 || text.indexOf("إلغاء") !== -1) &&
-                w.resetSearch
-            ) {
+            } else if ((text.indexOf("الكل") !== -1 || text.indexOf("إلغاء") !== -1) && w.resetSearch) {
                 btn.dataset.autoWired = "1";
                 btn.addEventListener("click", function (event) {
                     event.preventDefault();
@@ -1310,7 +1539,6 @@ function autoWireButtons() {
         });
     });
 
-    /* أزرار التنقل بين الصفحات */
     const navMap = [
         { keyword: "لوحة المتابعة", page: "dashboard" },
         { keyword: "الرئيسية", page: "dashboard" },
@@ -1321,16 +1549,12 @@ function autoWireButtons() {
 
     document.querySelectorAll("button").forEach(function (btn) {
 
-        if (btn.getAttribute("onclick")) {
-            return;
-        }
-        if (btn.dataset.autoWired || btn.dataset.navWired) {
+        if (btn.getAttribute("onclick") || btn.dataset.autoWired || btn.dataset.navWired) {
             return;
         }
 
         const text = (btn.textContent || "").trim();
 
-        /* تجاوز أزرار النماذج والجداول */
         if (
             text.indexOf("حفظ") !== -1 ||
             text.indexOf("مسح") !== -1 ||
@@ -1355,7 +1579,7 @@ function autoWireButtons() {
 }
 
 /* =========================================================
-   17) إضافة أزرار تصدير Excel و PDF تلقائياً
+   20) إضافة أزرار التصدير تلقائياً
    ========================================================= */
 
 function addExportButtons() {
@@ -1364,52 +1588,22 @@ function addExportButtons() {
         {
             pageId: "clearance",
             buttons: [
-                {
-                    text: "📥 تصدير Excel",
-                    handler: function () {
-                        exportClearancesToExcel();
-                    }
-                },
-                {
-                    text: "📄 تصدير PDF",
-                    handler: function () {
-                        exportClearancesToPDF(this);
-                    }
-                }
+                { text: "📥 تصدير Excel", handler: function () { exportClearancesToExcel(); } },
+                { text: "📄 تصدير PDF", handler: function () { exportClearancesToPDF(this); } }
             ]
         },
         {
             pageId: "emergency",
             buttons: [
-                {
-                    text: "📥 تصدير Excel",
-                    handler: function () {
-                        exportEmergenciesToExcel();
-                    }
-                },
-                {
-                    text: "📄 تصدير PDF",
-                    handler: function () {
-                        exportEmergenciesToPDF(this);
-                    }
-                }
+                { text: "📥 تصدير Excel", handler: function () { exportEmergenciesToExcel(); } },
+                { text: "📄 تصدير PDF", handler: function () { exportEmergenciesToPDF(this); } }
             ]
         },
         {
             pageId: "notes",
             buttons: [
-                {
-                    text: "📥 تصدير Excel",
-                    handler: function () {
-                        exportNotesToExcel();
-                    }
-                },
-                {
-                    text: "📄 تصدير PDF",
-                    handler: function () {
-                        exportNotesToPDF(this);
-                    }
-                }
+                { text: "📥 تصدير Excel", handler: function () { exportNotesToExcel(); } },
+                { text: "📄 تصدير PDF", handler: function () { exportNotesToPDF(this); } }
             ]
         }
     ];
@@ -1421,7 +1615,6 @@ function addExportButtons() {
             return;
         }
 
-        /* عدم التكرار إذا كانت هناك أزرار تصدير موجودة */
         let exists = false;
         page.querySelectorAll("button").forEach(function (btn) {
             const content = (btn.getAttribute("onclick") || "") + (btn.textContent || "");
@@ -1454,15 +1647,13 @@ function addExportButtons() {
 }
 
 /* =========================================================
-   18) التشغيل عند فتح الصفحة
+   21) التشغيل عند فتح الصفحة
    ========================================================= */
 
 document.addEventListener("DOMContentLoaded", function () {
 
-    /* تهيئة Supabase مبكراً */
     initSupabase();
 
-    /* البحث عند الضغط على Enter */
     const clearanceSearch = document.getElementById("clearanceSearch");
     if (clearanceSearch) {
         clearanceSearch.addEventListener("keydown", function (event) {
@@ -1481,37 +1672,32 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
-    /* النص الافتراضي الجديد للإجراء المتخذ */
     const actionEl = document.getElementById("noteAction");
     if (actionEl && !actionEl.value.trim()) {
         actionEl.value = DEFAULT_ACTION_TEXT;
     }
 
-    /* ربط الأزرار تلقائياً */
     autoWireButtons();
-
-    /* إضافة أزرار التصدير */
     addExportButtons();
 
-    /* عرض البيانات */
     renderClearances();
     renderEmergencies();
     renderNotes();
     updateDashboard();
 
-    /* التصنيف الافتراضي */
     setNoteType("مشاريع الأمانة");
 
-    /* التأكد من وجود صفحة ظاهرة */
     if (!document.querySelector(".page.active")) {
         const firstPage = document.querySelector(".page");
         if (firstPage) {
             firstPage.classList.add("active");
         }
     }
+
+    /* جلب البيانات من القاعدة + نقل البيانات المحلية القديمة */
+    syncFromCloud();
 });
 
-/* تحديث التنبيهات كل ساعة */
 setInterval(updateAlerts, 60 * 60 * 1000);
 
 /* =========================================================
@@ -1520,7 +1706,6 @@ setInterval(updateAlerts, 60 * 60 * 1000);
    =========================================================
    ========================================================= */
 
-/* تحميل المكتبات تلقائياً */
 (function loadExportLibraries() {
     if (!document.getElementById("xlsxLibScript")) {
         var s1 = document.createElement("script");
@@ -1536,7 +1721,6 @@ setInterval(updateAlerts, 60 * 60 * 1000);
     }
 })();
 
-/* دوال مساعدة */
 function exportDate() {
     var d = new Date();
     var day = ("0" + d.getDate()).slice(-2);
