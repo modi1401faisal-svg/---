@@ -226,7 +226,7 @@ function initSupabase() {
 
     sbLoadPromise = new Promise(function (resolve) {
         const script = document.createElement("script");
-        script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+       script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
         script.onload = function () {
             sbClient = createSbClient();
             if (sbClient) {
