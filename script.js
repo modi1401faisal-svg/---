@@ -1,7 +1,7 @@
 /* =========================================================
    نظام مختبر جودة المشاريع
-   النسخة المصححة: ضغط الصور + حماية من امتلاء المساحة
-   + نقل الصور المحلية القديمة إلى السحابة تلقائياً
+   النسخة النهائية: IndexedDB للصور + سحابة Supabase
+   لا حذف لأي صورة — نقل فقط
    ========================================================= */
 
 /* =========================================================
@@ -24,7 +24,6 @@ let editingClearance = -1;
 let editingEmergency = -1;
 let editingNote = -1;
 
-/* عداد الصور التي لم تُحفظ (لتنبيه المستخدم) */
 let skippedImagesCount = 0;
 
 /* =========================================================
@@ -54,19 +53,6 @@ function withTimeout(promise, ms) {
     ]);
 }
 
-function readLocalImage(file) {
-    return new Promise(function (resolve) {
-        const reader = new FileReader();
-        reader.onload = function () {
-            resolve(reader.result);
-        };
-        reader.onerror = function () {
-            resolve("");
-        };
-        reader.readAsDataURL(file);
-    });
-}
-
 function blobToDataUrl(blob) {
     return new Promise(function (resolve) {
         const reader = new FileReader();
@@ -81,7 +67,123 @@ function blobToDataUrl(blob) {
 }
 
 /* =========================================================
-   4) تهيئة Supabase
+   4) مخزن الصور IndexedDB (المساحة الكبيرة)
+   ========================================================= */
+
+let idbPromise = null;
+
+function openImageDB() {
+    if (idbPromise) {
+        return idbPromise;
+    }
+    idbPromise = new Promise(function (resolve) {
+        try {
+            const req = indexedDB.open("labImagesDB", 1);
+            req.onupgradeneeded = function (e) {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains("images")) {
+                    db.createObjectStore("images");
+                }
+            };
+            req.onsuccess = function (e) {
+                resolve(e.target.result);
+            };
+            req.onerror = function () {
+                resolve(null);
+            };
+        } catch (e) {
+            resolve(null);
+        }
+    });
+    return idbPromise;
+}
+
+async function idbPut(key, dataUrl) {
+    const db = await openImageDB();
+    if (!db) {
+        return false;
+    }
+    return new Promise(function (resolve) {
+        try {
+            const tx = db.transaction("images", "readwrite");
+            tx.objectStore("images").put(dataUrl, key);
+            tx.oncomplete = function () {
+                resolve(true);
+            };
+            tx.onerror = function () {
+                resolve(false);
+            };
+        } catch (e) {
+            resolve(false);
+        }
+    });
+}
+
+async function idbGet(key) {
+    const db = await openImageDB();
+    if (!db) {
+        return null;
+    }
+    return new Promise(function (resolve) {
+        try {
+            const tx = db.transaction("images", "readonly");
+            const req = tx.objectStore("images").get(key);
+            req.onsuccess = function () {
+                resolve(req.result || null);
+            };
+            req.onerror = function () {
+                resolve(null);
+            };
+        } catch (e) {
+            resolve(null);
+        }
+    });
+}
+
+async function idbDelete(key) {
+    const db = await openImageDB();
+    if (!db) {
+        return;
+    }
+    return new Promise(function (resolve) {
+        try {
+            const tx = db.transaction("images", "readwrite");
+            tx.objectStore("images").delete(key);
+            tx.oncomplete = function () {
+                resolve(true);
+            };
+            tx.onerror = function () {
+                resolve(false);
+            };
+        } catch (e) {
+            resolve(false);
+        }
+    });
+}
+
+/* إنشاء مفتاح جديد وصيغة مرجع idb:// */
+function newImageRef() {
+    return "idb://img_" + Date.now() + "_" +
+        Math.random().toString(36).substring(2, 10);
+}
+
+function isIdbRef(value) {
+    return typeof value === "string" && value.indexOf("idb://") === 0;
+}
+
+function idbKeyFromRef(ref) {
+    return ref.substring(6);
+}
+
+/* تخزين صورة (dataUrl) في IndexedDB وإرجاع المرجع */
+async function storeImageInIdb(dataUrl) {
+    const ref = newImageRef();
+    const ok = await idbPut(idbKeyFromRef(ref), dataUrl);
+    return ok ? ref : "";
+}
+
+/* =========================================================
+   5) تهيئة Supabase
    ========================================================= */
 
 let sbClient = null;
@@ -143,7 +245,7 @@ function initSupabase() {
 }
 
 /* =========================================================
-   5) طبقة قاعدة البيانات (الجداول)
+   6) طبقة قاعدة البيانات (الجداول)
    ========================================================= */
 
 async function dbInsert(tableName, row) {
@@ -228,7 +330,7 @@ async function dbFetchAll(tableName) {
 }
 
 /* =========================================================
-   6) محولات البيانات
+   7) محولات البيانات
    ========================================================= */
 
 function clearanceToRow(item) {
@@ -237,8 +339,14 @@ function clearanceToRow(item) {
         contractor: item.contractor || "",
         owner: item.owner || "",
         location: item.location || "",
-        images: item.images || []
+        images: (item.images || []).map(stripIdbForDb)
     };
+}
+
+function stripIdbForDb(img) {
+    /* idb:// لا يفهمه الخادم — نرسل سلسلة فارغة مؤقتاً
+       وسيُستبدل بالرابط السحابي بعد الرفع في الخلفية */
+    return isIdbRef(img) ? "" : img;
 }
 
 function rowToClearance(row) {
@@ -261,7 +369,7 @@ function emergencyToRow(item) {
         work_start: item.start || "",
         work_end: item.end || "",
         location: item.location || "",
-        images: item.images || []
+        images: (item.images || []).map(stripIdbForDb)
     };
 }
 
@@ -288,8 +396,8 @@ function noteToRow(item) {
         owner: item.owner || "",
         reason: item.reason || "",
         action: item.action || "",
-        before_image: item.before || "",
-        after_image: item.after || "",
+        before_image: isIdbRef(item.before) ? "" : (item.before || ""),
+        after_image: isIdbRef(item.after) ? "" : (item.after || ""),
         completed: !!item.completed
     };
 }
@@ -311,61 +419,112 @@ function rowToNote(row) {
 }
 
 /* =========================================================
-   7) حفظ محلي آمن — لا ينهار أبداً عند امتلاء المساحة
+   8) حفظ محلي آمن — ينقل الصور للمخزن الكبير بدل الحذف
    ========================================================= */
 
-function saveLocalData(key, arr) {
+/* نقل كل صور Base64 داخل السجلات إلى IndexedDB
+   وإرجاع عدد ما تم نقله */
+async function moveBase64ToIdb(arr) {
+
+    let moved = 0;
+
+    for (const item of arr) {
+
+        if (Array.isArray(item.images)) {
+            for (let i = 0; i < item.images.length; i++) {
+                const img = item.images[i];
+                if (typeof img === "string" && img.indexOf("data:") === 0) {
+                    const ref = await storeImageInIdb(img);
+                    if (ref) {
+                        item.images[i] = ref;
+                        moved++;
+                    }
+                }
+            }
+        }
+
+        if (typeof item.before === "string" && item.before.indexOf("data:") === 0) {
+            const ref = await storeImageInIdb(item.before);
+            if (ref) {
+                item.before = ref;
+                moved++;
+            }
+        }
+
+        if (typeof item.after === "string" && item.after.indexOf("data:") === 0) {
+            const ref = await storeImageInIdb(item.after);
+            if (ref) {
+                item.after = ref;
+                moved++;
+            }
+        }
+    }
+
+    return moved;
+}
+
+/* حفظ آمن: عند امتلاء المساحة ينقل الصور تلقائياً
+   إلى IndexedDB ثم يعيد المحاولة — بدون حذف أي صورة */
+async function saveLocalData(key, arr) {
 
     try {
         localStorage.setItem(key, JSON.stringify(arr));
         return true;
     } catch (e) {
 
-        /* المساحة ممتلئة: نحذف الصور المحلية (Base64) ونحاول مجدداً */
-        console.warn("امتلأت مساحة التخزين — جاري التنظيف التلقائي");
+        console.warn("مساحة localStorage ممتلئة — نقل الصور إلى المخزن الكبير...");
 
-        let cleaned = 0;
-
-        arr.forEach(function (item) {
-
-            if (Array.isArray(item.images)) {
-                item.images = item.images.filter(function (img) {
-                    if (typeof img === "string" && img.indexOf("data:") === 0) {
-                        cleaned++;
-                        return false;
-                    }
-                    return true;
-                });
-            }
-
-            if (typeof item.before === "string" && item.before.indexOf("data:") === 0) {
-                item.before = "";
-                cleaned++;
-            }
-
-            if (typeof item.after === "string" && item.after.indexOf("data:") === 0) {
-                item.after = "";
-                cleaned++;
-            }
-        });
+        const moved = await moveBase64ToIdb(arr);
 
         try {
             localStorage.setItem(key, JSON.stringify(arr));
-            if (cleaned > 0) {
-                alert(
-                    "تم تنظيف " + cleaned + " صورة محلية قديمة لإتاحة المساحة.\n" +
-                    "الصور التي رُفعت للسحابة سابقاً لم تتأثر ✅"
-                );
+            if (moved > 0) {
+                console.log("تم نقل " + moved + " صورة إلى المخزن الكبير وتحرير المساحة ✅");
             }
             return true;
         } catch (e2) {
             alert(
-                "تعذر الحفظ محلياً: مساحة التخزين في المتصفح ممتلئة.\n" +
+                "تعذر الحفظ المحلي رغم نقل الصور.\n" +
                 "تأكد من وجود اتصال بالإنترنت حتى تُحفظ البيانات في السحابة."
             );
             return false;
         }
     }
+}
+
+/* نقل أولي عند التشغيل: يحرر مساحة localStorage فوراً
+   من الصور القديمة بدون فقدان أي صورة */
+async function initialImageMigration() {
+
+    const tasks = [
+        { arr: clearances, key: "clearances" },
+        { arr: emergencies, key: "emergencies" },
+        { arr: notes, key: "notes" }
+    ];
+
+    let totalMoved = 0;
+
+    for (const task of tasks) {
+        const moved = await moveBase64ToIdb(task.arr);
+        if (moved > 0) {
+            totalMoved += moved;
+            try {
+                localStorage.setItem(task.key, JSON.stringify(task.arr));
+            } catch (e) {
+                /* تجاهل — سنحاول لاحقاً */
+            }
+        }
+    }
+
+    if (totalMoved > 0) {
+        console.log("تم نقل " + totalMoved + " صورة موجودة إلى المخزن الكبير — لم تُحذف أي صورة ✅");
+        renderClearances();
+        renderEmergencies();
+        renderNotes();
+        updateDashboard();
+    }
+
+    reportStorageUsage();
 }
 
 function reportStorageUsage() {
@@ -374,14 +533,109 @@ function reportStorageUsage() {
         ["clearances", "emergencies", "notes"].forEach(function (k) {
             total += (localStorage.getItem(k) || "").length;
         });
-        console.log("المساحة المحلية المستخدمة: " + Math.round(total / 1024) + " KB من حدود ~5120 KB");
+        console.log("مساحة localStorage المستخدمة: " + Math.round(total / 1024) + " KB (الصور منفصلة في المخزن الكبير)");
     } catch (e) {
         /* تجاهل */
     }
 }
 
 /* =========================================================
-   8) المزامنة مع السحابة
+   9) رفع صور idb:// إلى السحابة في الخلفية
+   ثم استبدال المراجع بروابط سحابية
+   ========================================================= */
+
+async function uploadDataUrlToCloud(dataUrl) {
+    try {
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        return await uploadToSupabase(blob, "image/jpeg");
+    } catch (e) {
+        return "";
+    }
+}
+
+async function migrateIdbImagesToCloud() {
+
+    const client = await initSupabase();
+    if (!client) {
+        return;
+    }
+
+    const tasks = [
+        { arr: clearances, table: "clearances", key: "clearances", toRow: clearanceToRow },
+        { arr: emergencies, table: "emergencies", key: "emergencies", toRow: emergencyToRow },
+        { arr: notes, table: "notes", key: "notes", toRow: noteToRow }
+    ];
+
+    let migrated = 0;
+
+    for (const task of tasks) {
+
+        for (const item of task.arr) {
+
+            let changed = false;
+
+            if (Array.isArray(item.images)) {
+                for (let i = 0; i < item.images.length; i++) {
+                    if (isIdbRef(item.images[i])) {
+                        const data = await idbGet(idbKeyFromRef(item.images[i]));
+                        if (data) {
+                            const url = await uploadDataUrlToCloud(data);
+                            if (url) {
+                                item.images[i] = url;
+                                changed = true;
+                                migrated++;
+                            }
+                        }
+                    }
+                }
+            }
+
+            const fields = ["before", "after"];
+            for (let f = 0; f < fields.length; f++) {
+                const fieldName = fields[f];
+                if (isIdbRef(item[fieldName])) {
+                    const data = await idbGet(idbKeyFromRef(item[fieldName]));
+                    if (data) {
+                        const url = await uploadDataUrlToCloud(data);
+                        if (url) {
+                            item[fieldName] = url;
+                            changed = true;
+                            migrated++;
+                        }
+                    }
+                }
+            }
+
+            if (changed) {
+                if (item.id) {
+                    await dbUpdate(task.table, item.id, task.toRow(item));
+                } else {
+                    const inserted = await dbInsert(task.table, task.toRow(item));
+                    if (inserted && inserted.id) {
+                        item.id = inserted.id;
+                    }
+                }
+                try {
+                    localStorage.setItem(task.key, JSON.stringify(task.arr));
+                } catch (e) {
+                    /* تجاهل */
+                }
+            }
+        }
+    }
+
+    if (migrated > 0) {
+        console.log("تم رفع " + migrated + " صورة إلى السحابة ✅");
+        renderClearances();
+        renderEmergencies();
+        renderNotes();
+        updateDashboard();
+    }
+}
+
+/* =========================================================
+   10) المزامنة مع السحابة
    ========================================================= */
 
 async function syncFromCloud() {
@@ -427,7 +681,7 @@ async function syncFromCloud() {
             task.array.push(x);
         });
 
-        saveLocalData(task.key, task.array);
+        await saveLocalData(task.key, task.array);
         task.render();
     }
 
@@ -438,10 +692,9 @@ async function syncFromCloud() {
 }
 
 /* =========================================================
-   9) الصور — ضغط + رفع + خطة بديلة مصغرة
+   11) الصور — ضغط + رفع سحابة + IndexedDB كخطة بديلة
    ========================================================= */
 
-/* ضغط الصورة باستخدام Canvas وإرجاع Blob أصغر */
 function compressImageToBlob(file, maxDim, quality) {
     return new Promise(function (resolve) {
 
@@ -470,7 +723,6 @@ function compressImageToBlob(file, maxDim, quality) {
 
                     const ctx = canvas.getContext("2d");
 
-                    /* خلفية بيضاء للصور الشفافة */
                     ctx.fillStyle = "#ffffff";
                     ctx.fillRect(0, 0, w, h);
 
@@ -500,7 +752,6 @@ function compressImageToBlob(file, maxDim, quality) {
     });
 }
 
-/* رفع إلى Supabase Storage */
 async function uploadToSupabase(blobOrFile, mime) {
 
     const client = await initSupabase();
@@ -543,15 +794,13 @@ async function uploadToSupabase(blobOrFile, mime) {
 
 /* معالجة صورة واحدة:
    1) ضغط ورفع للسحابة
-   2) عند الفشل: نسخة مصغرة محلياً (أقل من 200 كيلوبايت)
-   3) عند الاستحالة: تخطي الصورة وتنبيه المستخدم */
+   2) عند الفشل: تخزين في IndexedDB (المساحة الكبيرة) — لا حذف */
 async function readImage(file) {
 
     if (!file) {
         return "";
     }
 
-    /* نسخة مضغوطة للرفع (أبعاد أقل من 1400 بكسل) */
     const uploadBlob = await compressImageToBlob(file, 1400, 0.85);
 
     let cloudUrl = "";
@@ -561,7 +810,6 @@ async function readImage(file) {
             cloudUrl = await withTimeout(uploadToSupabase(uploadBlob, "image/jpeg"), 60000);
         }
         if (!cloudUrl) {
-            /* محاولة ثانية بالملف الأصلي */
             cloudUrl = await withTimeout(uploadToSupabase(file, file.type), 60000);
         }
     } catch (error) {
@@ -573,20 +821,24 @@ async function readImage(file) {
         return cloudUrl;
     }
 
-    /* الخطة البديلة: نسخة مصغرة جداً محلياً */
-    let small = (uploadBlob && uploadBlob.size <= 200 * 1024)
-        ? uploadBlob
-        : await compressImageToBlob(file, 600, 0.6);
+    /* الخطة البديلة: IndexedDB — مساحة كبيرة لا تنفد */
+    let fallbackBlob = uploadBlob;
 
-    if (small && small.size <= 200 * 1024) {
-        const dataUrl = await blobToDataUrl(small);
-        if (dataUrl && dataUrl.length <= 300 * 1024) {
-            console.warn("تم حفظ نسخة مصغرة من الصورة على هذا الجهاز فقط");
-            return dataUrl;
+    if (!fallbackBlob) {
+        fallbackBlob = await compressImageToBlob(file, 1000, 0.7);
+    }
+
+    if (fallbackBlob) {
+        const dataUrl = await blobToDataUrl(fallbackBlob);
+        if (dataUrl) {
+            const ref = await storeImageInIdb(dataUrl);
+            if (ref) {
+                console.warn("تم تخزين الصورة في المخزن الكبير — ستُرفع للسحابة تلقائياً عند توفر الاتصال");
+                return ref;
+            }
         }
     }
 
-    /* لا يمكن حفظ الصورة إطلاقاً */
     skippedImagesCount++;
     return "";
 }
@@ -609,95 +861,27 @@ async function readImages(files) {
     return result;
 }
 
-/* إعادة رفع صورة محفوظة محلياً (Base64) إلى السحابة */
-async function reuploadDataUrl(dataUrl) {
-    try {
-        const res = await fetch(dataUrl);
-        const blob = await res.blob();
-        return await uploadToSupabase(blob, "image/jpeg");
-    } catch (e) {
-        return "";
-    }
-}
-
-/* نقل كل الصور المحلية القديمة إلى السحابة عند فتح الصفحة */
-async function migrateLocalImages() {
-
-    const client = await initSupabase();
-    if (!client) {
-        return;
-    }
-
-    const tasks = [
-        { arr: clearances, table: "clearances", key: "clearances", toRow: clearanceToRow },
-        { arr: emergencies, table: "emergencies", key: "emergencies", toRow: emergencyToRow },
-        { arr: notes, table: "notes", key: "notes", toRow: noteToRow }
-    ];
-
-    let migrated = 0;
-
-    for (const task of tasks) {
-
-        for (const item of task.arr) {
-
-            let itemChanged = false;
-
-            /* مصفوفة الصور (الرخص) */
-            if (Array.isArray(item.images)) {
-                for (let i = 0; i < item.images.length; i++) {
-                    const img = item.images[i];
-                    if (typeof img === "string" && img.indexOf("data:") === 0) {
-                        const url = await reuploadDataUrl(img);
-                        if (url) {
-                            item.images[i] = url;
-                            itemChanged = true;
-                            migrated++;
-                        }
-                    }
-                }
-            }
-
-            /* صور الملاحظات قبل/بعد */
-            const fields = ["before", "after"];
-            for (let f = 0; f < fields.length; f++) {
-                const fieldName = fields[f];
-                const value = item[fieldName];
-                if (typeof value === "string" && value.indexOf("data:") === 0) {
-                    const url = await reuploadDataUrl(value);
-                    if (url) {
-                        item[fieldName] = url;
-                        itemChanged = true;
-                        migrated++;
-                    }
-                }
-            }
-
-            if (itemChanged) {
-                if (item.id) {
-                    await dbUpdate(task.table, item.id, task.toRow(item));
-                } else {
-                    const inserted = await dbInsert(task.table, task.toRow(item));
-                    if (inserted && inserted.id) {
-                        item.id = inserted.id;
-                    }
-                }
-                saveLocalData(task.key, task.arr);
-            }
-        }
-    }
-
-    if (migrated > 0) {
-        console.log("تم نقل " + migrated + " صورة محلية إلى السحابة وتحرير المساحة ✅");
-        renderClearances();
-        renderEmergencies();
-        renderNotes();
-    }
-}
+/* =========================================================
+   12) عرض الصور — يدعم idb:// والروابط العادية
+   ========================================================= */
 
 function imageThumb(image, title = "عرض الصورة") {
     if (!image) {
         return "<span>لا توجد صورة</span>";
     }
+
+    if (isIdbRef(image)) {
+        return `
+            <img
+                data-idb="${image}"
+                alt="${title}"
+                title="${title}"
+                onclick="openImageRef(this)"
+                style="width:70px;height:70px;object-fit:cover;border-radius:8px;cursor:pointer;margin:3px;background:#eee;"
+            >
+        `;
+    }
+
     return `
         <img
             src="${image}"
@@ -709,12 +893,45 @@ function imageThumb(image, title = "عرض الصورة") {
     `;
 }
 
+/* ملء الصور المخزنة في IndexedDB بعد عرض الجدول */
+async function resolveIdbImages() {
+    const imgs = document.querySelectorAll("img[data-idb]");
+    for (let i = 0; i < imgs.length; i++) {
+        const img = imgs[i];
+        const ref = img.getAttribute("data-idb");
+        const data = await idbGet(idbKeyFromRef(ref));
+        if (data) {
+            img.src = data;
+            img.setAttribute("data-loaded", "1");
+        }
+    }
+}
+
+async function openImageRef(imgEl) {
+    let src = imgEl.getAttribute("src") || "";
+
+    if (!imgEl.getAttribute("data-loaded")) {
+        const ref = imgEl.getAttribute("data-idb");
+        if (ref) {
+            src = await idbGet(idbKeyFromRef(ref)) || src;
+        }
+    }
+
+    if (!src) {
+        return;
+    }
+
+    openImage(src);
+}
+
 function openImage(image) {
     const newWindow = window.open("", "_blank");
+
     if (!newWindow) {
         alert("يرجى السماح بفتح النوافذ المنبثقة");
         return;
     }
+
     newWindow.document.write(`
         <!DOCTYPE html>
         <html lang="ar" dir="rtl">
@@ -734,7 +951,7 @@ function openImage(image) {
 }
 
 /* =========================================================
-   10) مؤشر (جاري الحفظ)
+   13) مؤشر (جاري الحفظ)
    ========================================================= */
 
 function setSaveBusy(busy) {
@@ -773,7 +990,7 @@ function setSaveBusy(busy) {
 }
 
 /* =========================================================
-   11) التنقل بين الصفحات
+   14) التنقل بين الصفحات
    ========================================================= */
 
 function showPage(page) {
@@ -801,10 +1018,11 @@ function showPage(page) {
     });
 
     updateDashboard();
+    resolveIdbImages();
 }
 
 /* =========================================================
-   12) رؤوس الجداول من الكود
+   15) رؤوس الجداول من الكود
    ========================================================= */
 
 function ensureTableHeaders(bodyId, headers) {
@@ -846,7 +1064,7 @@ function ensureTableHeaders(bodyId, headers) {
 }
 
 /* =========================================================
-   13) رخص الإخلاءات
+   16) رخص الإخلاءات
    ========================================================= */
 
 async function saveClearance() {
@@ -913,7 +1131,7 @@ async function saveClearance() {
             clearances.push(data);
         }
 
-        saveLocalData("clearances", clearances);
+        await saveLocalData("clearances", clearances);
 
         clearClearance();
         renderClearances();
@@ -921,10 +1139,10 @@ async function saveClearance() {
 
         let msg = cloudOk
             ? "تم حفظ رخصة الإخلاء بنجاح ✅"
-            : "تم الحفظ على هذا الجهاز فقط ⚠️\n(تعذر الاتصال بقاعدة البيانات السحابية)";
+            : "تم الحفظ على هذا الجهاز (المخزن الكبير) ⚠️\nسيُرفع للسحابة تلقائياً عند توفر الاتصال";
 
         if (skippedImagesCount > 0) {
-            msg += "\n\n⚠️ لم تُحفظ " + skippedImagesCount + " صورة (تعذر رفعها)";
+            msg += "\n\n⚠️ لم تُحفظ " + skippedImagesCount + " صورة";
         }
 
         alert(msg);
@@ -998,6 +1216,8 @@ function renderClearances(data = clearances) {
             </tr>
         `;
     });
+
+    resolveIdbImages();
 }
 
 function searchClearance() {
@@ -1068,12 +1288,22 @@ async function deleteClearance(index) {
     }
 
     const item = clearances[index];
+
+    /* حذف الصور المحلية من المخزن الكبير أيضاً */
+    if (item && Array.isArray(item.images)) {
+        for (const img of item.images) {
+            if (isIdbRef(img)) {
+                await idbDelete(idbKeyFromRef(img));
+            }
+        }
+    }
+
     if (item && item.id) {
         await dbDelete("clearances", item.id);
     }
 
     clearances.splice(index, 1);
-    saveLocalData("clearances", clearances);
+    await saveLocalData("clearances", clearances);
 
     renderClearances();
     updateDashboard();
@@ -1081,7 +1311,7 @@ async function deleteClearance(index) {
 }
 
 /* =========================================================
-   14) رخص الطوارئ
+   17) رخص الطوارئ
    ========================================================= */
 
 async function saveEmergency() {
@@ -1153,7 +1383,7 @@ async function saveEmergency() {
             emergencies.push(data);
         }
 
-        saveLocalData("emergencies", emergencies);
+        await saveLocalData("emergencies", emergencies);
 
         clearEmergency();
         renderEmergencies();
@@ -1161,10 +1391,10 @@ async function saveEmergency() {
 
         let msg = cloudOk
             ? "تم حفظ رخصة الطوارئ بنجاح ✅"
-            : "تم الحفظ على هذا الجهاز فقط ⚠️\n(تعذر الاتصال بقاعدة البيانات السحابية)";
+            : "تم الحفظ على هذا الجهاز (المخزن الكبير) ⚠️\nسيُرفع للسحابة تلقائياً عند توفر الاتصال";
 
         if (skippedImagesCount > 0) {
-            msg += "\n\n⚠️ لم تُحفظ " + skippedImagesCount + " صورة (تعذر رفعها)";
+            msg += "\n\n⚠️ لم تُحفظ " + skippedImagesCount + " صورة";
         }
 
         alert(msg);
@@ -1245,6 +1475,8 @@ function renderEmergencies(data = emergencies) {
             </tr>
         `;
     });
+
+    resolveIdbImages();
 }
 
 function searchEmergency() {
@@ -1318,12 +1550,21 @@ async function deleteEmergency(index) {
     }
 
     const item = emergencies[index];
+
+    if (item && Array.isArray(item.images)) {
+        for (const img of item.images) {
+            if (isIdbRef(img)) {
+                await idbDelete(idbKeyFromRef(img));
+            }
+        }
+    }
+
     if (item && item.id) {
         await dbDelete("emergencies", item.id);
     }
 
     emergencies.splice(index, 1);
-    saveLocalData("emergencies", emergencies);
+    await saveLocalData("emergencies", emergencies);
 
     renderEmergencies();
     updateDashboard();
@@ -1331,7 +1572,7 @@ async function deleteEmergency(index) {
 }
 
 /* =========================================================
-   15) تصنيف الملاحظات
+   18) تصنيف الملاحظات
    ========================================================= */
 
 function setNoteType(type) {
@@ -1353,7 +1594,7 @@ function setNoteType(type) {
 }
 
 /* =========================================================
-   16) حفظ الملاحظة
+   19) حفظ الملاحظة
    ========================================================= */
 
 async function saveNote() {
@@ -1441,7 +1682,7 @@ async function saveNote() {
             notes.push(data);
         }
 
-        saveLocalData("notes", notes);
+        await saveLocalData("notes", notes);
 
         clearNote();
         renderNotes();
@@ -1453,11 +1694,11 @@ async function saveNote() {
                 ? "تم حفظ الملاحظة وتسجيلها كمعدلة ✅"
                 : "تم حفظ الملاحظة بنجاح ✅";
         } else {
-            msg = "تم الحفظ على هذا الجهاز فقط ⚠️\n(تعذر الاتصال بقاعدة البيانات السحابية)";
+            msg = "تم الحفظ على هذا الجهاز (المخزن الكبير) ⚠️\nسيُرفع للسحابة تلقائياً عند توفر الاتصال";
         }
 
         if (skippedImagesCount > 0) {
-            msg += "\n\n⚠️ لم تُحفظ " + skippedImagesCount + " صورة (تعذر رفعها)";
+            msg += "\n\n⚠️ لم تُحفظ " + skippedImagesCount + " صورة";
         }
 
         alert(msg);
@@ -1498,7 +1739,7 @@ function clearNote() {
 }
 
 /* =========================================================
-   17) حساب الأيام والحالة
+   20) حساب الأيام والحالة
    ========================================================= */
 
 function daysPassed(date) {
@@ -1520,7 +1761,7 @@ function isLate(note) {
 }
 
 /* =========================================================
-   18) عرض الملاحظات
+   21) عرض الملاحظات
    ========================================================= */
 
 function renderNotes() {
@@ -1634,6 +1875,8 @@ function renderNotes() {
             `;
         });
     });
+
+    resolveIdbImages();
 }
 
 function editNote(index) {
@@ -1666,12 +1909,22 @@ async function deleteNote(index) {
     }
 
     const item = notes[index];
+
+    if (item) {
+        if (isIdbRef(item.before)) {
+            await idbDelete(idbKeyFromRef(item.before));
+        }
+        if (isIdbRef(item.after)) {
+            await idbDelete(idbKeyFromRef(item.after));
+        }
+    }
+
     if (item && item.id) {
         await dbDelete("notes", item.id);
     }
 
     notes.splice(index, 1);
-    saveLocalData("notes", notes);
+    await saveLocalData("notes", notes);
 
     renderNotes();
     updateDashboard();
@@ -1679,7 +1932,7 @@ async function deleteNote(index) {
 }
 
 /* =========================================================
-   19) التنبيهات ولوحة المتابعة
+   22) التنبيهات ولوحة المتابعة
    ========================================================= */
 
 function updateAlerts() {
@@ -1756,7 +2009,7 @@ function updateDashboard() {
 }
 
 /* =========================================================
-   20) ربط الأزرار تلقائياً
+   23) ربط الأزرار تلقائياً
    ========================================================= */
 
 function autoWireButtons() {
@@ -1851,7 +2104,7 @@ function autoWireButtons() {
 }
 
 /* =========================================================
-   21) أزرار التصدير تلقائياً
+   24) أزرار التصدير تلقائياً
    ========================================================= */
 
 function addExportButtons() {
@@ -1919,7 +2172,7 @@ function addExportButtons() {
 }
 
 /* =========================================================
-   22) التشغيل عند فتح الصفحة
+   25) التشغيل عند فتح الصفحة
    ========================================================= */
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -1966,13 +2219,19 @@ document.addEventListener("DOMContentLoaded", function () {
         }
     }
 
-    /* المزامنة ثم نقل الصور المحلية القديمة للسحابة ثم تقرير المساحة */
-    syncFromCloud()
+    /* تسلسل النقل الآمن:
+       1) نقل الصور الموجودة من localStorage إلى المخزن الكبير (يحرر المساحة فوراً — بدون حذف)
+       2) مزامنة البيانات مع السحابة
+       3) رفع صور المخزن الكبير إلى السحابة في الخلفية */
+    initialImageMigration()
         .then(function () {
-            return migrateLocalImages();
+            return syncFromCloud();
         })
         .then(function () {
-            reportStorageUsage();
+            return initialImageMigration(); /* معالجة أي Base64 قادم من السحابة */
+        })
+        .then(function () {
+            return migrateIdbImagesToCloud();
         });
 });
 
@@ -1980,7 +2239,7 @@ setInterval(updateAlerts, 60 * 60 * 1000);
 
 /* =========================================================
    =========================================================
-   تصدير Excel و PDF
+   تصدير Excel و PDF (يدعم صور المخزن الكبير)
    =========================================================
    ========================================================= */
 
@@ -2006,10 +2265,6 @@ function exportDate() {
     return d.getFullYear() + "-" + month + "-" + day;
 }
 
-function safeFileName(text) {
-    return String(text || "بدون").replace(/[\\\/:*?"<>|]/g, "-");
-}
-
 function noteStatusText(item) {
     if (item.completed) {
         return "تم التعديل";
@@ -2018,6 +2273,36 @@ function noteStatusText(item) {
         return "متأخرة";
     }
     return "قيد المتابعة";
+}
+
+/* حل صور idb:// لروابط فعلية قبل التصدير إلى PDF */
+async function resolveImageForExport(ref) {
+    if (isIdbRef(ref)) {
+        return await idbGet(idbKeyFromRef(ref)) || "";
+    }
+    return ref || "";
+}
+
+async function resolveExportItems(items) {
+    const out = [];
+    for (const item of items) {
+        const copy = Object.assign({}, item);
+        if (Array.isArray(copy.images)) {
+            const imgs = [];
+            for (const img of copy.images) {
+                imgs.push(await resolveImageForExport(img));
+            }
+            copy.images = imgs;
+        }
+        if (copy.before) {
+            copy.before = await resolveImageForExport(copy.before);
+        }
+        if (copy.after) {
+            copy.after = await resolveImageForExport(copy.after);
+        }
+        out.push(copy);
+    }
+    return out;
 }
 
 var PDF_TH = "padding:8px;border:1px solid #999;background:#173f32;color:#ffffff;font-size:12px;text-align:center;";
@@ -2108,7 +2393,7 @@ function exportClearancesToExcel() {
 }
 
 /* ===== رخص الإخلاء - PDF ===== */
-function exportClearancesToPDF(btn) {
+async function exportClearancesToPDF(btn) {
     if (typeof html2pdf === "undefined") {
         alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
         return;
@@ -2117,11 +2402,16 @@ function exportClearancesToPDF(btn) {
         alert("لا توجد رخص إخلاء للتصدير");
         return;
     }
+
+    var data = await resolveExportItems(clearances);
     var rows = "";
-    clearances.forEach(function (item, index) {
+
+    data.forEach(function (item, index) {
         var imagesHTML = "";
         (item.images || []).forEach(function (img) {
-            imagesHTML += '<img src="' + img + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
+            if (img) {
+                imagesHTML += '<img src="' + img + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
+            }
         });
         if (!imagesHTML) {
             imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
@@ -2137,6 +2427,7 @@ function exportClearancesToPDF(btn) {
             </tr>
         `;
     });
+
     var content = pdfReportHeader("تقرير رخص الإخلاء", "إجمالي الرخص: " + clearances.length) + `
         <table style="width:100%;border-collapse:collapse;">
             <thead>
@@ -2154,6 +2445,7 @@ function exportClearancesToPDF(btn) {
         <p style="text-align:center;color:#999;font-size:11px;margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p>
         </div>
     `;
+
     generatePDFFromHTML(content, "رخص_الإخلاء_" + exportDate() + ".pdf", "landscape", btn);
 }
 
@@ -2189,7 +2481,7 @@ function exportEmergenciesToExcel() {
 }
 
 /* ===== رخص الطوارئ - PDF ===== */
-function exportEmergenciesToPDF(btn) {
+async function exportEmergenciesToPDF(btn) {
     if (typeof html2pdf === "undefined") {
         alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
         return;
@@ -2198,11 +2490,16 @@ function exportEmergenciesToPDF(btn) {
         alert("لا توجد رخص طوارئ للتصدير");
         return;
     }
+
+    var data = await resolveExportItems(emergencies);
     var rows = "";
-    emergencies.forEach(function (item, index) {
+
+    data.forEach(function (item, index) {
         var imagesHTML = "";
         (item.images || []).forEach(function (img) {
-            imagesHTML += '<img src="' + img + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
+            if (img) {
+                imagesHTML += '<img src="' + img + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
+            }
         });
         if (!imagesHTML) {
             imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
@@ -2221,6 +2518,7 @@ function exportEmergenciesToPDF(btn) {
             </tr>
         `;
     });
+
     var content = pdfReportHeader("تقرير رخص الطوارئ", "إجمالي الرخص: " + emergencies.length) + `
         <table style="width:100%;border-collapse:collapse;">
             <thead>
@@ -2241,6 +2539,7 @@ function exportEmergenciesToPDF(btn) {
         <p style="text-align:center;color:#999;font-size:11px;margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p>
         </div>
     `;
+
     generatePDFFromHTML(content, "رخص_الطوارئ_" + exportDate() + ".pdf", "landscape", btn);
 }
 
@@ -2276,7 +2575,7 @@ function exportNotesToExcel() {
 }
 
 /* ===== الملاحظات - PDF ===== */
-function exportNotesToPDF(btn) {
+async function exportNotesToPDF(btn) {
     if (typeof html2pdf === "undefined") {
         alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
         return;
@@ -2293,8 +2592,10 @@ function exportNotesToPDF(btn) {
         }
     });
 
+    var data = await resolveExportItems(notes);
     var rows = "";
-    notes.forEach(function (item, index) {
+
+    data.forEach(function (item, index) {
 
         var imagesHTML = "";
         if (item.before) {
