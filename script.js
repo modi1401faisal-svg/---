@@ -12,15 +12,15 @@
 
 ========================= */
 
-القائد SUPABASE_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co";
+const SUPABASE_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co";
 
-القائد SUPABASE_ANON_KEY = "sb_publishable_HM4vP8LSEZJaZC9Cyug5fg_fhQ05QqL";
+const SUPABASE_ANON_KEY = "sb_publishable_HM4vP8LSEZJaZC9Cyug5fg_fhQ05QqL";
 
-لتكن clearances = JSON.parse(localStorage.getItem("clearances")) || [];
+let clearances = JSON.parse(localStorage.getItem("clearances")) || [];
 
-لتكن emergencies = JSON.parse(localStorage.getItem("emergencies")) || [];
+let emergencies = JSON.parse(localStorage.getItem("emergencies")) || [];
 
-لتكن notes = JSON.parse(localStorage.getItem("notes")) || [];
+let notes = JSON.parse(localStorage.getItem("notes")) || [];
 
 /* =========================
 
