@@ -2332,10 +2332,31 @@ function noteStatusText(item) {
 
 /* حل صور idb:// لروابط فعلية قبل التصدير إلى PDF */
 async function resolveImageForExport(ref) {
-    if (isIdbRef(ref)) {
-        return await idbGet(idbKeyFromRef(ref)) || "";
+    try {
+        if (!ref) {
+            return "";
+        }
+
+        /* صورة محلية مخزنة (IndexedDB) */
+        if (isIdbRef(ref)) {
+            return await idbGet(idbKeyFromRef(ref)) || "";
+        }
+
+        /* صورة Base64 جاهزة */
+        if (ref.indexOf("data:") === 0) {
+            return ref;
+        }
+
+        /* رابط سحابي: نجلب الصورة ونحوّلها Base64
+           حتى تظهر داخل ملف PDF بدون مشاكل CORS */
+        const res = await fetch(ref, { mode: "cors" });
+        const blob = await res.blob();
+        return await blobToDataUrl(blob);
+
+    } catch (e) {
+        console.warn("تعذر تحميل صورة للتصدير:", e);
+        return "";
     }
-    return ref || "";
 }
 
 async function resolveExportItems(items) {
