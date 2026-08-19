@@ -223,7 +223,7 @@ function initSupabase() {
     if (sbLoadPromise) {
         return sbLoadPromise;
     }
-
+   
     sbLoadPromise = new Promise(function (resolve) {
         const script = document.createElement("script");
        script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
