@@ -2359,25 +2359,130 @@ async function resolveImageForExport(ref) {
     }
 }
 
+/* ===== تحميل الصور وتحويلها لـ Base64 لضمان ظهورها في PDF ===== */
+
+function loadImageAsDataUrl(url) {
+    return new Promise(function (resolve) {
+        try {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = function () {
+                try {
+                    const canvas = document.createElement("canvas");
+                    const maxDim = 900;
+                    const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+                    canvas.width = Math.round(img.naturalWidth * scale);
+                    canvas.height = Math.round(img.naturalHeight * scale);
+                    const ctx = canvas.getContext("2d");
+                    ctx.fillStyle = "#ffffff";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL("image/jpeg", 0.85));
+                } catch (e) {
+                    resolve("");
+                }
+            };
+            img.onerror = function () {
+                resolve("");
+            };
+            img.src = url;
+        } catch (e) {
+            resolve("");
+        }
+    });
+}
+
+async function resolveImageForExport(ref) {
+    try {
+        if (!ref) {
+            return "";
+        }
+
+        if (isIdbRef(ref)) {
+            return await idbGet(idbKeyFromRef(ref)) || "";
+        }
+
+        if (ref.indexOf("data:") === 0) {
+            return ref;
+        }
+
+        try {
+            const res = await fetch(ref);
+            if (res.ok) {
+                const blob = await res.blob();
+                const dataUrl = await blobToDataUrl(blob);
+                if (dataUrl) {
+                    return dataUrl;
+                }
+            }
+        } catch (e1) {
+        }
+
+        return await loadImageAsDataUrl(ref);
+
+    } catch (e) {
+        return "";
+    }
+}
+
+let exportImagesLoaded = 0;
+let exportImagesFailed = 0;
+
 async function resolveExportItems(items) {
+
+    exportImagesLoaded = 0;
+    exportImagesFailed = 0;
+
     const out = [];
+
     for (const item of items) {
         const copy = Object.assign({}, item);
+
         if (Array.isArray(copy.images)) {
             const imgs = [];
             for (const img of copy.images) {
-                imgs.push(await resolveImageForExport(img));
+                const resolved = await resolveImageForExport(img);
+                if (resolved) {
+                    exportImagesLoaded++;
+                } else if (img) {
+                    exportImagesFailed++;
+                }
+                imgs.push(resolved);
             }
             copy.images = imgs;
         }
+
         if (copy.before) {
             copy.before = await resolveImageForExport(copy.before);
+            if (copy.before) {
+                exportImagesLoaded++;
+            } else {
+                exportImagesFailed++;
+            }
         }
+
         if (copy.after) {
             copy.after = await resolveImageForExport(copy.after);
+            if (copy.after) {
+                exportImagesLoaded++;
+            } else {
+                exportImagesFailed++;
+            }
         }
+
         out.push(copy);
     }
+
+    const total = exportImagesLoaded + exportImagesFailed;
+    if (total > 0 && exportImagesFailed > 0) {
+        alert(
+            "⚠️ تنبيه التصدير:\n" +
+            "تم تحميل " + exportImagesLoaded + " صورة بنجاح\n" +
+            "وفشل تحميل " + exportImagesFailed + " صورة\n\n" +
+            "سيتم إنشاء الملف بالصور المتاحة."
+        );
+    }
+
     return out;
 }
 
