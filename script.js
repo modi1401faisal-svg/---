@@ -2706,3 +2706,134 @@ async function exportNotesToPDF(btn) {
 
     generatePDFFromHTML(content, "الملاحظات_" + exportDate() + ".pdf", "landscape", btn);
 }
+/* =========================================================
+   نظام دخول الموظفين — بالاسم فقط بدون بريد إلكتروني
+   ========================================================= */
+
+/* كلمة المرور المشتركة — المدير يغيّرها من هذا السطر فقط */
+const LAB_LOGIN_PASSWORD = "lab2026";
+
+let currentUserName = localStorage.getItem("labUserName") || "";
+
+function createLoginScreen() {
+
+    const old = document.getElementById("loginScreen");
+    if (old) old.remove();
+
+    const screen = document.createElement("div");
+    screen.id = "loginScreen";
+    screen.style.cssText =
+        "position:fixed;inset:0;z-index:999999;" +
+        "background:linear-gradient(135deg,#173f32,#0d241c);" +
+        "display:flex;justify-content:center;align-items:center;" +
+        "font-family:inherit;direction:rtl;";
+
+    screen.innerHTML = `
+        <div style="background:#fff;border-radius:16px;padding:35px;width:90%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.4);">
+            <div style="text-align:center;margin-bottom:25px;">
+                <div style="font-size:45px;">🏗️</div>
+                <h2 style="color:#173f32;margin:10px 0 5px;">نظام مختبر جودة المشاريع</h2>
+                <p style="color:#666;font-size:14px;margin:0;">أدخل اسمك للمتابعة</p>
+            </div>
+            <div style="margin-bottom:15px;">
+                <label style="display:block;font-size:13px;color:#333;margin-bottom:5px;">الاسم الكامل</label>
+                <input type="text" id="loginName" placeholder="اكتب اسمك هنا"
+                    style="width:100%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:15px;box-sizing:border-box;text-align:right;">
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="display:block;font-size:13px;color:#333;margin-bottom:5px;">كلمة المرور</label>
+                <input type="password" id="loginPassword" placeholder="كلمة مرور المختبر"
+                    style="width:100%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:15px;box-sizing:border-box;">
+            </div>
+            <div id="loginError" style="color:#c0392b;font-size:13px;text-align:center;margin-bottom:15px;display:none;"></div>
+            <button id="loginBtn" onclick="doLogin()"
+                style="width:100%;background:#173f32;color:#fff;border:none;padding:14px;border-radius:8px;font-size:16px;cursor:pointer;font-family:inherit;">
+                دخول
+            </button>
+        </div>
+    `;
+
+    document.body.appendChild(screen);
+
+    document.getElementById("loginPassword").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") doLogin();
+    });
+    document.getElementById("loginName").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") document.getElementById("loginPassword").focus();
+    });
+}
+
+function doLogin() {
+
+    const name = document.getElementById("loginName").value.trim();
+    const password = document.getElementById("loginPassword").value;
+    const errorEl = document.getElementById("loginError");
+
+    if (!name) {
+        errorEl.textContent = "يرجى كتابة اسمك أولاً";
+        errorEl.style.display = "block";
+        return;
+    }
+
+    if (password !== LAB_LOGIN_PASSWORD) {
+        errorEl.textContent = "كلمة المرور غير صحيحة";
+        errorEl.style.display = "block";
+        return;
+    }
+
+    currentUserName = name;
+    localStorage.setItem("labUserName", name);
+
+    removeLoginScreen();
+    showUserBadge();
+}
+
+function removeLoginScreen() {
+    const screen = document.getElementById("loginScreen");
+    if (screen) screen.remove();
+}
+
+function showUserBadge() {
+
+    const old = document.getElementById("userBadge");
+    if (old) old.remove();
+
+    const badge = document.createElement("div");
+    badge.id = "userBadge";
+    badge.style.cssText =
+        "position:fixed;top:10px;left:10px;z-index:99998;" +
+        "background:#173f32;color:#fff;padding:8px 14px;" +
+        "border-radius:20px;font-size:13px;font-family:inherit;" +
+        "display:flex;align-items:center;gap:10px;direction:rtl;" +
+        "box-shadow:0 2px 8px rgba(0,0,0,.3);";
+
+    badge.innerHTML = `
+        <span>👤 ${currentUserName}</span>
+        <button onclick="doLogout()" style="background:#c0392b;color:#fff;border:none;padding:4px 10px;border-radius:12px;cursor:pointer;font-size:11px;font-family:inherit;">
+            خروج
+        </button>
+    `;
+
+    document.body.appendChild(badge);
+}
+
+function doLogout() {
+
+    if (!confirm("هل تريد تسجيل الخروج؟")) return;
+
+    localStorage.removeItem("labUserName");
+    currentUserName = "";
+
+    const badge = document.getElementById("userBadge");
+    if (badge) badge.remove();
+
+    createLoginScreen();
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+    if (currentUserName) {
+        showUserBadge();
+    } else {
+        createLoginScreen();
+    }
+});
