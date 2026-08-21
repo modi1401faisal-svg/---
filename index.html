@@ -1421,34 +1421,37 @@ document.addEventListener("DOMContentLoaded", function() {
 
 </html>
 <script>
+<script>
 document.addEventListener("DOMContentLoaded", function() {
-    // رابط شعار المختبر
-    const labLogoUrl = "https://z-cdn-media.chatglm.cn/files/6222b48e-df16-4cef-8578-44b41893fc0e.jpeg";
+    // رابط شعار المختبر الجديد
+    const labLogoUrl = "https://z-cdn-media.chatglm.cn/files/4b950c33-dcf1-449d-bd54-157be5c28d5c.jpeg";
     
-    // البحث عن جميع الصور في الصفحة
-    const allImages = document.querySelectorAll('img');
+    // التأكد من أننا في صفحة الدخول
+    const passwordInput = document.querySelector('input[type="password"]');
     
-    allImages.forEach(img => {
-        // إذا كانت الصورة ليست شعار الأمانة ولم يتم استبدالها مسبقاً
-        if (!img.src.includes('14388a2b-5b5d-42d4-8e2f-ac93f8ede780') && !img.id.includes('injected')) {
+    if (passwordInput) {
+        // البحث في جميع عناصر الصفحة للعثور على صورة الآلة (الخلفية)
+        const elements = document.querySelectorAll('body, body *');
+        
+        elements.forEach(el => {
+            const bgImage = window.getComputedStyle(el).backgroundImage;
             
-            // استبدال رابط الآلة برابط شعار المختبر
-            img.src = labLogoUrl;
-            
-            // ضبط المقاسات لتكون مناسبة داخل المربع
-            img.style.maxWidth = "60%";
-            img.style.height = "auto";
-            img.style.maxHeight = "120px";
-            img.style.display = "block";
-            img.style.margin = "0 auto 20px auto";
-            img.style.borderRadius = "8px";
-            
-            // وضع علامة بأنه تم استبدالها حتى لا يكرر العملية
-            img.id = "injected-lab-logo";
-        }
-    });
+            // إذا كان العنصر يحتوي على صورة خلفية (وليست مجرد لون أو تدرج)
+            if (bgImage && bgImage !== 'none' && bgImage.includes('url(')) {
+                
+                // استبدال صورة الآلة بشعار المختبر
+                el.style.setProperty('background-image', `url('${labLogoUrl}')`, 'important');
+                
+                // ضبط المقاسات ليظهر الشعار بشكل كامل ومتناسق مكان الآلة
+                el.style.setProperty('background-size', 'contain', 'important');
+                el.style.setProperty('background-repeat', 'no-repeat', 'important');
+                el.style.setProperty('background-position', 'center center', 'important');
+                
+                // ملاحظة: نحن لم نلمس خاصية background-color لكي نحافظ على اللون الأخضر
+            }
+        });
+    }
 });
-    
 </script>
 
 </body>
