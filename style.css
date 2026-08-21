@@ -268,3 +268,42 @@ footer { background: #173f32; color: #dcebe3; text-align: center; padding: 18px;
     .btn-primary, .btn-secondary { width: 100%; }
     table { min-width: 900px; }
 }
+/* ========================================== */
+/* إعدادات الطباعة والتحويل إلى PDF (تحسين الجداول والشعارات) */
+/* ========================================== */
+@media print {
+    /* إجبار المتصفح على إظهار الألوان والصور */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+    }
+    
+    /* إظهار شعار الأمانة في الـ PDF */
+    .header-logo-injected {
+        display: block !important;
+        visibility: visible !important;
+    }
+    
+    /* منع تقطيع الجداول وضمان ترتيبها في PDF */
+    table { 
+        page-break-inside: auto !important; 
+    }
+    tr { 
+        page-break-inside: avoid !important; 
+        page-break-after: auto !important; 
+    }
+    thead { 
+        display: table-header-group !important; 
+    }
+    
+    /* إجبار كل قسم (ملاحظات الأمانة، الكهرباء.. الخ) على البدء في صفحة جديدة لتنظيم الـ PDF */
+    .card.table-card { 
+        page-break-before: always !important; 
+    }
+    
+    /* جعل البطاقة الأولى تبدأ في نفس الصفحة لعدم ترك أول صفحة فارغة */
+    #notes .card.table-card:first-of-type {
+        page-break-before: auto !important;
+    }
+}
