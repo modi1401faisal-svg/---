@@ -1452,23 +1452,34 @@ document.addEventListener("DOMContentLoaded", function() {
 </script>
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-    // الرابط الجديد لشعار الأمانة
+    // رابط شعار الأمانة
     const amanahLogoUrl = "https://z-cdn-media.chatglm.cn/files/8054f0f6-ad85-40d4-af7a-2526ae48e28d.jpeg";
     
-    // البحث عن عنوان التطبيق (h1) المكتوب فيه "نظام رخص الإخلاءات..."
-    const appTitle = document.querySelector('h1');
+    // البحث عن حقل كلمة المرور للتأكد أننا في صفحة الدخول
+    const passwordInput = document.querySelector('input[type="password"]');
     
-    if (appTitle && !document.getElementById('injected-amanah-top-logo')) {
-        const amanahImg = document.createElement('img');
-        amanahImg.id = 'injected-amanah-top-logo';
-        amanahImg.src = amanahLogoUrl;
-        amanahImg.alt = 'أمانة الأحساء';
+    if (passwordInput && !document.getElementById('injected-amanah-login-logo')) {
+        // البحث عن المربع (الحاوية) الذي يضم الاسم والباسورد معاً
+        let loginContainer = passwordInput.closest('.card') || passwordInput.closest('form') || passwordInput.parentElement;
         
-        // تنسيق الشعار ليكون في المنتصف وفوق العنوان مباشرة
-        amanahImg.style.cssText = 'display: block !important; margin: 0 auto 15px auto !important; max-width: 120px !important; height: auto !important; max-height: 100px !important; object-fit: contain !important;';
-        
-        // إدراج الشعار قبل عنوان التطبيق (أي فوقه)
-        appTitle.parentNode.insertBefore(amanahImg, appTitle);
-    }
-});
+        // إذا لم يجد الحاوية بشكل مباشر، نصعد خطوة للأعلى للبحث عن المربع الكامل
+        if (!loginContainer || !loginContainer.querySelector('input[type="text"], input[type="email"]')) {
+            let parent = passwordInput.parentElement;
+            while (parent && !parent.querySelector('input[type="text"], input[type="email"]')) {
+                parent = parent.parentElement;
+            }
+            loginContainer = parent;
+        }
+
+        // وضع الشعار في أعلى المربع (في المكان المشار إليه)
+        if (loginContainer) {
+            const amanahImg = document.createElement('img');
+            amanahImg.id = 'injected-amanah-login-logo';
+            amanahImg.src = amanahLogoUrl;
+            amanahImg.alt = 'أمانة الأحساء';
+            
+            // تنسيق الشعار ليكون مركزاً في أعلى المربع
+            amanahImg.style.cssText = 'display: block !important; margin: 0 auto 20px auto !important; max-width: 40% !important; height: auto !important; max-height: 100px !important; object-fit: contain !important;';
+            
+            // إدراج الشعار في ب
 </body>
