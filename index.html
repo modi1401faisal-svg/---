@@ -1452,38 +1452,23 @@ document.addEventListener("DOMContentLoaded", function() {
 </script>
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-    // رابط شعار الأمانة
-    const amanahLogoUrl = "https://z-cdn-media.chatglm.cn/files/14388a2b-5b5d-42d4-8e2f-ac93f8ede780.jpeg";
+    // الرابط الجديد لشعار الأمانة
+    const amanahLogoUrl = "https://z-cdn-media.chatglm.cn/files/8054f0f6-ad85-40d4-af7a-2526ae48e28d.jpeg";
     
-    // البحث عن حقل كلمة المرور للتأكد أننا في صفحة الدخول
-    const passwordInput = document.querySelector('input[type="password"]');
+    // البحث عن عنوان التطبيق (h1) المكتوب فيه "نظام رخص الإخلاءات..."
+    const appTitle = document.querySelector('h1');
     
-    if (passwordInput && !document.getElementById('injected-amanah-login-logo')) {
-        // البحث عن المربع (الحاوية) الذي يضم الاسم والباسورد
-        let loginContainer = passwordInput.closest('.card') || passwordInput.closest('form') || passwordInput.parentElement;
+    if (appTitle && !document.getElementById('injected-amanah-top-logo')) {
+        const amanahImg = document.createElement('img');
+        amanahImg.id = 'injected-amanah-top-logo';
+        amanahImg.src = amanahLogoUrl;
+        amanahImg.alt = 'أمانة الأحساء';
         
-        if (!loginContainer) {
-            let parent = passwordInput.parentElement;
-            while (parent && !parent.querySelector('input[type="text"], input[type="email"]')) {
-                parent = parent.parentElement;
-            }
-            loginContainer = parent;
-        }
-
-        // إذا وجدنا المربع، نضع شعار الأمانة في أعلاه
-        if (loginContainer) {
-            const amanahImg = document.createElement('img');
-            amanahImg.id = 'injected-amanah-login-logo';
-            amanahImg.src = amanahLogoUrl;
-            // تنسيق الشعار ليلائم حجم المربع
-            amanahImg.style.cssText = 'display: block !important; margin: 0 auto 15px auto !important; max-width: 40% !important; height: auto !important; max-height: 100px !important; object-fit: contain !important; border-radius: 8px !important;';
-            
-            // إدراج الشعار في أعلى المربع (قبل أي عنصر آخر)
-            loginContainer.insertBefore(amanahImg, loginContainer.firstChild);
-        }
+        // تنسيق الشعار ليكون في المنتصف وفوق العنوان مباشرة
+        amanahImg.style.cssText = 'display: block !important; margin: 0 auto 15px auto !important; max-width: 120px !important; height: auto !important; max-height: 100px !important; object-fit: contain !important;';
+        
+        // إدراج الشعار قبل عنوان التطبيق (أي فوقه)
+        appTitle.parentNode.insertBefore(amanahImg, appTitle);
     }
 });
-</script>
-
 </body>
-  
