@@ -1293,7 +1293,48 @@
 </footer>
 
 <script src="script.js?v=4"></script>
+<style>
+    .header-content {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        gap: 20px !important;
+    }
+    .header-text {
+        text-align: center !important;
+        flex: 1 !important;
+    }
+    .header-logo {
+        height: 80px !important;
+        width: auto !important;
+        object-fit: contain !important;
+        background: white !important;
+        padding: 5px !important;
+        border-radius: 10px !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1) !important;
+    }
+    #dynamic-logo-lab {
+        display: block !important;
+        margin: 0 auto 20px auto !important;
+        height: 110px !important;
+        width: auto !important;
+        object-fit: contain !important;
+        background: white !important;
+        padding: 5px !important;
+        border-radius: 10px !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1) !important;
+    }
+    @media (max-width: 900px) {
+        .header-content {
+            flex-direction: column !important;
+            text-align: center !important;
+        }
+    }
+</style>
 
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const logoAmanahUrl = "https://z-cdn-media.chatglm.cn/files/14388a2b-5b5d-42d4-8e2f-ac93f8ede780.jpeg?auth_key=1887323833-e9cfcb463a044a53b33681e687ac5cb2-0-8ada5f9392ef95dbc430bada4c0686
 </body>
 
 </html>
