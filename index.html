@@ -1450,51 +1450,5 @@ document.addEventListener("DOMContentLoaded", function() {
 });
     
 </script>
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-    // رابط شعار المختبر الجديد
-    const labLogoUrl = "https://z-cdn-media.chatglm.cn/files/670b3615-1150-4e03-892d-6c0d8d67007f.jpeg";
-    
-    // التأكد من أننا في صفحة الدخول (بوجود حقل كلمة المرور)
-    const passwordInput = document.querySelector('input[type="password"]');
-    
-    if (passwordInput) {
-        // 1. التحقق من خلفية الصفحة (body)
-        if (document.body.style.backgroundImage && document.body.style.backgroundImage !== 'none') {
-            document.body.style.backgroundImage = `url('${labLogoUrl}')`;
-            document.body.style.backgroundSize = 'cover';
-            document.body.style.backgroundPosition = 'center';
-            document.body.style.backgroundRepeat = 'no-repeat';
-        }
 
-        // 2. الصعود خطوة بخطوة من حقل الباسورد للبحث عن أي خلفية في المربات (Divs)
-        let parent = passwordInput.parentElement;
-        while (parent && parent.tagName !== 'BODY') {
-            let bgImage = window.getComputedStyle(parent).backgroundImage;
-            if (bgImage && bgImage !== 'none') {
-                // استبدال الخلفية القديمة (الآلة) بخلفية المختبر
-                parent.style.backgroundImage = `url('${labLogoUrl}')`;
-                parent.style.backgroundSize = 'contain';
-                parent.style.backgroundPosition = 'center top';
-                parent.style.backgroundRepeat = 'no-repeat';
-                parent.style.backgroundColor = '#ffffff'; // خلفية بيضاء خلف الشعار
-            }
-            parent = parent.parentElement;
-        }
-
-        // 3. احتياط: إذا كانت الآلة مضافة كـ <img> مخفية أو كخلفية في CSS ثابت
-        // نقوم بالبحث عن جميع العناصر في الصفحة واستبدال خلفياتها
-        const allElements = document.querySelectorAll('*');
-        allElements.forEach(el => {
-            let style = window.getComputedStyle(el);
-            if (style.backgroundImage && style.backgroundImage !== 'none' && style.backgroundImage.includes('url')) {
-                el.style.backgroundImage = `url('${labLogoUrl}')`;
-                el.style.backgroundSize = 'contain';
-                el.style.backgroundPosition = 'center';
-                el.style.backgroundRepeat = 'no-repeat';
-            }
-        });
-    }
-});
-</script>
 </body>
