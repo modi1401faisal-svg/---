@@ -1293,8 +1293,7 @@
 </footer>
 
 <script src="script.js?v=4"></script>
-    
-<style>
+    <style>
     /* تنسيق شعار الأمانة في الهيدر */
     .header-content {
         display: flex !important;
@@ -1315,7 +1314,7 @@
         border-radius: 10px !important;
     }
     
-    /* تنسيق شعار المختبر داخل مربع الدخول */
+    /* تنسيق شعار المختبر (يطبق على الصورة المستبدلة) */
     .lab-logo-injected {
         display: block !important;
         margin: 0 auto 20px auto !important;
@@ -1331,10 +1330,15 @@
     }
 
     /* ======================================================
-       إعدادات الطباعة والتحويل إلى PDF
-       تجبر المتصفح على إظهار الشعار والألوان في ملف الـ PDF
+       إعدادات الطباعة والتحويل إلى PDF (أقوى إعدادات الطباعة)
     ====================================================== */
     @media print {
+        body * {
+            visibility: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+        }
         .header-logo-injected, .lab-logo-injected {
             display: block !important;
             visibility: visible !important;
@@ -1342,10 +1346,11 @@
             print-color-adjust: exact !important;
             color-adjust: exact !important;
         }
-        .main-header {
-            display: flex !important;
+        .main-header, .header-content, .card-header, .navbar {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            color-adjust: exact !important;
+            visibility: visible !important;
         }
     }
 </style>
@@ -1377,37 +1382,41 @@ document.addEventListener("DOMContentLoaded", function() {
         headerContent.prepend(amanahImg);
     }
 
-    // 2. وضع شعار المختبر في شاشة الدخول
+    // 2. استبدال صورة الآلة بشعار المختبر في نفس المكان تماماً
     const passwordInput = document.querySelector('input[type="password"]');
     if (passwordInput && !document.getElementById('injected-lab-logo')) {
-        let loginContainer = passwordInput.closest('.card') || passwordInput.closest('form') || passwordInput.parentElement;
+        // نبحث عن جميع الصور في صفحة الدخول
+        const allImages = document.querySelectorAll('img');
+        let machineImageReplaced = false;
         
-        if (!loginContainer) {
-            let parent = passwordInput.parentElement;
-            while (parent && !parent.querySelector('input[type="text"], input[type="email"]')) {
-                parent = parent.parentElement;
+        allImages.forEach(img => {
+            // إذا كانت الصورة ليست شعار الأمانة ولم يتم تعديلها مسبقاً
+            if (img.id !== 'injected-amanah-logo' && img.id !== 'injected-lab-logo') {
+                // عثرنا على صورة الآلة! نقوم بتغيير مصدرها لتصبح شعار المختبر
+                img.id = 'injected-lab-logo';
+                img.src = labLogoUrl;
+                img.className = 'lab-logo-injected';
+                img.removeAttribute('width');
+                img.removeAttribute('height');
+                img.style.cssText = 'display: block !important; margin: 0 auto 20px auto !important; max-width: 60% !important; height: auto !important; max-height: 120px !important; object-fit: contain !important; border-radius: 8px !important;';
+                machineImageReplaced = true;
             }
-            loginContainer = parent;
-        }
+        });
 
-        if (loginContainer) {
-            // حذف أي صور قديمة داخل هذا المربع
-            const oldImages = loginContainer.querySelectorAll('img');
-            oldImages.forEach(img => {
-                if (img.id !== 'injected-lab-logo') {
-                    img.remove();
-                }
-            });
-
-            // إدراج شعار المختبر في أعلى المربع
-            const labImg = document.createElement('img');
-            labImg.id = 'injected-lab-logo';
-            labImg.src = labLogoUrl;
-            labImg.className = 'lab-logo-injected';
-            loginContainer.insertBefore(labImg, loginContainer.firstChild);
+        // احتياط: إذا لم يجد أي صورة ليستبدلها، سيضيف الشعار أعلى المربع
+        if (!machineImageReplaced) {
+            let loginContainer = passwordInput.closest('.card') || passwordInput.closest('form');
+            if (loginContainer) {
+                const labImg = document.createElement('img');
+                labImg.id = 'injected-lab-logo';
+                labImg.src = labLogoUrl;
+                labImg.className = 'lab-logo-injected';
+                loginContainer.insertBefore(labImg, loginContainer.firstChild);
+            }
         }
     }
 });
+</script>
 </script>
 
 </html>
