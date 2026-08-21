@@ -1314,22 +1314,45 @@
         padding: 5px !important;
         border-radius: 10px !important;
     }
-    /* تنسيق شعار المختبر في شاشة الدخول */
+    
+    /* تنسيق شعار المختبر داخل مربع الدخول */
     .lab-logo-injected {
         display: block !important;
         margin: 0 auto 20px auto !important;
-        height: 110px !important;
-        width: auto !important;
-        border-radius: 10px !important;
+        max-width: 60% !important;
+        height: auto !important;
+        max-height: 120px !important;
+        object-fit: contain !important;
+        border-radius: 8px !important;
     }
+    
     @media (max-width: 900px) {
         .header-content { flex-direction: column !important; text-align: center !important; }
+    }
+
+    /* ======================================================
+       إعدادات الطباعة والتحويل إلى PDF
+       تجبر المتصفح على إظهار الشعار والألوان في ملف الـ PDF
+    ====================================================== */
+    @media print {
+        .header-logo-injected, .lab-logo-injected {
+            display: block !important;
+            visibility: visible !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+        }
+        .main-header {
+            display: flex !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
     }
 </style>
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-    // روابط الصور المباشرة
+    // روابط الصور
     const amanahLogoUrl = "https://z-cdn-media.chatglm.cn/files/14388a2b-5b5d-42d4-8e2f-ac93f8ede780.jpeg?auth_key=1887326183-5ce98f505449411fb3298ff8de264250-0-b067337c641d6b6447fcb70ea49bc8c3";
     const labLogoUrl = "https://z-cdn-media.chatglm.cn/files/6222b48e-df16-4cef-8578-44b41893fc0e.jpeg?auth_key=1887326183-74b52225407b4b17ba4f3e9406b863d1-0-e1d1a0fe8d683b6a3c118333f8ce6900";
 
@@ -1339,7 +1362,6 @@ document.addEventListener("DOMContentLoaded", function() {
         const h1 = headerContent.querySelector('h1');
         const p = headerContent.querySelector('p');
         
-        // لف النص في حاوية ليكون في المنتصف
         if (h1 && p && !headerContent.querySelector('.header-text')) {
             const textDiv = document.createElement('div');
             textDiv.className = 'header-text';
@@ -1348,34 +1370,41 @@ document.addEventListener("DOMContentLoaded", function() {
             headerContent.appendChild(textDiv);
         }
         
-        // إضافة الشعار
         const amanahImg = document.createElement('img');
         amanahImg.id = 'injected-amanah-logo';
         amanahImg.src = amanahLogoUrl;
         amanahImg.className = 'header-logo-injected';
-        headerContent.prepend(amanahImg); // يضعه في اليمين
+        headerContent.prepend(amanahImg);
     }
 
     // 2. وضع شعار المختبر في شاشة الدخول
     const passwordInput = document.querySelector('input[type="password"]');
     if (passwordInput && !document.getElementById('injected-lab-logo')) {
-        // البحث عن المربع الذي يحتوي على حقلي الاسم والباسورد
-        let loginContainer = passwordInput.closest('form') || passwordInput.closest('.card');
+        let loginContainer = passwordInput.closest('.card') || passwordInput.closest('form') || passwordInput.parentElement;
         
         if (!loginContainer) {
             let parent = passwordInput.parentElement;
-            while (parent && !parent.querySelector('input[type="text"]')) {
+            while (parent && !parent.querySelector('input[type="text"], input[type="email"]')) {
                 parent = parent.parentElement;
             }
             loginContainer = parent;
         }
 
         if (loginContainer) {
+            // حذف أي صور قديمة داخل هذا المربع
+            const oldImages = loginContainer.querySelectorAll('img');
+            oldImages.forEach(img => {
+                if (img.id !== 'injected-lab-logo') {
+                    img.remove();
+                }
+            });
+
+            // إدراج شعار المختبر في أعلى المربع
             const labImg = document.createElement('img');
             labImg.id = 'injected-lab-logo';
             labImg.src = labLogoUrl;
             labImg.className = 'lab-logo-injected';
-            loginContainer.insertBefore(labImg, loginContainer.firstChild); // يضعه في أعلى المربع
+            loginContainer.insertBefore(labImg, loginContainer.firstChild);
         }
     }
 });
