@@ -1293,7 +1293,9 @@
 </footer>
 
 <script src="script.js?v=4"></script>
+    
 <style>
+    /* تنسيق شعار الأمانة في الهيدر */
     .header-content {
         display: flex !important;
         align-items: center !important;
@@ -1304,37 +1306,79 @@
         text-align: center !important;
         flex: 1 !important;
     }
-    .header-logo {
+    .header-logo-injected {
         height: 80px !important;
         width: auto !important;
         object-fit: contain !important;
         background: white !important;
         padding: 5px !important;
         border-radius: 10px !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.1) !important;
     }
-    #dynamic-logo-lab {
+    /* تنسيق شعار المختبر في شاشة الدخول */
+    .lab-logo-injected {
         display: block !important;
         margin: 0 auto 20px auto !important;
         height: 110px !important;
         width: auto !important;
-        object-fit: contain !important;
-        background: white !important;
-        padding: 5px !important;
         border-radius: 10px !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.1) !important;
     }
     @media (max-width: 900px) {
-        .header-content {
-            flex-direction: column !important;
-            text-align: center !important;
-        }
+        .header-content { flex-direction: column !important; text-align: center !important; }
     }
 </style>
 
 <script>
-    document.addEventListener("DOMContentLoaded", function() {
-        const logoAmanahUrl = "https://z-cdn-media.chatglm.cn/files/14388a2b-5b5d-42d4-8e2f-ac93f8ede780.jpeg?auth_key=1887323833-e9cfcb463a044a53b33681e687ac5cb2-0-8ada5f9392ef95dbc430bada4c0686
-</body>
+document.addEventListener("DOMContentLoaded", function() {
+    // روابط الصور المباشرة
+    const amanahLogoUrl = "https://z-cdn-media.chatglm.cn/files/14388a2b-5b5d-42d4-8e2f-ac93f8ede780.jpeg?auth_key=1887326183-5ce98f505449411fb3298ff8de264250-0-b067337c641d6b6447fcb70ea49bc8c3";
+    const labLogoUrl = "https://z-cdn-media.chatglm.cn/files/6222b48e-df16-4cef-8578-44b41893fc0e.jpeg?auth_key=1887326183-74b52225407b4b17ba4f3e9406b863d1-0-e1d1a0fe8d683b6a3c118333f8ce6900";
+
+    // 1. وضع شعار الأمانة في الهيدر
+    const headerContent = document.querySelector('.header-content');
+    if (headerContent && !document.getElementById('injected-amanah-logo')) {
+        const h1 = headerContent.querySelector('h1');
+        const p = headerContent.querySelector('p');
+        
+        // لف النص في حاوية ليكون في المنتصف
+        if (h1 && p && !headerContent.querySelector('.header-text')) {
+            const textDiv = document.createElement('div');
+            textDiv.className = 'header-text';
+            textDiv.appendChild(h1);
+            textDiv.appendChild(p);
+            headerContent.appendChild(textDiv);
+        }
+        
+        // إضافة الشعار
+        const amanahImg = document.createElement('img');
+        amanahImg.id = 'injected-amanah-logo';
+        amanahImg.src = amanahLogoUrl;
+        amanahImg.className = 'header-logo-injected';
+        headerContent.prepend(amanahImg); // يضعه في اليمين
+    }
+
+    // 2. وضع شعار المختبر في شاشة الدخول
+    const passwordInput = document.querySelector('input[type="password"]');
+    if (passwordInput && !document.getElementById('injected-lab-logo')) {
+        // البحث عن المربع الذي يحتوي على حقلي الاسم والباسورد
+        let loginContainer = passwordInput.closest('form') || passwordInput.closest('.card');
+        
+        if (!loginContainer) {
+            let parent = passwordInput.parentElement;
+            while (parent && !parent.querySelector('input[type="text"]')) {
+                parent = parent.parentElement;
+            }
+            loginContainer = parent;
+        }
+
+        if (loginContainer) {
+            const labImg = document.createElement('img');
+            labImg.id = 'injected-lab-logo';
+            labImg.src = labLogoUrl;
+            labImg.className = 'lab-logo-injected';
+            loginContainer.insertBefore(labImg, loginContainer.firstChild); // يضعه في أعلى المربع
+        }
+    }
+});
+</script>
 
 </html>
