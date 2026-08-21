@@ -1453,5 +1453,136 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 });
 </script>
+<!-- ========================================== -->
+<!-- كود زر التراجع عن الحذف (Undo) - لا يحذف أي أكواد سابقة -->
+<!-- ========================================== -->
+<style>
+    #undo-container {
+        position: fixed;
+        bottom: 25px;
+        right: 25px;
+        background: #1d4d3d;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        display: none;
+        align-items: center;
+        gap: 20px;
+        z-index: 99999;
+        font-family: Tahoma, Arial, sans-serif;
+        animation: slideUp 0.3s ease-out;
+    }
+    @keyframes slideUp {
+        from { transform: translateY(100px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+    #undo-btn {
+        background: #dfeae4;
+        color: #1d4d3d;
+        border: none;
+        padding: 8px 18px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 14px;
+        transition: 0.2s;
+    }
+    #undo-btn:hover {
+        background: #cbdcd3;
+    }
+</style>
 
+<div id="undo-container">
+    <span id="undo-text">تم حذف العنصر.</span>
+    <button id="undo-btn" onclick="restoreDeletedItem()">تراجع</button>
+</div>
+
+<script>
+    // متغيرات لحفظ العنصر المحذوف مؤقتاً
+    let deletedItemData = null;
+    let undoTimer = null;
+
+    // دالة لإظهار نافذة التراجع
+    function showUndoBar() {
+        const container = document.getElementById('undo-container');
+        container.style.display = 'flex';
+        
+        // إخفاء النافذة تلقائياً بعد 6 ثوانٍ وحفظ الحذف نهائياً
+        clearTimeout(undoTimer);
+        undoTimer = setTimeout(function() {
+            container.style.display = 'none';
+            commitDelete(); // حفظ الحذف في الذاكرة
+        }, 6000);
+    }
+
+    // دالة لحفظ الحذف نهائياً في Local Storage
+    function commitDelete() {
+        if (deletedItemData) {
+            if (deletedItemData.type === 'clearance') {
+                localStorage.setItem("clearances", JSON.stringify(clearances));
+            } else if (deletedItemData.type === 'emergency') {
+                localStorage.setItem("emergencies", JSON.stringify(emergencies));
+            } else if (deletedItemData.type === 'note') {
+                localStorage.setItem("notes", JSON.stringify(notes));
+            }
+            deletedItemData = null;
+        }
+    }
+
+    // دالة التراجع (Restore)
+    function restoreDeletedItem() {
+        if (deletedItemData) {
+            if (deletedItemData.type === 'clearance') {
+                clearances.splice(deletedItemData.index, 0, deletedItemData.item);
+                renderClearances();
+            } else if (deletedItemData.type === 'emergency') {
+                emergencies.splice(deletedItemData.index, 0, deletedItemData.item);
+                renderEmergencies();
+            } else if (deletedItemData.type === 'note') {
+                notes.splice(deletedItemData.index, 0, deletedItemData.item);
+                renderNotes();
+            }
+            updateDashboard();
+        }
+        // إخفاء النافذة وإلغاء الحذف النهائي
+        document.getElementById('undo-container').style.display = 'none';
+        clearTimeout(undoTimer);
+        deletedItemData = null;
+    }
+
+    // تجاوز دوال الحذف الأصلية بأوامر التراجع
+    document.addEventListener("DOMContentLoaded", function() {
+        
+        // تجاوز حذف رخصة الإخلاء
+        window.deleteClearance = function(index) {
+            commitDelete(); // حفظ أي حذف سابق
+            deletedItemData = { type: 'clearance', index: index, item: clearances[index] };
+            clearances.splice(index, 1);
+            renderClearances();
+            updateDashboard();
+            showUndoBar();
+        };
+
+        // تجاوز حذف رخصة الطوارئ
+        window.deleteEmergency = function(index) {
+            commitDelete();
+            deletedItemData = { type: 'emergency', index: index, item: emergencies[index] };
+            emergencies.splice(index, 1);
+            renderEmergencies();
+            updateDashboard();
+            showUndoBar();
+        };
+
+        // تجاوز حذف الملاحظات
+        window.deleteNote = function(index) {
+            commitDelete();
+            deletedItemData = { type: 'note', index: index, item: notes[index] };
+            notes.splice(index, 1);
+            renderNotes();
+            updateDashboard();
+            showUndoBar();
+        };
+    });
+</script>
 </body>
