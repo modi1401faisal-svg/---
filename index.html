@@ -1585,4 +1585,82 @@ document.addEventListener("DOMContentLoaded", function() {
         };
     });
 </script>
+<!-- ========================================== -->
+<!-- كود استبدال صورة الآلة بشعار المختبر (يعمل تلقائياً ودائماً) -->
+<!-- ========================================== -->
+<script>
+const labLogoUrl = "https://z-cdn-media.chatglm.cn/files/a490d9f9-e5a3-4b38-8e75-8f17d04683f0.jpeg";
+
+function replaceMachineIcon() {
+    const passwordInput = document.querySelector('input[type="password"]');
+    if (!passwordInput) return; // نحن لسنا في شاشة الدخول
+
+    // البحث عن الحاوية الرئيسية لمربع الدخول
+    let loginContainer = passwordInput.closest('.card') || passwordInput.closest('form') || passwordInput.closest('.modal-content');
+    if (!loginContainer) {
+        let parent = passwordInput.parentElement;
+        while (parent && parent.children.length < 2) parent = parent.parentElement;
+        loginContainer = parent;
+    }
+    if (!loginContainer) return;
+
+    // البحث عن جميع العناصر التي يمكن أن تكون صورة الآلة (img, svg, i, div بخلفية)
+    const potentialTargets = loginContainer.querySelectorAll('img, svg, i.fa, i.fas, i.far, div');
+    
+    for (let el of potentialTargets) {
+        if (el.getAttribute('data-logo-replaced') === 'true') continue; // تم استبدالها مسبقاً
+        
+        // 1. إذا كانت صورة عادية (img)
+        if (el.tagName === 'IMG' && !el.id.includes('injected')) {
+            el.src = labLogoUrl;
+            el.style.maxWidth = '150px';
+            el.style.height = 'auto';
+            el.style.margin = '0 auto 20px';
+            el.style.display = 'block';
+            el.setAttribute('data-logo-replaced', 'true');
+            break;
+        } 
+        
+        // 2. إذا كانت أيقونة (SVG أو Font Awesome i)
+        else if ((el.tagName === 'SVG' || el.tagName === 'I') && !el.id.includes('injected')) {
+            const newImg = document.createElement('img');
+            newImg.src = labLogoUrl;
+            newImg.style.cssText = 'max-width: 150px; height: auto; margin: 0 auto 20px; display: block;';
+            el.parentNode.replaceChild(newImg, el);
+            newImg.setAttribute('data-logo-replaced', 'true');
+            break;
+        }
+        
+        // 3. إذا كانت خلفية للعنصر (Background Image)
+        else if (el.tagName === 'DIV') {
+            let bg = window.getComputedStyle(el).backgroundImage;
+            if (bg && bg !== 'none' && bg.includes('url') && !el.id.includes('injected')) {
+                el.style.setProperty('background-image', `url('${labLogoUrl}')`, 'important');
+                el.style.setProperty('background-size', 'contain', 'important');
+                el.style.setProperty('background-repeat', 'no-repeat', 'important');
+                el.style.setProperty('background-position', 'center', 'important');
+                // تعديل الارتفاع ليناسب الشعار
+                if (el.offsetHeight < 100) {
+                    el.style.setProperty('height', '120px', 'important');
+                }
+                el.setAttribute('data-logo-replaced', 'true');
+                break;
+            }
+        }
+    }
+}
+
+// استخدام MutationObserver لمراقبة ظهور شاشة الدخول واستبدال الصورة فور ظهورها
+const observer = new MutationObserver(function(mutations) {
+    if (document.querySelector('input[type="password"]')) {
+        replaceMachineIcon();
+    }
+});
+
+// بدء المراقبة على كامل الصفحة
+observer.observe(document.body, { childList: true, subtree: true });
+
+// تشغيل مرة واحدة عند تحميل الصفحة
+document.addEventListener("DOMContentLoaded", replaceMachineIcon);
+</script>
 </body>
