@@ -1793,4 +1793,120 @@ document.addEventListener("DOMContentLoaded", function() {
 
 });
 </script>
+<!-- ========================================== -->
+<!-- كود الحذف مع التراجع (موصول بـ Supabase) -->
+<!-- ========================================== -->
+<style>
+    #undo-container {
+        position: fixed;
+        bottom: 25px;
+        right: 25px;
+        background: #1d4d3d;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        display: none;
+        align-items: center;
+        gap: 20px;
+        z-index: 99999;
+        font-family: Tahoma, Arial, sans-serif;
+    }
+    #undo-btn {
+        background: #dfeae4;
+        color: #1d4d3d;
+        border: none;
+        padding: 8px 18px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 14px;
+    }
+</style>
+
+<div id="undo-container">
+    <span>تم حذف العنصر مؤقتاً.</span>
+    <button id="undo-btn" onclick="restoreDeletedItem()">تراجع</button>
+</div>
+
+<script>
+let deletedItemData = null;
+let undoTimer = null;
+
+function showUndoBar() {
+    const container = document.getElementById('undo-container');
+    if (container) container.style.display = 'flex';
+    
+    // سيتم الحذف نهائياً من Supabase بعد 6 ثوانٍ إذا لم تضغط تراجع
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(async function() {
+        if (container) container.style.display = 'none';
+        
+        if (deletedItemData) {
+            try {
+                let tableName = deletedItemData.type === 'clearance' ? 'clearances' : 
+                                deletedItemData.type === 'emergency' ? 'emergencies' : 'notes';
+                
+                // إرسال أمر الحذف النهائي إلى Supabase باستخدام رقم التصريح
+                const { error } = await supabase.from(tableName).delete().eq('permit', deletedItemData.item.permit);
+                
+                if (error) {
+                    console.error("خطأ في الحذف من Supabase:", error.message);
+                    alert("حدث خطأ أثناء الحذف من السحابة: " + error.message);
+                }
+            } catch (err) {
+                console.error(err);
+            }
+            deletedItemData = null;
+        }
+    }, 6000);
+}
+
+function restoreDeletedItem() {
+    if (deletedItemData) {
+        if (deletedItemData.type === 'clearance') {
+            clearances.splice(deletedItemData.index, 0, deletedItemData.item);
+            renderClearances();
+        } else if (deletedItemData.type === 'emergency') {
+            emergencies.splice(deletedItemData.index, 0, deletedItemData.item);
+            renderEmergencies();
+        } else if (deletedItemData.type === 'note') {
+            notes.splice(deletedItemData.index, 0, deletedItemData.item);
+            renderNotes();
+        }
+        updateDashboard();
+    }
+    document.getElementById('undo-container').style.display = 'none';
+    clearTimeout(undoTimer); // إيقاف الحذف النهائي
+    deletedItemData = null;
+}
+
+// تحديث دوال الحذف لتعمل بالنظام الجديد
+document.addEventListener("DOMContentLoaded", function() {
+    
+    window.deleteClearance = function(index) {
+        deletedItemData = { type: 'clearance', index: index, item: clearances[index] };
+        clearances.splice(index, 1);
+        renderClearances();
+        updateDashboard();
+        showUndoBar();
+    };
+
+    window.deleteEmergency = function(index) {
+        deletedItemData = { type: 'emergency', index: index, item: emergencies[index] };
+        emergencies.splice(index, 1);
+        renderEmergencies();
+        updateDashboard();
+        showUndoBar();
+    };
+
+    window.deleteNote = function(index) {
+        deletedItemData = { type: 'note', index: index, item: notes[index] };
+        notes.splice(index, 1);
+        renderNotes();
+        updateDashboard();
+        showUndoBar();
+    };
+});
+</script>
 </body>
