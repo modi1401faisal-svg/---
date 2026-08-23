@@ -2592,7 +2592,7 @@ async function exportEmergenciesToPDF(btn) {
         <p style="text-align:center;color:#999;font-size:11px;margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p>
         </div>
     `;
-
+   
     generatePDFFromHTML(content, "رخص_الطوارئ_" + exportDate() + ".pdf", "landscape", btn);
 }
 
