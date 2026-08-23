@@ -1659,4 +1659,146 @@ document.addEventListener("DOMContentLoaded", function() {
         font-size: 13px;
         display: none;
     }</script>
+    <style>
+    /* تصميم الواجهة الجديدة (نفس لون تطبيقك تماماً) */
+    .new-auth-screen {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        background-color: #1d4d3d !important; /* نفس درجة اللون الأخضر */
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        z-index: 999999 !important;
+        font-family: Tahoma, Arial, sans-serif !important;
+    }
+    .new-auth-box {
+        background: #ffffff;
+        padding: 40px;
+        border-radius: 12px;
+        width: 350px;
+        max-width: 90%;
+        text-align: center;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+    .new-auth-box img {
+        width: 120px;
+        height: auto;
+        margin: 0 auto 15px auto;
+        display: block;
+    }
+    .new-auth-box h3 {
+        color: #1d4d3d;
+        margin: 0 0 20px 0;
+        font-size: 18px;
+    }
+    .new-auth-input {
+        width: 100%;
+        padding: 12px;
+        margin-bottom: 15px;
+        border: 1px solid #cbdad2;
+        border-radius: 8px;
+        box-sizing: border-box;
+        text-align: center;
+        outline: none;
+        font-size: 14px;
+    }
+    .new-auth-input:focus { border-color: #39745d; }
+    .new-auth-btn {
+        width: 100%;
+        padding: 12px;
+        background: #245c49;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        cursor: pointer;
+    }
+    .new-auth-btn:hover { background: #173f32; }
+    .new-auth-error {
+        color: #8a3e3e;
+        background: #f8e5e5;
+        padding: 10px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        display: none;
+        font-size: 13px;
+    }
+</style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    
+    // إذا كان المستخدم سجل الدخول للتو، نمنع ظهور الواجهة من الأساس
+    if (sessionStorage.getItem('labAuth') === 'true') return;
+
+    // 1. حذف الواجهة القديمة نهائياً (البحث عن أي حقل باسورد ليس تابع لنا وحذف الحاوية الخاصة به)
+    const oldPasswordInputs = document.querySelectorAll('input[type="password"]');
+    oldPasswordInputs.forEach(input => {
+        if (input.id !== 'new-auth-pass') {
+            let parent = input;
+            // نصعد للأعلى للبحث عن المربع الكامل (الحاوية) لنحذفه بالكامل
+            for(let i = 0; i < 6; i++) {
+                if(parent.parentElement && parent.parentElement !== document.body) parent = parent.parentElement;
+            }
+            if(parent && parent !== document.body) {
+                parent.remove(); // حذف نهائي من الصفحة
+            }
+        }
+    });
+
+    // 2. إنشاء الواجهة الجديدة وحقنها في الصفحة
+    const newScreen = document.createElement('div');
+    newScreen.className = 'new-auth-screen';
+    newScreen.id = 'new-auth-screen';
+    newScreen.innerHTML = `
+        <div class="new-auth-box">
+            <img src="https://z-cdn-media.chatglm.cn/files/bed8ef1a-c93a-4c18-9dc6-87224ea77dfb.jpeg" alt="أمانة الأحساء">
+            <h3>نظام مختبر جودة المشاريع</h3>
+            <div id="new-auth-error" class="new-auth-error">كلمة المرور غير صحيحة</div>
+            <input type="text" id="new-auth-user" class="new-auth-input" placeholder="اسم المستخدم">
+            <input type="password" id="new-auth-pass" class="new-auth-input" placeholder="كلمة المرور">
+            <button class="new-auth-btn" id="new-auth-btn">دخول</button>
+        </div>
+    `;
+    document.body.appendChild(newScreen);
+
+    // 3. برمجة زر الدخول
+    function tryLogin() {
+        const pass = document.getElementById('new-auth-pass').value;
+        if (pass === 'lab2026') {
+            sessionStorage.setItem('labAuth', 'true'); // حفظ الحالة
+            newScreen.remove(); // حذف شاشة الدخول من الصفحة
+        } else {
+            document.getElementById('new-auth-error').style.display = 'block';
+            document.getElementById('new-auth-pass').value = '';
+        }
+    }
+
+    document.getElementById('new-auth-btn').addEventListener('click', tryLogin);
+    document.getElementById('new-auth-pass').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') tryLogin();
+    });
+
+    // 4. مراقب لحظي (لحذف الواجهة القديمة إذا حاول كودك القديم إظهارها مرة أخرى)
+    const observer = new MutationObserver(function() {
+        const strayInputs = document.querySelectorAll('input[type="password"]');
+        strayInputs.forEach(input => {
+            if (input.id !== 'new-auth-pass') {
+                let parent = input;
+                for(let i = 0; i < 6; i++) {
+                    if(parent.parentElement && parent.parentElement !== document.body) parent = parent.parentElement;
+                }
+                if(parent && parent !== document.body && !parent.contains(document.getElementById('new-auth-screen'))) {
+                    parent.remove(); // حذف فوري لأي واجهة قديمة تحاول الظهور
+                }
+            }
+        });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+});
+</script>
 </body>
