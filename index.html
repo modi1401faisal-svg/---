@@ -1707,221 +1707,66 @@ document.addEventListener("DOMContentLoaded", function() {
         font-size: 13px;
     }
 </script>
-   <script>
-document.addEventListener("DOMContentLoaded", function() {
-    
-    // 1. حذف رخصة الإخلاء
-    window.deleteClearance = async function(index) {
-        const item = clearances[index];
-        // نحاول إيجاد الـ id، وإذا لم نجد نستخدم رقم التصريح permit
-        let idValue = item.id ? item.id : item.permit;
-        let colName = item.id ? 'id' : 'permit';
-        
-        if (!confirm("سيتم الآن إرسال أمر حذف للعنصر رقم " + idValue + " إلى Supabase. متابعة؟")) return;
-        
-        try {
-            await initSupabase(); // تهيئة الاتصال كما في كودك
-            
-            if (typeof client === 'undefined' || !client) {
-                alert("خطأ: المتغير client غير معرف أو فارغ!");
-                return;
-            }
-            
-            // إرسال أمر الحذف
-            const { error } = await client.from('clearances').delete().eq(colName, idValue);
-            
-            if (error) {
-                alert("❌ رفضت Supabase الحذف! رسالة الخطأ:\n" + error.message);
-            } else {
-                // إذا نجح الحذف من السحابة، نحذفه من الشاشة
-                clearances.splice(index, 1);
-                renderClearances();
-                updateDashboard();
-                alert("✅ نجح الحذف من Supabase! وتم حذفه من الشاشة.");
-            }
-        } catch (err) {
-            alert("حدث خطأ غير متوقع في الكود: " + err.message);
-        }
-    };
-
-    // 2. حذف رخصة الطوارئ
-    window.deleteEmergency = async function(index) {
-        const item = emergencies[index];
-        let idValue = item.id ? item.id : item.permit;
-        let colName = item.id ? 'id' : 'permit';
-        if (!confirm("حذف العنصر " + idValue + "؟")) return;
-        
-        try {
-            await initSupabase();
-            if (!client) return alert("client غير معرف");
-            const { error } = await client.from('emergencies').delete().eq(colName, idValue);
-            if (error) return alert("❌ خطأ Supabase: " + error.message);
-            
-            emergencies.splice(index, 1);
-            renderEmergencies();
-            updateDashboard();
-            alert("✅ تم الحذف بنجاح");
-        } catch (err) { alert(err.message); }
-    };
-
-    // 3. حذف الملاحظة
-    window.deleteNote = async function(index) {
-        const item = notes[index];
-        let idValue = item.id ? item.id : item.permit;
-        let colName = item.id ? 'id' : 'permit';
-        if (!confirm("حذف العنصر " + idValue + "؟")) return;
-        
-        try {
-            await initSupabase();
-            if (!client) return alert("client غير معرف");
-            const { error } = await client.from('notes').delete().eq(colName, idValue);
-            if (error) return alert("❌ خطأ Supabase: " + error.message);
-            
-            notes.splice(index, 1);
-            renderNotes();
-            updateDashboard();
-            alert("✅ تم الحذف بنجاح");
-        } catch (err) { alert(err.message); }
-    };
-
-});
-</script>     
-</body>
+<!-- ========================================== -->
+<!-- كود الحذف النهائي (يوضع في نهاية index.html) -->
+<!-- ========================================== -->
 <script>
-// كود تتبع أخطاء الحذف (يجب أن يعطيك رسالة واضحة بالسبب)
+// دالة حذف الإخلاءات
 window.deleteClearance = async function(index) {
-    if (!confirm("هل أنت متأكد من محاولة حذف هذه الرخصة؟")) return;
+    alert("تم الضغط على الحذف! الكود الجديد يعمل."); // رسالة للتأكد من عمل الزر
+    if (!confirm("هل أنت متأكد من الحذف نهائياً من Supabase؟")) return;
     
-    const item = clearances[index];
-    if (!item) return alert("❌ خطأ: العنصر غير موجود في الذاكرة!");
-
-    // محاولة إيجاد المعرف (id أو permit)
-    const identifier = item.id || item.permit;
-    const column = item.id ? 'id' : 'permit';
-
-    if (!identifier) {
-        return alert("❌ خطأ: التطبيق لا يجلب الـ id ولا الـ permit من Supabase. يرجى تعديل كود الـ Select.");
-    }
-
     try {
-        // استخدام نفس طريقتك في الاتصال
-        const client = await initSupabase();
+        await initSupabase();
+        const item = clearances[index];
+        if (!item) return alert("العنصر غير موجود!");
         
-        if (!client) {
-            return alert("❌ خطأ: initSupabase لم تُرجع المتغير client!");
-        }
-
-        // إرسال أمر الحذف
-        const { data, error } = await client
-            .from('clearances')
-            .delete()
-            .eq(column, identifier);
-
-        if (error) {
-            // إذا رفضت Supabase الحذف، ستظهر هنا رسالة الخطأ بالضبط
-            return alert("❌ خطأ من Supabase:\n" + error.message);
-        }
-
-        // إذا نجح الحذف
+        const col = item.id ? 'id' : 'permit';
+        const val = item.id || item.permit;
+        if (!val) return alert("لا يوجد id أو permit!");
+        
+        const { error } = await client.from('clearances').delete().eq(col, val);
+        if (error) return alert("❌ خطأ من Supabase: " + error.message);
+        
         clearances.splice(index, 1);
         renderClearances();
         updateDashboard();
-        alert("✅ تم الحذف بنجاح من Supabase!");
+        alert("✅ تم الحذف نهائياً!");
+    } catch (e) { alert("🔥 خطأ: " + e.message); }
+};
 
-    } catch (err) {
-        // إذا كان هناك خطأ برمجي في الكود نفسه
-        alert("🔥 خطأ برمجي غير متوقع:\n" + err.message);
-    }
+// دالة حذف الطوارئ
+window.deleteEmergency = async function(index) {
+    if (!confirm("هل أنت متأكد من الحذف نهائياً؟")) return;
+    try {
+        await initSupabase();
+        const item = emergencies[index];
+        const col = item.id ? 'id' : 'permit';
+        const val = item.id || item.permit;
+        const { error } = await client.from('emergencies').delete().eq(col, val);
+        if (error) return alert("❌ خطأ: " + error.message);
+        emergencies.splice(index, 1);
+        renderEmergencies();
+        updateDashboard();
+        alert("✅ تم الحذف نهائياً!");
+    } catch (e) { alert("🔥 خطأ: " + e.message); }
+};
+
+// دالة حذف الملاحظات
+window.deleteNote = async function(index) {
+    if (!confirm("هل أنت متأكد من الحذف نهائياً؟")) return;
+    try {
+        await initSupabase();
+        const item = notes[index];
+        const col = item.id ? 'id' : 'permit';
+        const val = item.id || item.permit;
+        const { error } = await client.from('notes').delete().eq(col, val);
+        if (error) return alert("❌ خطأ: " + error.message);
+        notes.splice(index, 1);
+        renderNotes();
+        updateDashboard();
+        alert("✅ تم الحذف نهائياً!");
+    } catch (e) { alert("🔥 خطأ: " + e.message); }
 };
 </script>
-<script>
-// ==========================================
-// كود اعتراض أزرار الحذف وتوصيلها بـ Supabase مباشرة
-// ==========================================
-function setupSafeDelete() {
-    // البحث عن كل أزرار الحذف في الصفحة
-    const buttons = document.querySelectorAll('.delete');
-    
-    buttons.forEach(btn => {
-        // إذا لم يتم تركيب الكود الجديد على هذا الزر، نقوم بتركيبه
-        if(!btn.getAttribute('data-safe-delete')) {
-            btn.setAttribute('data-safe-delete', 'true');
-            btn.removeAttribute('onclick'); // إلغاء الدالة القديمة نهائياً!
-            btn.addEventListener('click', handleSafeDelete); // تركيب الدالة الجديدة
-        }
-    });
-}
-
-// تشغيل الكود كل ثانية للإمساك بأي زر جديد يظهر في الصفحة
-setInterval(setupSafeDelete, 1000);
-
-// الدالة الجديدة للحذف
-async function handleSafeDelete(e) {
-    e.preventDefault();
-    const btn = e.currentTarget;
-    const row = btn.closest('tr');
-    if (!row) return alert("❌ خطأ: لا يمكن العثور على الصف!");
-    
-    // محاولة استخراج رقم التصريح من الصف (غالباً يكون في أول خلية)
-    const cells = row.querySelectorAll('td');
-    const permitVal = cells[0] ? cells[0].innerText.trim() : "";
-    
-    if (!confirm("هل أنت متأكد من حذف العنصر: " + permitVal + " نهائياً؟")) return;
-    
-    // البحث عن العنصر في الذاكرة لمعرفة الـ id أو الـ permit
-    let foundArray = null;
-    let foundItem = null;
-    let foundIndex = -1;
-    let tableName = "";
-    
-    // 1. البحث في رخص الإخلاء
-    let idx = clearances.findIndex(c => String(c.permit) === permitVal);
-    if (idx !== -1) { foundArray = clearances; foundItem = clearances[idx]; foundIndex = idx; tableName = "clearances"; }
-    
-    // 2. البحث في رخص الطوارئ
-    if (!foundItem) {
-        idx = emergencies.findIndex(c => String(c.permit) === permitVal);
-        if (idx !== -1) { foundArray = emergencies; foundItem = emergencies[idx]; foundIndex = idx; tableName = "emergencies"; }
-    }
-    
-    // 3. البحث في الملاحظات
-    if (!foundItem) {
-        idx = notes.findIndex(c => String(c.permit) === permitVal);
-        if (idx !== -1) { foundArray = notes; foundItem = notes[idx]; foundIndex = idx; tableName = "notes"; }
-    }
-    
-    if (!foundItem) {
-        alert("❌ لم أجد العنصر في الذاكرة. الرقم المستخرج من الجدول هو: " + permitVal);
-        return;
-    }
-    
-    try {
-        // الاتصال بـ Supabase بطريقتك المعتادة
-        await initSupabase();
-        
-        if (typeof client === 'undefined' || !client) {
-            return alert("❌ خطأ: المتغير client غير معرف بعد!");
-        }
-        
-        // تحديد المعرف (id أو permit)
-        const identifier = foundItem.id || foundItem.permit;
-        const column = foundItem.id ? 'id' : 'permit';
-        
-        // إرسال أمر الحذف لـ Supabase
-        const { error } = await client.from(tableName).delete().eq(column, identifier);
-        
-        if (error) {
-            // إذا رفضت Supabase الحذف، ستظهر لك رسالة الخطأ بالضبط
-            alert("❌ خطأ من Supabase:\n" + error.message);
-        } else {
-            // إذا نجح الحذف من السحابة
-            foundArray.splice(foundIndex, 1);
-            // تحديث الجدول في الشاشة
-            if (tableName === 'clearances') renderClearances();
-            if (tableName === 'emergencies') renderEmergencies();
-            if (tableName === 'notes') renderNotes();
-            updateDashboard();
-            alert("✅ تم الحذف نهائياً من Supabase بنجاح!");
-        }
-    } catch (err) {
-        alert("🔥 خطأ برمجي
+</body>
