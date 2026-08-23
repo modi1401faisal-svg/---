@@ -3333,138 +3333,45 @@ async function resolveExportItems(items) {
 
     document.addEventListener("DOMContentLoaded", initAutocomplete);
 })();
-// ============================================================
-// نظام الحذف والتراجع النهائي - Supabase
-// للجداول الثلاثة:
-// clearances / emergencies / notes
-// ============================================================
+// ==========================================================
+// نظام الحذف + التراجع
+// مرتبط مباشرة بقاعدة Supabase
+// الجداول:
+// clearances
+// emergencies
+// notes
+// ==========================================================
 
 let deletedItemData = null;
 let undoTimer = null;
 
 
-// ============================================================
-// الحصول على اتصال Supabase الموجود في التطبيق
-// ============================================================
-
-function getSupabaseClient() {
-
-    // إذا كان المتغير supabase هو الاتصال نفسه
-    if (
-        typeof window.supabase !== "undefined" &&
-        typeof window.supabase.from === "function"
-    ) {
-        return window.supabase;
-    }
-
-    // إذا كان الاتصال باسم supabaseClient
-    if (
-        typeof window.supabaseClient !== "undefined" &&
-        typeof window.supabaseClient.from === "function"
-    ) {
-        return window.supabaseClient;
-    }
-
-    // إذا كان الاتصال باسم db
-    if (
-        typeof window.db !== "undefined" &&
-        typeof window.db.from === "function"
-    ) {
-        return window.db;
-    }
-
-    return null;
-}
-
-
-// ============================================================
-// إنشاء نافذة التراجع
-// ============================================================
+// ==========================================================
+// إظهار شريط التراجع
+// ==========================================================
 
 function showUndoBar() {
+    const container = document.getElementById("undo-container");
 
-    let container = document.getElementById("undo-container");
-
-    if (!container) {
-
-        container = document.createElement("div");
-
-        container.id = "undo-container";
-
-        container.innerHTML = `
-            <span id="undo-text">تم حذف السجل بنجاح.</span>
-            <button id="undo-btn" type="button">
-                تراجع
-            </button>
-        `;
-
-        document.body.appendChild(container);
-
-        const style = document.createElement("style");
-
-        style.textContent = `
-            #undo-container {
-                position: fixed;
-                bottom: 25px;
-                right: 25px;
-                background: #1d4d3d;
-                color: white;
-                padding: 15px 20px;
-                border-radius: 10px;
-                box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-                display: none;
-                align-items: center;
-                gap: 20px;
-                z-index: 999999;
-                font-family: Tahoma, Arial, sans-serif;
-                direction: rtl;
-            }
-
-            #undo-btn {
-                background: #dfeae4;
-                color: #1d4d3d;
-                border: none;
-                padding: 8px 18px;
-                border-radius: 6px;
-                cursor: pointer;
-                font-weight: bold;
-                font-size: 14px;
-            }
-
-            #undo-btn:hover {
-                background: #cbdcd3;
-            }
-        `;
-
-        document.head.appendChild(style);
-
-        document
-            .getElementById("undo-btn")
-            .addEventListener("click", restoreDeletedItem);
-    }
+    if (!container) return;
 
     container.style.display = "flex";
 
     clearTimeout(undoTimer);
 
     undoTimer = setTimeout(() => {
-
         container.style.display = "none";
-
         deletedItemData = null;
-
     }, 6000);
 }
 
 
-// ============================================================
-// إخفاء نافذة التراجع
-// ============================================================
+// ==========================================================
+// إخفاء شريط التراجع
+// ==========================================================
 
 function hideUndoBar() {
-
-    const container =
-        document.getElementById("undo-container");
+    const container = document.getElementById("undo-container");
 
     if (container) {
         container.style.display = "none";
@@ -3474,363 +3381,252 @@ function hideUndoBar() {
 }
 
 
-// ============================================================
-// الحذف الحقيقي من Supabase
-// ============================================================
+// ==========================================================
+// الحذف من Supabase
+// ==========================================================
 
-async function deleteRecordFromSupabase(
-    tableName,
-    index,
-    dataArray,
-    renderFunction
-) {
+async function deleteFromSupabase(tableName, item) {
 
-    const client = getSupabaseClient();
-
-    if (!client) {
-
-        alert(
-            "لم يتم العثور على اتصال Supabase في التطبيق."
+    if (!item || !item.id) {
+        throw new Error(
+            "لم يتم العثور على ID للسجل. تأكدي أن التطبيق يجلب عمود id من Supabase."
         );
-
-        console.error(
-            "Supabase client غير موجود."
-        );
-
-        return;
     }
 
+    const { error } = await supabaseClient
+        .from(tableName)
+        .delete()
+        .eq("id", item.id);
 
-    const item = dataArray[index];
-
-
-    if (!item) {
-
-        alert("لم يتم العثور على السجل.");
-
-        return;
-    }
-
-
-    // --------------------------------------------------------
-    // التأكد من وجود ID الحقيقي من Supabase
-    // --------------------------------------------------------
-
-    if (
-        item.id === undefined ||
-        item.id === null ||
-        item.id === ""
-    ) {
-
-        alert(
-            "لا يمكن حذف هذا السجل لأن ID الخاص به غير موجود."
-        );
-
-        console.error(
-            "السجل بدون ID:",
-            item
-        );
-
-        return;
-    }
-
-
-    // --------------------------------------------------------
-    // تأكيد الحذف
-    // --------------------------------------------------------
-
-    const confirmed = confirm(
-        "هل أنت متأكد من حذف هذا السجل؟\n\n" +
-        "سيتم حذفه من قاعدة البيانات ويمكنك الضغط على «تراجع» خلال 6 ثوانٍ."
-    );
-
-
-    if (!confirmed) {
-        return;
-    }
-
-
-    // --------------------------------------------------------
-    // حفظ نسخة كاملة للتراجع
-    // --------------------------------------------------------
-
-    deletedItemData = {
-
-        tableName: tableName,
-
-        index: index,
-
-        item: JSON.parse(
-            JSON.stringify(item)
-        )
-
-    };
-
-
-    try {
-
-        // ====================================================
-        // الحذف الحقيقي من Supabase
-        // ====================================================
-
-        const { error } = await client
-            .from(tableName)
-            .delete()
-            .eq("id", item.id);
-
-
-        if (error) {
-
-            console.error(
-                "Supabase DELETE ERROR:",
-                error
-            );
-
-            deletedItemData = null;
-
-            alert(
-                "لم يتم الحذف من قاعدة البيانات.\n\n" +
-                "السبب:\n" +
-                error.message
-            );
-
-            return;
-        }
-
-
-        // ====================================================
-        // حذف العنصر من الشاشة
-        // ====================================================
-
-        dataArray.splice(index, 1);
-
-
-        if (typeof renderFunction === "function") {
-            renderFunction();
-        }
-
-
-        if (typeof updateDashboard === "function") {
-            updateDashboard();
-        }
-
-
-        // ====================================================
-        // إظهار التراجع
-        // ====================================================
-
-        showUndoBar();
-
-
-        console.log(
-            "تم حذف السجل من Supabase:",
-            tableName,
-            item.id
-        );
-
-
-    } catch (error) {
-
-        console.error(
-            "Delete error:",
-            error
-        );
-
-        deletedItemData = null;
-
-        alert(
-            "حدث خطأ أثناء الحذف:\n\n" +
-            error.message
-        );
+    if (error) {
+        throw error;
     }
 }
 
 
-// ============================================================
-// حذف الإخلاءات
-// ============================================================
+// ==========================================================
+// زر حذف الرخصة
+// ==========================================================
 
 window.deleteClearance = async function(index) {
 
-    await deleteRecordFromSupabase(
-        "clearances",
-        index,
-        clearances,
-        renderClearances
-    );
+    if (!confirm("هل أنت متأكدة من حذف هذه الرخصة؟")) {
+        return;
+    }
 
+    const item = clearances[index];
+
+    if (!item) {
+        alert("لم يتم العثور على الرخصة.");
+        return;
+    }
+
+    try {
+
+        // حفظ نسخة للتراجع
+        deletedItemData = {
+            type: "clearance",
+            table: "clearances",
+            index: index,
+            item: { ...item }
+        };
+
+        // الحذف الحقيقي من Supabase
+        await deleteFromSupabase("clearances", item);
+
+        // حذف من الذاكرة الحالية
+        clearances.splice(index, 1);
+
+        // تحديث الشاشة
+        renderClearances();
+        updateDashboard();
+
+        // إظهار التراجع
+        showUndoBar();
+
+    } catch (error) {
+
+        console.error("Delete clearance error:", error);
+
+        deletedItemData = null;
+
+        alert(
+            "تعذر حذف الرخصة من قاعدة البيانات.\n\n" +
+            error.message
+        );
+    }
 };
 
 
-// ============================================================
-// حذف الطوارئ
-// ============================================================
+// ==========================================================
+// زر حذف الطوارئ
+// ==========================================================
 
 window.deleteEmergency = async function(index) {
 
-    await deleteRecordFromSupabase(
-        "emergencies",
-        index,
-        emergencies,
-        renderEmergencies
-    );
+    if (!confirm("هل أنت متأكدة من حذف سجل الطوارئ؟")) {
+        return;
+    }
 
+    const item = emergencies[index];
+
+    if (!item) {
+        alert("لم يتم العثور على السجل.");
+        return;
+    }
+
+    try {
+
+        deletedItemData = {
+            type: "emergency",
+            table: "emergencies",
+            index: index,
+            item: { ...item }
+        };
+
+        await deleteFromSupabase("emergencies", item);
+
+        emergencies.splice(index, 1);
+
+        renderEmergencies();
+        updateDashboard();
+
+        showUndoBar();
+
+    } catch (error) {
+
+        console.error("Delete emergency error:", error);
+
+        deletedItemData = null;
+
+        alert(
+            "تعذر حذف سجل الطوارئ من قاعدة البيانات.\n\n" +
+            error.message
+        );
+    }
 };
 
 
-// ============================================================
-// حذف الملاحظات
-// ============================================================
+// ==========================================================
+// زر حذف الملاحظة
+// ==========================================================
 
 window.deleteNote = async function(index) {
 
-    await deleteRecordFromSupabase(
-        "notes",
-        index,
-        notes,
-        renderNotes
-    );
+    if (!confirm("هل أنت متأكدة من حذف هذه الملاحظة؟")) {
+        return;
+    }
 
+    const item = notes[index];
+
+    if (!item) {
+        alert("لم يتم العثور على الملاحظة.");
+        return;
+    }
+
+    try {
+
+        deletedItemData = {
+            type: "note",
+            table: "notes",
+            index: index,
+            item: { ...item }
+        };
+
+        await deleteFromSupabase("notes", item);
+
+        notes.splice(index, 1);
+
+        renderNotes();
+        updateDashboard();
+
+        showUndoBar();
+
+    } catch (error) {
+
+        console.error("Delete note error:", error);
+
+        deletedItemData = null;
+
+        alert(
+            "تعذر حذف الملاحظة من قاعدة البيانات.\n\n" +
+            error.message
+        );
+    }
 };
 
 
-// ============================================================
+// ==========================================================
 // التراجع عن الحذف
-// ============================================================
+// ==========================================================
 
-async function restoreDeletedItem() {
+window.restoreDeletedItem = async function() {
 
     if (!deletedItemData) {
         return;
     }
 
-
-    const client = getSupabaseClient();
-
-
-    if (!client) {
-
-        alert(
-            "لم يتم العثور على اتصال Supabase."
-        );
-
-        return;
-    }
-
-
-    const tableName =
-        deletedItemData.tableName;
-
-    const item =
-        deletedItemData.item;
-
-    const index =
-        deletedItemData.index;
-
+    const data = deletedItemData;
 
     try {
 
-        // ====================================================
         // إعادة السجل إلى Supabase
-        // ====================================================
-
-        const { error } = await client
-            .from(tableName)
-            .insert([item]);
-
+        const { error } = await supabaseClient
+            .from(data.table)
+            .insert([data.item]);
 
         if (error) {
-
-            console.error(
-                "Supabase RESTORE ERROR:",
-                error
-            );
-
-            alert(
-                "تعذر التراجع عن الحذف.\n\n" +
-                error.message
-            );
-
-            return;
+            throw error;
         }
 
-
-        // ====================================================
-        // إعادة السجل إلى التطبيق
-        // ====================================================
-
-        if (tableName === "clearances") {
+        // إعادة السجل إلى المصفوفة المحلية في نفس مكانه
+        if (data.type === "clearance") {
 
             clearances.splice(
-                index,
+                data.index,
                 0,
-                item
+                data.item
             );
 
             renderClearances();
 
-        }
-
-
-        else if (tableName === "emergencies") {
+        } else if (data.type === "emergency") {
 
             emergencies.splice(
-                index,
+                data.index,
                 0,
-                item
+                data.item
             );
 
             renderEmergencies();
 
-        }
-
-
-        else if (tableName === "notes") {
+        } else if (data.type === "note") {
 
             notes.splice(
-                index,
+                data.index,
                 0,
-                item
+                data.item
             );
 
             renderNotes();
-
         }
 
-
-        if (typeof updateDashboard === "function") {
-            updateDashboard();
-        }
-
+        updateDashboard();
 
         hideUndoBar();
 
-
         deletedItemData = null;
 
-
-        alert(
-            "تم التراجع عن الحذف وإعادة السجل إلى قاعدة البيانات."
-        );
-
+        alert("تم التراجع عن الحذف وإعادة السجل إلى قاعدة البيانات.");
 
     } catch (error) {
 
-        console.error(
-            "Restore error:",
-            error
-        );
+        console.error("Restore error:", error);
 
         alert(
-            "حدث خطأ أثناء التراجع:\n\n" +
+            "حدث خطأ أثناء التراجع عن الحذف.\n\n" +
             error.message
         );
     }
-}
-
-
-// ============================================================
-// جعل الدالة متاحة للزر
-// ============================================================
-
-window.restoreDeletedItem = restoreDeletedItem;
+};
+  
