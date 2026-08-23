@@ -1709,7 +1709,7 @@ document.addEventListener("DOMContentLoaded", function() {
 </script>
     
 <!-- ========================================== -->
-<!-- كود الحذف الذكي (يتكيف مع id أو permit) -->
+<!-- كود الحذف مع التراجع (معدل ليتوافق مع كودك) -->
 <!-- ========================================== -->
 <style>
     #undo-container {
@@ -1758,32 +1758,38 @@ function showUndoBar() {
         
         if (deletedItemData) {
             try {
-                const client = await initSupabase();
-                if (client) {
+                // 1. تهيئة الاتصال (كما في كودك الأصلي)
+                await initSupabase();
+                
+                // 2. التحقق من أن المتغير client أصبح جاهزاً
+                if (typeof client !== 'undefined' && client) {
                     let tableName = deletedItemData.type === 'clearance' ? 'clearances' : 
                                     deletedItemData.type === 'emergency' ? 'emergencies' : 'notes';
                     
                     let columnName = 'id';
                     let columnValue = deletedItemData.item.id;
 
-                    // إذا لم يوجد id، نستخدم رقم التصريح permit تلقائياً
+                    // احتياط: إذا لم يوجد id، نستخدم رقم التصريح
                     if (!columnValue && deletedItemData.item.permit) {
                         columnName = 'permit';
                         columnValue = deletedItemData.item.permit;
                     }
 
+                    // 3. إرسال أمر الحذف
                     if (columnValue) {
                         const { error } = await client.from(tableName).delete().eq(columnName, columnValue);
                         if (error) {
-                            console.error("خطأ في الحذف:", error.message);
-                            alert("حدث خطأ أثناء الحذف: " + error.message);
+                            console.error("خطأ في الحذف من Supabase:", error.message);
+                            alert("حدث خطأ أثناء الحذف من السحابة: " + error.message);
                         }
                     } else {
-                        alert("لا يوجد id أو permit لهذا العنصر لحذفه!");
+                        console.error("لا يوجد id أو permit لهذا العنصر!");
                     }
+                } else {
+                    console.error("لم يتم تهيئة الاتصال بـ Supabase!");
                 }
             } catch (err) {
-                console.error("خطأ:", err);
+                console.error("خطأ غير متوقع:", err);
             }
             deletedItemData = null;
         }
@@ -1836,4 +1842,5 @@ document.addEventListener("DOMContentLoaded", function() {
     };
 });
 </script>
+
 </body>
