@@ -2729,7 +2729,6 @@ function createLoginScreen() {
     screen.innerHTML = `
         <div style="background:#fff;border-radius:16px;padding:35px;width:90%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.4);">
             <div style="text-align:center;margin-bottom:25px;">
-                <div style="font-size:45px;">🏗️</div>
                 <h2 style="color:#173f32;margin:10px 0 5px;">نظام مختبر جودة المشاريع</h2>
                 <p style="color:#666;font-size:14px;margin:0;">أدخل اسمك للمتابعة</p>
             </div>
@@ -3333,3 +3332,59 @@ async function resolveExportItems(items) {
 
     document.addEventListener("DOMContentLoaded", initAutocomplete);
 })();
+// ==========================================
+// دوال الحذف المباشر من Supabase (توضع في نهاية ملف script.js)
+// ==========================================
+
+async function deleteClearance(index) {
+    if (!confirm("هل أنت متأكد من حذف هذه الرخصة نهائياً من Supabase؟")) return;
+    const item = clearances[index];
+    let idValue = item.id ? item.id : item.permit;
+    let colName = item.id ? 'id' : 'permit';
+    try {
+        await initSupabase();
+        if (!client) { alert("خطأ: لا يوجد اتصال بـ Supabase!"); return; }
+        const { error } = await client.from('clearances').delete().eq(colName, idValue);
+        if (error) { alert("خطأ من Supabase: " + error.message); return; }
+        clearances.splice(index, 1);
+        renderClearances();
+        updateDashboard();
+        alert("تم الحذف نهائياً من السحابة بنجاح");
+    } catch (err) {
+        alert("خطأ غير متوقع: " + err.message);
+    }
+}
+
+async function deleteEmergency(index) {
+    if (!confirm("هل أنت متأكد من الحذف نهائياً؟")) return;
+    const item = emergencies[index];
+    let idValue = item.id ? item.id : item.permit;
+    let colName = item.id ? 'id' : 'permit';
+    try {
+        await initSupabase();
+        if (!client) return alert("خطأ في الاتصال");
+        const { error } = await client.from('emergencies').delete().eq(colName, idValue);
+        if (error) return alert("خطأ: " + error.message);
+        emergencies.splice(index, 1);
+        renderEmergencies();
+        updateDashboard();
+        alert("تم الحذف نهائياً");
+    } catch (err) { alert(err.message); }
+}
+
+async function deleteNote(index) {
+    if (!confirm("هل أنت متأكد من الحذف نهائياً؟")) return;
+    const item = notes[index];
+    let idValue = item.id ? item.id : item.permit;
+    let colName = item.id ? 'id' : 'permit';
+    try {
+        await initSupabase();
+        if (!client) return alert("خطأ في الاتصال");
+        const { error } = await client.from('notes').delete().eq(colName, idValue);
+        if (error) return alert("خطأ: " + error.message);
+        notes.splice(index, 1);
+        renderNotes();
+        updateDashboard();
+        alert("تم الحذف نهائياً");
+    } catch (err) { alert(err.message); }
+}
