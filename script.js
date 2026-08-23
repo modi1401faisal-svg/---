@@ -3333,68 +3333,53 @@ async function resolveExportItems(items) {
 
     document.addEventListener("DOMContentLoaded", initAutocomplete);
 })();
-// ==========================================================
-// الحذف + التراجع - Supabase
-// الجداول:
-// clearances
-// emergencies
-// notes
-// ==========================================================
+// ============================================================
+// نظام الحذف والتراجع النهائي - Supabase
+// للجداول الثلاثة:
+// clearances / emergencies / notes
+// ============================================================
 
 let deletedItemData = null;
 let undoTimer = null;
 
 
-// ==========================================================
-// إنشاء اتصال Supabase الصحيح
-// ==========================================================
+// ============================================================
+// الحصول على اتصال Supabase الموجود في التطبيق
+// ============================================================
 
-// إذا كان لديك اتصال Supabase موجود مسبقاً ويحتوي على .from
-// سيستخدمه مباشرة.
-// وإذا كان المتغير supabase هو مكتبة Supabase نفسها، ينشئ اتصالاً صحيحاً.
+function getSupabaseClient() {
 
-let db = null;
-
-try {
-
-    if (typeof supabase !== "undefined" && typeof supabase.from === "function") {
-
-        // الاتصال موجود مسبقاً
-        db = supabase;
-
-    } else if (
-        typeof supabase !== "undefined" &&
-        typeof supabase.createClient === "function"
-    ) {
-
-        // supabase هنا هو مكتبة Supabase
-        db = supabase.createClient(
-            "https://uuhldvdgyyxvtmjqqwex.supabase.co",
-            "ضعي_هنا_PUBLISHABLE_KEY"
-        );
-
-    } else if (
+    // إذا كان المتغير supabase هو الاتصال نفسه
+    if (
         typeof window.supabase !== "undefined" &&
-        typeof window.supabase.createClient === "function"
+        typeof window.supabase.from === "function"
     ) {
-
-        db = window.supabase.createClient(
-            "https://uuhldvdgyyxvtmjqqwex.supabase.co",
-            "ضعي_هنا_PUBLISHABLE_KEY"
-        );
-
+        return window.supabase;
     }
 
-} catch (error) {
+    // إذا كان الاتصال باسم supabaseClient
+    if (
+        typeof window.supabaseClient !== "undefined" &&
+        typeof window.supabaseClient.from === "function"
+    ) {
+        return window.supabaseClient;
+    }
 
-    console.error("خطأ في إنشاء اتصال Supabase:", error);
+    // إذا كان الاتصال باسم db
+    if (
+        typeof window.db !== "undefined" &&
+        typeof window.db.from === "function"
+    ) {
+        return window.db;
+    }
 
+    return null;
 }
 
 
-// ==========================================================
-// نافذة التراجع
-// ==========================================================
+// ============================================================
+// إنشاء نافذة التراجع
+// ============================================================
 
 function showUndoBar() {
 
@@ -3407,8 +3392,8 @@ function showUndoBar() {
         container.id = "undo-container";
 
         container.innerHTML = `
-            <span id="undo-text">تم حذف العنصر.</span>
-            <button id="undo-btn" onclick="restoreDeletedItem()">
+            <span id="undo-text">تم حذف السجل بنجاح.</span>
+            <button id="undo-btn" type="button">
                 تراجع
             </button>
         `;
@@ -3417,88 +3402,64 @@ function showUndoBar() {
 
         const style = document.createElement("style");
 
-        style.innerHTML = `
-
+        style.textContent = `
             #undo-container {
-
                 position: fixed;
                 bottom: 25px;
                 right: 25px;
-
                 background: #1d4d3d;
                 color: white;
-
                 padding: 15px 20px;
-
                 border-radius: 10px;
-
-                box-shadow:
-                    0 4px 15px rgba(0,0,0,0.3);
-
+                box-shadow: 0 4px 15px rgba(0,0,0,0.3);
                 display: none;
-
                 align-items: center;
-
                 gap: 20px;
-
                 z-index: 999999;
-
-                font-family:
-                    Tahoma,
-                    Arial,
-                    sans-serif;
-
+                font-family: Tahoma, Arial, sans-serif;
+                direction: rtl;
             }
 
             #undo-btn {
-
                 background: #dfeae4;
-
                 color: #1d4d3d;
-
                 border: none;
-
                 padding: 8px 18px;
-
                 border-radius: 6px;
-
                 cursor: pointer;
-
                 font-weight: bold;
-
                 font-size: 14px;
-
             }
 
             #undo-btn:hover {
-
                 background: #cbdcd3;
-
             }
-
         `;
 
         document.head.appendChild(style);
+
+        document
+            .getElementById("undo-btn")
+            .addEventListener("click", restoreDeletedItem);
     }
 
     container.style.display = "flex";
 
     clearTimeout(undoTimer);
 
-    undoTimer = setTimeout(function () {
+    undoTimer = setTimeout(() => {
 
         container.style.display = "none";
 
         deletedItemData = null;
 
     }, 6000);
-
 }
 
 
-// ==========================================================
-// إخفاء التراجع
-// ==========================================================
+// ============================================================
+// إخفاء نافذة التراجع
+// ============================================================
 
 function hideUndoBar() {
 
@@ -3506,87 +3467,113 @@ function hideUndoBar() {
         document.getElementById("undo-container");
 
     if (container) {
-
         container.style.display = "none";
-
     }
 
     clearTimeout(undoTimer);
-
 }
 
 
-// ==========================================================
-// الحذف من Supabase
-// ==========================================================
+// ============================================================
+// الحذف الحقيقي من Supabase
+// ============================================================
 
-async function deleteFromSupabase(tableName, index, arrayData, renderFunction) {
+async function deleteRecordFromSupabase(
+    tableName,
+    index,
+    dataArray,
+    renderFunction
+) {
 
-    if (!db || typeof db.from !== "function") {
+    const client = getSupabaseClient();
+
+    if (!client) {
 
         alert(
-            "خطأ في الاتصال بقاعدة البيانات Supabase.\n\n" +
-            "تأكد من أن اتصال Supabase في التطبيق صحيح."
+            "لم يتم العثور على اتصال Supabase في التطبيق."
+        );
+
+        console.error(
+            "Supabase client غير موجود."
         );
 
         return;
-
     }
 
-    const item = arrayData[index];
+
+    const item = dataArray[index];
+
 
     if (!item) {
 
         alert("لم يتم العثور على السجل.");
 
         return;
-
     }
 
-    if (!item.id) {
 
-        alert(
-            "هذا السجل لا يحتوي على ID.\n\n" +
-            "يجب أن يكون عمود id موجوداً في البيانات."
-        );
-
-        console.error("السجل بدون ID:", item);
-
-        return;
-
-    }
+    // --------------------------------------------------------
+    // التأكد من وجود ID الحقيقي من Supabase
+    // --------------------------------------------------------
 
     if (
-        !confirm(
-            "هل أنت متأكد من حذف هذا السجل؟\n\n" +
-            "يمكنك الضغط على «تراجع» خلال 6 ثوانٍ لإعادته."
-        )
+        item.id === undefined ||
+        item.id === null ||
+        item.id === ""
     ) {
 
-        return;
+        alert(
+            "لا يمكن حذف هذا السجل لأن ID الخاص به غير موجود."
+        );
 
+        console.error(
+            "السجل بدون ID:",
+            item
+        );
+
+        return;
     }
+
+
+    // --------------------------------------------------------
+    // تأكيد الحذف
+    // --------------------------------------------------------
+
+    const confirmed = confirm(
+        "هل أنت متأكد من حذف هذا السجل؟\n\n" +
+        "سيتم حذفه من قاعدة البيانات ويمكنك الضغط على «تراجع» خلال 6 ثوانٍ."
+    );
+
+
+    if (!confirmed) {
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // حفظ نسخة كاملة للتراجع
+    // --------------------------------------------------------
+
+    deletedItemData = {
+
+        tableName: tableName,
+
+        index: index,
+
+        item: JSON.parse(
+            JSON.stringify(item)
+        )
+
+    };
 
 
     try {
 
-        // نحفظ نسخة كاملة من السجل قبل حذفه
-        deletedItemData = {
-
-            table: tableName,
-
-            index: index,
-
-            item: JSON.parse(JSON.stringify(item))
-
-        };
-
-
-        // ==================================================
+        // ====================================================
         // الحذف الحقيقي من Supabase
-        // ==================================================
+        // ====================================================
 
-        const { error } = await db
+        const { error } = await client
             .from(tableName)
             .delete()
             .eq("id", item.id);
@@ -3595,81 +3582,49 @@ async function deleteFromSupabase(tableName, index, arrayData, renderFunction) {
         if (error) {
 
             console.error(
-                "Supabase Delete Error:",
+                "Supabase DELETE ERROR:",
                 error
             );
 
             deletedItemData = null;
 
             alert(
-                "لم يتم حذف السجل من قاعدة البيانات.\n\n" +
-                "رسالة Supabase:\n" +
+                "لم يتم الحذف من قاعدة البيانات.\n\n" +
+                "السبب:\n" +
                 error.message
             );
 
             return;
-
         }
 
 
-        // ==================================================
-        // التأكد أن الحذف فعلياً تم
-        // ==================================================
+        // ====================================================
+        // حذف العنصر من الشاشة
+        // ====================================================
 
-        const { data: checkData, error: checkError } =
-            await db
-                .from(tableName)
-                .select("id")
-                .eq("id", item.id);
-
-
-        if (checkError) {
-
-            console.error(
-                "Delete verification error:",
-                checkError
-            );
-
-        }
-
-
-        if (checkData && checkData.length > 0) {
-
-            alert(
-                "تنبيه: التطبيق لم يستطع التأكد من حذف السجل من Supabase.\n\n" +
-                "قد تكون هناك سياسة RLS تمنع الحذف."
-            );
-
-            return;
-
-        }
-
-
-        // ==================================================
-        // حذف السجل من القائمة الظاهرة فقط
-        // ==================================================
-
-        arrayData.splice(index, 1);
+        dataArray.splice(index, 1);
 
 
         if (typeof renderFunction === "function") {
-
             renderFunction();
-
         }
+
 
         if (typeof updateDashboard === "function") {
-
             updateDashboard();
-
         }
 
+
+        // ====================================================
+        // إظهار التراجع
+        // ====================================================
 
         showUndoBar();
 
 
         console.log(
             "تم حذف السجل من Supabase:",
+            tableName,
             item.id
         );
 
@@ -3677,27 +3632,27 @@ async function deleteFromSupabase(tableName, index, arrayData, renderFunction) {
     } catch (error) {
 
         console.error(
-            "Unexpected delete error:",
+            "Delete error:",
             error
         );
+
+        deletedItemData = null;
 
         alert(
             "حدث خطأ أثناء الحذف:\n\n" +
             error.message
         );
-
     }
-
 }
 
 
-// ==========================================================
+// ============================================================
 // حذف الإخلاءات
-// ==========================================================
+// ============================================================
 
 window.deleteClearance = async function(index) {
 
-    await deleteFromSupabase(
+    await deleteRecordFromSupabase(
         "clearances",
         index,
         clearances,
@@ -3707,13 +3662,13 @@ window.deleteClearance = async function(index) {
 };
 
 
-// ==========================================================
+// ============================================================
 // حذف الطوارئ
-// ==========================================================
+// ============================================================
 
 window.deleteEmergency = async function(index) {
 
-    await deleteFromSupabase(
+    await deleteRecordFromSupabase(
         "emergencies",
         index,
         emergencies,
@@ -3723,13 +3678,13 @@ window.deleteEmergency = async function(index) {
 };
 
 
-// ==========================================================
+// ============================================================
 // حذف الملاحظات
-// ==========================================================
+// ============================================================
 
 window.deleteNote = async function(index) {
 
-    await deleteFromSupabase(
+    await deleteRecordFromSupabase(
         "notes",
         index,
         notes,
@@ -3739,31 +3694,32 @@ window.deleteNote = async function(index) {
 };
 
 
-// ==========================================================
+// ============================================================
 // التراجع عن الحذف
-// ==========================================================
+// ============================================================
 
-window.restoreDeletedItem = async function() {
+async function restoreDeletedItem() {
 
     if (!deletedItemData) {
-
         return;
-
     }
 
-    if (!db || typeof db.from !== "function") {
+
+    const client = getSupabaseClient();
+
+
+    if (!client) {
 
         alert(
-            "خطأ في الاتصال بقاعدة البيانات Supabase."
+            "لم يتم العثور على اتصال Supabase."
         );
 
         return;
-
     }
 
 
     const tableName =
-        deletedItemData.table;
+        deletedItemData.tableName;
 
     const item =
         deletedItemData.item;
@@ -3774,20 +3730,19 @@ window.restoreDeletedItem = async function() {
 
     try {
 
-        // ==================================================
+        // ====================================================
         // إعادة السجل إلى Supabase
-        // ==================================================
+        // ====================================================
 
-        const { data, error } = await db
+        const { error } = await client
             .from(tableName)
-            .insert([item])
-            .select();
+            .insert([item]);
 
 
         if (error) {
 
             console.error(
-                "Supabase Restore Error:",
+                "Supabase RESTORE ERROR:",
                 error
             );
 
@@ -3797,13 +3752,12 @@ window.restoreDeletedItem = async function() {
             );
 
             return;
-
         }
 
 
-        // ==================================================
-        // إعادة السجل إلى القائمة
-        // ==================================================
+        // ====================================================
+        // إعادة السجل إلى التطبيق
+        // ====================================================
 
         if (tableName === "clearances") {
 
@@ -3817,6 +3771,7 @@ window.restoreDeletedItem = async function() {
 
         }
 
+
         else if (tableName === "emergencies") {
 
             emergencies.splice(
@@ -3828,6 +3783,7 @@ window.restoreDeletedItem = async function() {
             renderEmergencies();
 
         }
+
 
         else if (tableName === "notes") {
 
@@ -3843,13 +3799,12 @@ window.restoreDeletedItem = async function() {
 
 
         if (typeof updateDashboard === "function") {
-
             updateDashboard();
-
         }
 
 
         hideUndoBar();
+
 
         deletedItemData = null;
 
@@ -3862,7 +3817,7 @@ window.restoreDeletedItem = async function() {
     } catch (error) {
 
         console.error(
-            "Unexpected restore error:",
+            "Restore error:",
             error
         );
 
@@ -3870,7 +3825,12 @@ window.restoreDeletedItem = async function() {
             "حدث خطأ أثناء التراجع:\n\n" +
             error.message
         );
-
     }
+}
 
-};
+
+// ============================================================
+// جعل الدالة متاحة للزر
+// ============================================================
+
+window.restoreDeletedItem = restoreDeletedItem;
