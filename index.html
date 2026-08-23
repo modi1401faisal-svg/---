@@ -1707,8 +1707,9 @@ document.addEventListener("DOMContentLoaded", function() {
         font-size: 13px;
     }
 </script>
-    <!-- ========================================== -->
-<!-- كود الحذف مع التراجع (موصول بـ Supabase بطريقتك) -->
+    
+<!-- ========================================== -->
+<!-- كود الحذف الذكي (يتكيف مع id أو permit) -->
 <!-- ========================================== -->
 <style>
     #undo-container {
@@ -1751,25 +1752,34 @@ function showUndoBar() {
     const container = document.getElementById('undo-container');
     if (container) container.style.display = 'flex';
     
-    // سيتم الحذف نهائياً من Supabase بعد 6 ثوانٍ إذا لم تضغط تراجع
     clearTimeout(undoTimer);
     undoTimer = setTimeout(async function() {
         if (container) container.style.display = 'none';
         
         if (deletedItemData) {
             try {
-                // استخدام دالتك المخصصة initSupabase
                 const client = await initSupabase();
                 if (client) {
                     let tableName = deletedItemData.type === 'clearance' ? 'clearances' : 
                                     deletedItemData.type === 'emergency' ? 'emergencies' : 'notes';
                     
-                    // إرسال أمر الحذف النهائي باستخدام الـ ID
-                    const { error } = await client.from(tableName).delete().eq('id', deletedItemData.item.id);
-                    
-                    if (error) {
-                        console.error("خطأ في الحذف من Supabase:", error.message);
-                        alert("حدث خطأ أثناء الحذف من السحابة: " + error.message);
+                    let columnName = 'id';
+                    let columnValue = deletedItemData.item.id;
+
+                    // إذا لم يوجد id، نستخدم رقم التصريح permit تلقائياً
+                    if (!columnValue && deletedItemData.item.permit) {
+                        columnName = 'permit';
+                        columnValue = deletedItemData.item.permit;
+                    }
+
+                    if (columnValue) {
+                        const { error } = await client.from(tableName).delete().eq(columnName, columnValue);
+                        if (error) {
+                            console.error("خطأ في الحذف:", error.message);
+                            alert("حدث خطأ أثناء الحذف: " + error.message);
+                        }
+                    } else {
+                        alert("لا يوجد id أو permit لهذا العنصر لحذفه!");
                     }
                 }
             } catch (err) {
@@ -1795,11 +1805,10 @@ function restoreDeletedItem() {
         updateDashboard();
     }
     document.getElementById('undo-container').style.display = 'none';
-    clearTimeout(undoTimer); // إيقاف الحذف النهائي
+    clearTimeout(undoTimer);
     deletedItemData = null;
 }
 
-// تحديث دوال الحذف لتعمل بالنظام الجديد
 document.addEventListener("DOMContentLoaded", function() {
     
     window.deleteClearance = function(index) {
