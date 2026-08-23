@@ -1706,95 +1706,9 @@ document.addEventListener("DOMContentLoaded", function() {
         display: none;
         font-size: 13px;
     }
-</style>
-<script>
-// ==========================================
-// كود الحذف المباشر من Supabase (يُلصق في النهاية)
-// ==========================================
-document.addEventListener("DOMContentLoaded", function() {
-    
-    // التأكد من وجود اتصال بـ Supabase
-    if (typeof supabase === 'undefined') {
-        console.error("خطأ: متغير Supabase غير معرّف!");
-        return;
-    }
-
-    // 1. حذف رخصة الإخلاء
-    window.deleteClearance = async function(index) {
-        if (!confirm("هل أنت متأكد من حذف رخصة الإخلاء نهائياً من قاعدة البيانات؟")) return;
-        
-        const item = clearances[index];
-        if (!item || !item.id) {
-            alert("خطأ: لا يمكن العثور على ID العنصر في قاعدة البيانات.");
-            return;
-        }
-        
-        try {
-            const { error } = await supabase.from('clearances').delete().eq('id', item.id);
-            if (error) throw error;
-            
-            clearances.splice(index, 1);
-            renderClearances();
-            updateDashboard();
-            alert("تم حذف الرخصة بنجاح من قاعدة البيانات");
-        } catch (error) {
-            console.error("خطأ في الحذف:", error);
-            alert("حدث خطأ أثناء الحذف: " + error.message);
-        }
-    };
-
-    // 2. حذف رخصة الطوارئ
-    window.deleteEmergency = async function(index) {
-        if (!confirm("هل أنت متأكد من حذف رخصة الطوارئ نهائياً من قاعدة البيانات؟")) return;
-        
-        const item = emergencies[index];
-        if (!item || !item.id) {
-            alert("خطأ: لا يمكن العثور على ID العنصر في قاعدة البيانات.");
-            return;
-        }
-        
-        try {
-            const { error } = await supabase.from('emergencies').delete().eq('id', item.id);
-            if (error) throw error;
-            
-            emergencies.splice(index, 1);
-            renderEmergencies();
-            updateDashboard();
-            alert("تم حذف الرخصة بنجاح من قاعدة البيانات");
-        } catch (error) {
-            console.error("خطأ في الحذف:", error);
-            alert("حدث خطأ أثناء الحذف: " + error.message);
-        }
-    };
-
-    // 3. حذف الملاحظة
-    window.deleteNote = async function(index) {
-        if (!confirm("هل أنت متأكد من حذف الملاحظة نهائياً من قاعدة البيانات؟")) return;
-        
-        const item = notes[index];
-        if (!item || !item.id) {
-            alert("خطأ: لا يمكن العثور على ID العنصر في قاعدة البيانات.");
-            return;
-        }
-        
-        try {
-            const { error } = await supabase.from('notes').delete().eq('id', item.id);
-            if (error) throw error;
-            
-            notes.splice(index, 1);
-            renderNotes();
-            updateDashboard();
-            alert("تم حذف الملاحظة بنجاح من قاعدة البيانات");
-        } catch (error) {
-            console.error("خطأ في الحذف:", error);
-            alert("حدث خطأ أثناء الحذف: " + error.message);
-        }
-    };
-
-});
 </script>
-<!-- ========================================== -->
-<!-- كود الحذف مع التراجع (موصول بـ Supabase بالـ ID) -->
+    <!-- ========================================== -->
+<!-- كود الحذف مع التراجع (موصول بـ Supabase بطريقتك) -->
 <!-- ========================================== -->
 <style>
     #undo-container {
@@ -1844,18 +1758,22 @@ function showUndoBar() {
         
         if (deletedItemData) {
             try {
-                let tableName = deletedItemData.type === 'clearance' ? 'clearances' : 
-                                deletedItemData.type === 'emergency' ? 'emergencies' : 'notes';
-                
-                // إرسال أمر الحذف النهائي إلى Supabase باستخدام الـ ID
-                const { error } = await supabase.from(tableName).delete().eq('id', deletedItemData.item.id);
-                
-                if (error) {
-                    console.error("خطأ في الحذف من Supabase:", error.message);
-                    alert("حدث خطأ أثناء الحذف من السحابة: " + error.message);
+                // استخدام دالتك المخصصة initSupabase
+                const client = await initSupabase();
+                if (client) {
+                    let tableName = deletedItemData.type === 'clearance' ? 'clearances' : 
+                                    deletedItemData.type === 'emergency' ? 'emergencies' : 'notes';
+                    
+                    // إرسال أمر الحذف النهائي باستخدام الـ ID
+                    const { error } = await client.from(tableName).delete().eq('id', deletedItemData.item.id);
+                    
+                    if (error) {
+                        console.error("خطأ في الحذف من Supabase:", error.message);
+                        alert("حدث خطأ أثناء الحذف من السحابة: " + error.message);
+                    }
                 }
             } catch (err) {
-                console.error(err);
+                console.error("خطأ:", err);
             }
             deletedItemData = null;
         }
