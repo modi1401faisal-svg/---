@@ -1708,139 +1708,84 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 </script>
     
-<!-- ========================================== -->
-<!-- كود الحذف مع التراجع (معدل ليتوافق مع كودك) -->
-<!-- ========================================== -->
-<style>
-    #undo-container {
-        position: fixed;
-        bottom: 25px;
-        right: 25px;
-        background: #1d4d3d;
-        color: white;
-        padding: 15px 20px;
-        border-radius: 10px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        display: none;
-        align-items: center;
-        gap: 20px;
-        z-index: 99999;
-        font-family: Tahoma, Arial, sans-serif;
-    }
-    #undo-btn {
-        background: #dfeae4;
-        color: #1d4d3d;
-        border: none;
-        padding: 8px 18px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-weight: bold;
-        font-size: 14px;
-    }
-</style>
-
-<div id="undo-container">
-    <span>تم حذف العنصر مؤقتاً.</span>
-    <button id="undo-btn" onclick="restoreDeletedItem()">تراجع</button>
-</div>
-
 <script>
-let deletedItemData = null;
-let undoTimer = null;
-
-function showUndoBar() {
-    const container = document.getElementById('undo-container');
-    if (container) container.style.display = 'flex';
-    
-    clearTimeout(undoTimer);
-    undoTimer = setTimeout(async function() {
-        if (container) container.style.display = 'none';
-        
-        if (deletedItemData) {
-            try {
-                // 1. تهيئة الاتصال (كما في كودك الأصلي)
-                await initSupabase();
-                
-                // 2. التحقق من أن المتغير client أصبح جاهزاً
-                if (typeof client !== 'undefined' && client) {
-                    let tableName = deletedItemData.type === 'clearance' ? 'clearances' : 
-                                    deletedItemData.type === 'emergency' ? 'emergencies' : 'notes';
-                    
-                    let columnName = 'id';
-                    let columnValue = deletedItemData.item.id;
-
-                    // احتياط: إذا لم يوجد id، نستخدم رقم التصريح
-                    if (!columnValue && deletedItemData.item.permit) {
-                        columnName = 'permit';
-                        columnValue = deletedItemData.item.permit;
-                    }
-
-                    // 3. إرسال أمر الحذف
-                    if (columnValue) {
-                        const { error } = await client.from(tableName).delete().eq(columnName, columnValue);
-                        if (error) {
-                            console.error("خطأ في الحذف من Supabase:", error.message);
-                            alert("حدث خطأ أثناء الحذف من السحابة: " + error.message);
-                        }
-                    } else {
-                        console.error("لا يوجد id أو permit لهذا العنصر!");
-                    }
-                } else {
-                    console.error("لم يتم تهيئة الاتصال بـ Supabase!");
-                }
-            } catch (err) {
-                console.error("خطأ غير متوقع:", err);
-            }
-            deletedItemData = null;
-        }
-    }, 6000);
-}
-
-function restoreDeletedItem() {
-    if (deletedItemData) {
-        if (deletedItemData.type === 'clearance') {
-            clearances.splice(deletedItemData.index, 0, deletedItemData.item);
-            renderClearances();
-        } else if (deletedItemData.type === 'emergency') {
-            emergencies.splice(deletedItemData.index, 0, deletedItemData.item);
-            renderEmergencies();
-        } else if (deletedItemData.type === 'note') {
-            notes.splice(deletedItemData.index, 0, deletedItemData.item);
-            renderNotes();
-        }
-        updateDashboard();
-    }
-    document.getElementById('undo-container').style.display = 'none';
-    clearTimeout(undoTimer);
-    deletedItemData = null;
-}
-
 document.addEventListener("DOMContentLoaded", function() {
     
-    window.deleteClearance = function(index) {
-        deletedItemData = { type: 'clearance', index: index, item: clearances[index] };
-        clearances.splice(index, 1);
-        renderClearances();
-        updateDashboard();
-        showUndoBar();
+    // 1. حذف رخصة الإخلاء
+    window.deleteClearance = async function(index) {
+        const item = clearances[index];
+        // نحاول إيجاد الـ id، وإذا لم نجد نستخدم رقم التصريح permit
+        let idValue = item.id ? item.id : item.permit;
+        let colName = item.id ? 'id' : 'permit';
+        
+        if (!confirm("سيتم الآن إرسال أمر حذف للعنصر رقم " + idValue + " إلى Supabase. متابعة؟")) return;
+        
+        try {
+            await initSupabase(); // تهيئة الاتصال كما في كودك
+            
+            if (typeof client === 'undefined' || !client) {
+                alert("خطأ: المتغير client غير معرف أو فارغ!");
+                return;
+            }
+            
+            // إرسال أمر الحذف
+            const { error } = await client.from('clearances').delete().eq(colName, idValue);
+            
+            if (error) {
+                alert("❌ رفضت Supabase الحذف! رسالة الخطأ:\n" + error.message);
+            } else {
+                // إذا نجح الحذف من السحابة، نحذفه من الشاشة
+                clearances.splice(index, 1);
+                renderClearances();
+                updateDashboard();
+                alert("✅ نجح الحذف من Supabase! وتم حذفه من الشاشة.");
+            }
+        } catch (err) {
+            alert("حدث خطأ غير متوقع في الكود: " + err.message);
+        }
     };
 
-    window.deleteEmergency = function(index) {
-        deletedItemData = { type: 'emergency', index: index, item: emergencies[index] };
-        emergencies.splice(index, 1);
-        renderEmergencies();
-        updateDashboard();
-        showUndoBar();
+    // 2. حذف رخصة الطوارئ
+    window.deleteEmergency = async function(index) {
+        const item = emergencies[index];
+        let idValue = item.id ? item.id : item.permit;
+        let colName = item.id ? 'id' : 'permit';
+        if (!confirm("حذف العنصر " + idValue + "؟")) return;
+        
+        try {
+            await initSupabase();
+            if (!client) return alert("client غير معرف");
+            const { error } = await client.from('emergencies').delete().eq(colName, idValue);
+            if (error) return alert("❌ خطأ Supabase: " + error.message);
+            
+            emergencies.splice(index, 1);
+            renderEmergencies();
+            updateDashboard();
+            alert("✅ تم الحذف بنجاح");
+        } catch (err) { alert(err.message); }
     };
 
-    window.deleteNote = function(index) {
-        deletedItemData = { type: 'note', index: index, item: notes[index] };
-        notes.splice(index, 1);
-        renderNotes();
-        updateDashboard();
-        showUndoBar();
+    // 3. حذف الملاحظة
+    window.deleteNote = async function(index) {
+        const item = notes[index];
+        let idValue = item.id ? item.id : item.permit;
+        let colName = item.id ? 'id' : 'permit';
+        if (!confirm("حذف العنصر " + idValue + "؟")) return;
+        
+        try {
+            await initSupabase();
+            if (!client) return alert("client غير معرف");
+            const { error } = await client.from('notes').delete().eq(colName, idValue);
+            if (error) return alert("❌ خطأ Supabase: " + error.message);
+            
+            notes.splice(index, 1);
+            renderNotes();
+            updateDashboard();
+            alert("✅ تم الحذف بنجاح");
+        } catch (err) { alert(err.message); }
     };
+
 });
 </script>
-
+        
 </body>
