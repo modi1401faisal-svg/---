@@ -3333,3 +3333,84 @@ async function resolveExportItems(items) {
 
     document.addEventListener("DOMContentLoaded", initAutocomplete);
 })();
+// ==========================================
+// كود الحذف الصارم (يُلصق في نهاية ملف script.js)
+// ==========================================
+
+window.deleteClearance = async function(index) {
+    if (!confirm("هل أنت متأكد من حذف هذه الرخصة نهائياً؟")) return;
+    
+    const item = clearances[index];
+    
+    if (!item.id) {
+        alert("خطأ: التطبيق لا يعرف الـ ID الخاص بهذه الرخصة. تأكد أن كود جلب البيانات (Select) يجلب عمود id.");
+        return;
+    }
+
+    try {
+        const { error } = await supabase.from('clearances').delete().eq('id', item.id);
+        
+        if (error) {
+            alert("رفضت قاعدة البيانات الحذف! السبب: " + error.message);
+            return; 
+        }
+        
+        clearances.splice(index, 1);
+        renderClearances();
+        updateDashboard();
+        alert("تم الحذف بنجاح من قاعدة البيانات");
+        
+    } catch (err) {
+        alert("خطأ غير متوقع: " + err.message);
+    }
+};
+
+window.deleteEmergency = async function(index) {
+    if (!confirm("هل أنت متأكد من الحذف نهائياً؟")) return;
+    
+    const item = emergencies[index];
+    
+    if (!item.id) {
+        alert("خطأ: التطبيق لا يعرف الـ ID الخاص بهذه الرخصة.");
+        return;
+    }
+
+    try {
+        const { error } = await supabase.from('emergencies').delete().eq('id', item.id);
+        if (error) {
+            alert("رفضت قاعدة البيانات الحذف! السبب: " + error.message);
+            return;
+        }
+        emergencies.splice(index, 1);
+        renderEmergencies();
+        updateDashboard();
+        alert("تم الحذف بنجاح من قاعدة البيانات");
+    } catch (err) {
+        alert("خطأ غير متوقع: " + err.message);
+    }
+};
+
+window.deleteNote = async function(index) {
+    if (!confirm("هل أنت متأكد من الحذف نهائياً؟")) return;
+    
+    const item = notes[index];
+    
+    if (!item.id) {
+        alert("خطأ: التطبيق لا يعرف الـ ID الخاص بهذه الملاحظة.");
+        return;
+    }
+
+    try {
+        const { error } = await supabase.from('notes').delete().eq('id', item.id);
+        if (error) {
+            alert("رفضت قاعدة البيانات الحذف! السبب: " + error.message);
+            return;
+        }
+        notes.splice(index, 1);
+        renderNotes();
+        updateDashboard();
+        alert("تم الحذف بنجاح من قاعدة البيانات");
+    } catch (err) {
+        alert("خطأ غير متوقع: " + err.message);
+    }
+};
