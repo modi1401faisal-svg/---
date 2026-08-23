@@ -1787,3 +1787,50 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>     
 </body>
+<script>
+// كود تتبع أخطاء الحذف (يجب أن يعطيك رسالة واضحة بالسبب)
+window.deleteClearance = async function(index) {
+    if (!confirm("هل أنت متأكد من محاولة حذف هذه الرخصة؟")) return;
+    
+    const item = clearances[index];
+    if (!item) return alert("❌ خطأ: العنصر غير موجود في الذاكرة!");
+
+    // محاولة إيجاد المعرف (id أو permit)
+    const identifier = item.id || item.permit;
+    const column = item.id ? 'id' : 'permit';
+
+    if (!identifier) {
+        return alert("❌ خطأ: التطبيق لا يجلب الـ id ولا الـ permit من Supabase. يرجى تعديل كود الـ Select.");
+    }
+
+    try {
+        // استخدام نفس طريقتك في الاتصال
+        const client = await initSupabase();
+        
+        if (!client) {
+            return alert("❌ خطأ: initSupabase لم تُرجع المتغير client!");
+        }
+
+        // إرسال أمر الحذف
+        const { data, error } = await client
+            .from('clearances')
+            .delete()
+            .eq(column, identifier);
+
+        if (error) {
+            // إذا رفضت Supabase الحذف، ستظهر هنا رسالة الخطأ بالضبط
+            return alert("❌ خطأ من Supabase:\n" + error.message);
+        }
+
+        // إذا نجح الحذف
+        clearances.splice(index, 1);
+        renderClearances();
+        updateDashboard();
+        alert("✅ تم الحذف بنجاح من Supabase!");
+
+    } catch (err) {
+        // إذا كان هناك خطأ برمجي في الكود نفسه
+        alert("🔥 خطأ برمجي غير متوقع:\n" + err.message);
+    }
+};
+</script>
