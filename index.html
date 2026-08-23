@@ -1707,66 +1707,76 @@ document.addEventListener("DOMContentLoaded", function() {
         font-size: 13px;
     }
 </script>
-<!-- ========================================== -->
-<!-- كود الحذف النهائي (يوضع في نهاية index.html) -->
-<!-- ========================================== -->
 <script>
-// دالة حذف الإخلاءات
-window.deleteClearance = async function(index) {
-    alert("تم الضغط على الحذف! الكود الجديد يعمل."); // رسالة للتأكد من عمل الزر
-    if (!confirm("هل أنت متأكد من الحذف نهائياً من Supabase؟")) return;
+// ==========================================
+// الاعتراض الجذري لأزرار الحذف وتوصيلها بـ Supabase
+// ==========================================
+const deleteObserver = new MutationObserver(function() {
+    // البحث عن جميع أزرار الحذف في الصفحة
+    const deleteButtons = document.querySelectorAll('button.delete');
     
-    try {
-        await initSupabase();
-        const item = clearances[index];
-        if (!item) return alert("العنصر غير موجود!");
-        
-        const col = item.id ? 'id' : 'permit';
-        const val = item.id || item.permit;
-        if (!val) return alert("لا يوجد id أو permit!");
-        
-        const { error } = await client.from('clearances').delete().eq(col, val);
-        if (error) return alert("❌ خطأ من Supabase: " + error.message);
-        
-        clearances.splice(index, 1);
-        renderClearances();
-        updateDashboard();
-        alert("✅ تم الحذف نهائياً!");
-    } catch (e) { alert("🔥 خطأ: " + e.message); }
-};
+    deleteButtons.forEach(btn => {
+        // إذا لم يتم تعديل هذا الزر بعد
+        if (!btn.getAttribute('data-intercepted')) {
+            btn.setAttribute('data-intercepted', 'true');
+            
+            // تمزيق الكود القديم تماماً لمنعه من العمل
+            btn.removeAttribute('onclick');
+            
+            // تركيب الكود الجديد الذي يتصل بـ Supabase
+            btn.addEventListener('click', async function(e) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                
+                // إثبات أن الكود الجديد التقط الزر
+                alert("✅ تم الضغط على زر الحذف (الكود الجديد يعمل)!");
+                
+                const row = btn.closest('tr');
+                if (!row) return;
+                
+                // استخراج رقم التصريح من أول عمود في الجدول
+                const firstCell = row.querySelector('td');
+                if (!firstCell) return alert("لا يمكن العثور على بيانات الصف!");
+                
+                const permitNumber = firstCell.innerText.trim();
+                
+                if (!confirm("هل أنت متأكد من حذف العنصر رقم: " + permitNumber + " نهائياً من Supabase؟")) return;
+                
+                try {
+                    // التهيئة والاتصال بـ Supabase
+                    await initSupabase();
+                    if (typeof client === 'undefined' || !client) {
+                        return alert("❌ خطأ: المتغير client غير معرف!");
+                    }
+                    
+                    // إرسال أمر الحذف إلى Supabase باستخدام رقم التصريح
+                    const { error } = await client.from('clearances').delete().eq('permit', permitNumber);
+                    
+                    if (error) {
+                        // إذا رفضت Supabase الحذف، ستظهر لك هذه الرسالة
+                        alert("❌ خطأ من Supabase:\n" + error.message);
+                    } else {
+                        // إذا نجح الحذف من السحابة، نحذف الصف من الشاشة
+                        row.remove();
+                        
+                        // تحديث الذاكرة المحلية
+                        const idx = clearances.findIndex(c => String(c.permit) === permitNumber);
+                        if (idx !== -1) {
+                            clearances.splice(idx, 1);
+                            updateDashboard();
+                        }
+                        alert("✅ تم الحذف نهائياً من Supabase بنجاح!");
+                    }
+                } catch (err) {
+                    alert("🔥 خطأ برمجي غير متوقع:\n" + err.message);
+                }
+            });
+        }
+    });
+});
 
-// دالة حذف الطوارئ
-window.deleteEmergency = async function(index) {
-    if (!confirm("هل أنت متأكد من الحذف نهائياً؟")) return;
-    try {
-        await initSupabase();
-        const item = emergencies[index];
-        const col = item.id ? 'id' : 'permit';
-        const val = item.id || item.permit;
-        const { error } = await client.from('emergencies').delete().eq(col, val);
-        if (error) return alert("❌ خطأ: " + error.message);
-        emergencies.splice(index, 1);
-        renderEmergencies();
-        updateDashboard();
-        alert("✅ تم الحذف نهائياً!");
-    } catch (e) { alert("🔥 خطأ: " + e.message); }
-};
-
-// دالة حذف الملاحظات
-window.deleteNote = async function(index) {
-    if (!confirm("هل أنت متأكد من الحذف نهائياً؟")) return;
-    try {
-        await initSupabase();
-        const item = notes[index];
-        const col = item.id ? 'id' : 'permit';
-        const val = item.id || item.permit;
-        const { error } = await client.from('notes').delete().eq(col, val);
-        if (error) return alert("❌ خطأ: " + error.message);
-        notes.splice(index, 1);
-        renderNotes();
-        updateDashboard();
-        alert("✅ تم الحذف نهائياً!");
-    } catch (e) { alert("🔥 خطأ: " + e.message); }
-};
+// تشغيل المراقب اللحظي
+deleteObserver.observe(document.body, { childList: true, subtree: true });
 </script>
+    
 </body>
