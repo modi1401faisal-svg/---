@@ -3333,84 +3333,386 @@ async function resolveExportItems(items) {
 
     document.addEventListener("DOMContentLoaded", initAutocomplete);
 })();
-// ==========================================
-// كود الحذف الصارم (يُلصق في نهاية ملف script.js)
-// ==========================================
+// ======================================================
+// نظام الحذف + التراجع
+// الحذف من Supabase فعليًا مع إمكانية التراجع لمدة 6 ثوانٍ
+// ======================================================
+
+let deletedItemData = null;
+let undoTimer = null;
+
+
+// ======================================================
+// إظهار شريط التراجع
+// ======================================================
+
+function showUndoBar() {
+
+    const container = document.getElementById("undo-container");
+
+    if (!container) return;
+
+    container.style.display = "flex";
+
+    clearTimeout(undoTimer);
+
+    undoTimer = setTimeout(function () {
+
+        // انتهت مدة التراجع
+        container.style.display = "none";
+
+        deletedItemData = null;
+
+    }, 6000);
+}
+
+
+// ======================================================
+// إخفاء شريط التراجع
+// ======================================================
+
+function hideUndoBar() {
+
+    const container = document.getElementById("undo-container");
+
+    if (container) {
+        container.style.display = "none";
+    }
+
+    clearTimeout(undoTimer);
+}
+
+
+// ======================================================
+// التراجع عن الحذف
+// ======================================================
+
+async function restoreDeletedItem() {
+
+    if (!deletedItemData) return;
+
+    const data = deletedItemData;
+
+    try {
+
+        // إعادة السجل إلى Supabase
+        const { data: restoredItem, error } = await supabase
+            .from(data.table)
+            .insert([data.item])
+            .select()
+            .single();
+
+        if (error) {
+
+            alert(
+                "تعذر التراجع عن الحذف.\n\n" +
+                "سبب الخطأ:\n" +
+                error.message
+            );
+
+            return;
+        }
+
+
+        // إعادة السجل إلى المصفوفة المحلية
+        data.array.splice(data.index, 0, restoredItem || data.item);
+
+
+        // حفظ النسخة المحلية
+        localStorage.setItem(
+            data.storageKey,
+            JSON.stringify(data.array)
+        );
+
+
+        // تحديث الشاشة
+        data.renderFunction();
+
+        updateDashboard();
+
+
+        // إخفاء التراجع
+        hideUndoBar();
+
+        deletedItemData = null;
+
+
+        alert("تمت استعادة الرخصة بنجاح.");
+
+
+    } catch (err) {
+
+        alert(
+            "حدث خطأ أثناء التراجع:\n\n" +
+            err.message
+        );
+    }
+}
+
+
+// ======================================================
+// حذف الإخلاء
+// ======================================================
 
 window.deleteClearance = async function(index) {
-    if (!confirm("هل أنت متأكد من حذف هذه الرخصة نهائياً؟")) return;
-    
-    const item = clearances[index];
-    
-    if (!item.id) {
-        alert("خطأ: التطبيق لا يعرف الـ ID الخاص بهذه الرخصة. تأكد أن كود جلب البيانات (Select) يجلب عمود id.");
+
+    if (!clearances[index]) {
+        alert("لم يتم العثور على الرخصة.");
         return;
     }
 
+    if (!confirm("هل أنت متأكد من حذف هذه الرخصة؟")) {
+        return;
+    }
+
+
+    const item = clearances[index];
+
+
+    // التأكد من وجود ID
+    if (!item.id) {
+
+        alert(
+            "خطأ: لا يوجد ID للرخصة.\n\n" +
+            "تأكد أن التطبيق يجلب عمود id من Supabase."
+        );
+
+        return;
+    }
+
+
     try {
-        const { error } = await supabase.from('clearances').delete().eq('id', item.id);
-        
+
+        // حذف حقيقي من Supabase
+        const { error } = await supabase
+            .from("clearances")
+            .delete()
+            .eq("id", item.id);
+
+
         if (error) {
-            alert("رفضت قاعدة البيانات الحذف! السبب: " + error.message);
-            return; 
+
+            alert(
+                "لم يتم حذف الرخصة من قاعدة البيانات.\n\n" +
+                "سبب الخطأ:\n" +
+                error.message
+            );
+
+            return;
         }
-        
+
+
+        // حفظ بيانات التراجع
+        deletedItemData = {
+            type: "clearance",
+            table: "clearances",
+            item: item,
+            index: index,
+            array: clearances,
+            storageKey: "clearances",
+            renderFunction: renderClearances
+        };
+
+
+        // حذف من التطبيق
         clearances.splice(index, 1);
+
+
+        // تحديث التخزين المحلي
+        localStorage.setItem(
+            "clearances",
+            JSON.stringify(clearances)
+        );
+
+
+        // تحديث الشاشة
         renderClearances();
         updateDashboard();
-        alert("تم الحذف بنجاح من قاعدة البيانات");
-        
+
+
+        // إظهار التراجع
+        showUndoBar();
+
+
     } catch (err) {
-        alert("خطأ غير متوقع: " + err.message);
+
+        alert(
+            "حدث خطأ أثناء حذف الرخصة:\n\n" +
+            err.message
+        );
     }
 };
+
+
+
+// ======================================================
+// حذف الطوارئ
+// ======================================================
 
 window.deleteEmergency = async function(index) {
-    if (!confirm("هل أنت متأكد من الحذف نهائياً؟")) return;
-    
-    const item = emergencies[index];
-    
-    if (!item.id) {
-        alert("خطأ: التطبيق لا يعرف الـ ID الخاص بهذه الرخصة.");
+
+    if (!emergencies[index]) {
+        alert("لم يتم العثور على السجل.");
         return;
     }
 
+    if (!confirm("هل أنت متأكد من حذف هذا السجل؟")) {
+        return;
+    }
+
+
+    const item = emergencies[index];
+
+
+    if (!item.id) {
+
+        alert(
+            "خطأ: لا يوجد ID لهذا السجل.\n\n" +
+            "تأكد أن التطبيق يجلب عمود id من Supabase."
+        );
+
+        return;
+    }
+
+
     try {
-        const { error } = await supabase.from('emergencies').delete().eq('id', item.id);
+
+        const { error } = await supabase
+            .from("emergencies")
+            .delete()
+            .eq("id", item.id);
+
+
         if (error) {
-            alert("رفضت قاعدة البيانات الحذف! السبب: " + error.message);
+
+            alert(
+                "لم يتم حذف السجل من قاعدة البيانات.\n\n" +
+                "سبب الخطأ:\n" +
+                error.message
+            );
+
             return;
         }
+
+
+        deletedItemData = {
+            type: "emergency",
+            table: "emergencies",
+            item: item,
+            index: index,
+            array: emergencies,
+            storageKey: "emergencies",
+            renderFunction: renderEmergencies
+        };
+
+
         emergencies.splice(index, 1);
+
+
+        localStorage.setItem(
+            "emergencies",
+            JSON.stringify(emergencies)
+        );
+
+
         renderEmergencies();
         updateDashboard();
-        alert("تم الحذف بنجاح من قاعدة البيانات");
+
+        showUndoBar();
+
+
     } catch (err) {
-        alert("خطأ غير متوقع: " + err.message);
+
+        alert(
+            "حدث خطأ أثناء حذف السجل:\n\n" +
+            err.message
+        );
     }
 };
 
+
+
+// ======================================================
+// حذف الملاحظات
+// ======================================================
+
 window.deleteNote = async function(index) {
-    if (!confirm("هل أنت متأكد من الحذف نهائياً؟")) return;
-    
-    const item = notes[index];
-    
-    if (!item.id) {
-        alert("خطأ: التطبيق لا يعرف الـ ID الخاص بهذه الملاحظة.");
+
+    if (!notes[index]) {
+        alert("لم يتم العثور على الملاحظة.");
         return;
     }
 
+    if (!confirm("هل أنت متأكد من حذف هذه الملاحظة؟")) {
+        return;
+    }
+
+
+    const item = notes[index];
+
+
+    if (!item.id) {
+
+        alert(
+            "خطأ: لا يوجد ID لهذه الملاحظة.\n\n" +
+            "تأكد أن التطبيق يجلب عمود id من Supabase."
+        );
+
+        return;
+    }
+
+
     try {
-        const { error } = await supabase.from('notes').delete().eq('id', item.id);
+
+        const { error } = await supabase
+            .from("notes")
+            .delete()
+            .eq("id", item.id);
+
+
         if (error) {
-            alert("رفضت قاعدة البيانات الحذف! السبب: " + error.message);
+
+            alert(
+                "لم يتم حذف الملاحظة من قاعدة البيانات.\n\n" +
+                "سبب الخطأ:\n" +
+                error.message
+            );
+
             return;
         }
+
+
+        deletedItemData = {
+            type: "note",
+            table: "notes",
+            item: item,
+            index: index,
+            array: notes,
+            storageKey: "notes",
+            renderFunction: renderNotes
+        };
+
+
         notes.splice(index, 1);
+
+
+        localStorage.setItem(
+            "notes",
+            JSON.stringify(notes)
+        );
+
+
         renderNotes();
         updateDashboard();
-        alert("تم الحذف بنجاح من قاعدة البيانات");
+
+        showUndoBar();
+
+
     } catch (err) {
-        alert("خطأ غير متوقع: " + err.message);
+
+        alert(
+            "حدث خطأ أثناء حذف الملاحظة:\n\n" +
+            err.message
+        );
     }
 };
