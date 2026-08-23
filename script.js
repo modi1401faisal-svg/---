@@ -3333,58 +3333,233 @@ async function resolveExportItems(items) {
     document.addEventListener("DOMContentLoaded", initAutocomplete);
 })();
 // ==========================================
-// دوال الحذف المباشر من Supabase (توضع في نهاية ملف script.js)
+// 1. دوال العرض (لضمان أن الزر يستدعي الدالة الصحيحة)
+// ==========================================
+
+function renderClearances(data = clearances) {
+    const table = document.getElementById("clearanceTable");
+    if (!table) return;
+    table.innerHTML = "";
+
+    if (data.length === 0) {
+        table.innerHTML = `<tr><td colspan="6">لا توجد رخص إخلاء مسجلة</td></tr>`;
+        return;
+    }
+
+    data.forEach(function (item) {
+        const originalIndex = clearances.indexOf(item);
+        let imagesHTML = "<span>لا توجد صور</span>";
+        if (item.images && item.images.length > 0) {
+            imagesHTML = "";
+            item.images.forEach(function (img) {
+                imagesHTML += imageThumb(img, "صورة رخصة الإخلاء");
+            });
+        }
+        
+        table.innerHTML += `
+            <tr>
+                <td>${item.permit || ""}</td>
+                <td>${item.contractor || ""}</td>
+                <td>${item.owner || ""}</td>
+                <td>${item.location || ""}</td>
+                <td>${imagesHTML}</td>
+                <td>
+                    <button class="edit" onclick="editClearance(${originalIndex})">تعديل</button>
+                    <button class="delete" onclick="deleteClearance(${originalIndex})">حذف</button>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+function renderEmergencies(data = emergencies) {
+    const table = document.getElementById("emergencyTable");
+    if (!table) return;
+    table.innerHTML = "";
+
+    if (data.length === 0) {
+        table.innerHTML = `<tr><td colspan="9">لا توجد رخص طوارئ مسجلة</td></tr>`;
+        return;
+    }
+
+    data.forEach(function (item) {
+        const originalIndex = emergencies.indexOf(item);
+        let imagesHTML = "<span>لا توجد صور</span>";
+        if (item.images && item.images.length > 0) {
+            imagesHTML = "";
+            item.images.forEach(function (img) {
+                imagesHTML += imageThumb(img, "صورة رخصة الطوارئ");
+            });
+        }
+        
+        table.innerHTML += `
+            <tr>
+                <td>${item.permit || ""}</td>
+                <td>${item.contractor || ""}</td>
+                <td>${item.owner || ""}</td>
+                <td>${item.labReceive || ""}</td>
+                <td>${item.start || ""}</td>
+                <td>${item.end || ""}</td>
+                <td>${item.location || ""}</td>
+                <td>${imagesHTML}</td>
+                <td>
+                    <button class="edit" onclick="editEmergency(${originalIndex})">تعديل</button>
+                    <button class="delete" onclick="deleteEmergency(${originalIndex})">حذف</button>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+function renderNotes() {
+    const tables = {
+        "مشاريع الأمانة": document.getElementById("notesTableAmanah"),
+        "المياه الوطنية": document.getElementById("notesTableWater"),
+        "الكهرباء": document.getElementById("notesTableElec"),
+        "الاتصالات": document.getElementById("notesTableTelecom"),
+        "مشاريع خاصة": document.getElementById("notesTablePrivate")
+    };
+
+    for (let key in tables) {
+        if (tables[key]) {
+            tables[key].innerHTML = `<tr><td colspan="9">لا توجد ملاحظات مسجلة</td></tr>`;
+        }
+    }
+
+    if (notes.length === 0) return;
+
+    notes.forEach(function (item, index) {
+        const late = isLate(item);
+        let status = "";
+        
+        if (item.completed) {
+            status = `<span class="status-done">✅ تم التعديل</span>`;
+        } else if (late) {
+            status = `<span class="status-open">🔴 متأخرة</span>`;
+        } else {
+            status = `<span class="status-follow">قيد المتابعة</span>`;
+        }
+
+        let imagesHTML = "<span>لا توجد صور</span>";
+        if (item.before || item.after) {
+            imagesHTML = "";
+            if (item.before) imagesHTML += `<div><small>قبل</small><br>${imageThumb(item.before, "صورة الملاحظة")}</div>`;
+            if (item.after) imagesHTML += `<div><small>بعد</small><br>${imageThumb(item.after, "صورة بعد التعديل")}</div>`;
+        }
+
+        const rowHTML = `
+            <tr ${late ? 'style="background:#fff0f0;"' : ""}>
+                <td>${item.date || ""}</td>
+                <td>${item.permit || ""}</td>
+                <td>${item.contractor || ""}</td>
+                <td>${item.owner || ""}</td>
+                <td>${item.reason || ""}</td>
+                <td>${item.action || ""}</td>
+                <td>${status}</td>
+                <td>${imagesHTML}</td>
+                <td>
+                    <button class="edit" onclick="editNote(${index})">تعديل</button>
+                    <button class="delete" onclick="deleteNote(${index})">حذف</button>
+                </td>
+            </tr>
+        `;
+
+        const targetType = item.type || "مشاريع الأمانة";
+        if (tables[targetType]) {
+            if (tables[targetType].querySelector('td[colspan="9"]')) {
+                tables[targetType].innerHTML = "";
+            }
+            tables[targetType].innerHTML += rowHTML;
+        }
+    });
+}
+
+// ==========================================
+// 2. دوال الحذف (متصلة بـ Supabase وتظهر رسائل تنبيه)
 // ==========================================
 
 async function deleteClearance(index) {
-    if (!confirm("هل أنت متأكد من حذف هذه الرخصة نهائياً من Supabase؟")) return;
+    if (!confirm("هل أنت متأكد من حذف هذه الرخصة نهائياً؟")) return;
+    
     const item = clearances[index];
-    let idValue = item.id ? item.id : item.permit;
-    let colName = item.id ? 'id' : 'permit';
+    if (!item) return alert("❌ خطأ: العنصر غير موجود!");
+
+    // محاولة إيجاد المعرف (id أو permit)
+    const identifier = item.id || item.permit;
+    const column = item.id ? 'id' : 'permit';
+
+    if (!identifier) {
+        return alert("❌ خطأ: التطبيق لا يعرف الـ id ولا الـ permit لهذا العنصر! تأكد أن كود جلب البيانات يجلب الـ id.");
+    }
+
     try {
         await initSupabase();
-        if (!client) { alert("خطأ: لا يوجد اتصال بـ Supabase!"); return; }
-        const { error } = await client.from('clearances').delete().eq(colName, idValue);
-        if (error) { alert("خطأ من Supabase: " + error.message); return; }
-        clearances.splice(index, 1);
-        renderClearances();
-        updateDashboard();
-        alert("تم الحذف نهائياً من السحابة بنجاح");
+        
+        if (typeof client === 'undefined' || !client) {
+            return alert("❌ خطأ: المتغير client غير معرف!");
+        }
+
+        const { error } = await client.from('clearances').delete().eq(column, identifier);
+        
+        if (error) {
+            alert("❌ خطأ من Supabase: " + error.message);
+        } else {
+            clearances.splice(index, 1);
+            renderClearances();
+            updateDashboard();
+            alert("✅ تم الحذف نهائياً من Supabase!");
+        }
     } catch (err) {
-        alert("خطأ غير متوقع: " + err.message);
+        alert("🔥 خطأ برمجي: " + err.message);
     }
 }
 
 async function deleteEmergency(index) {
     if (!confirm("هل أنت متأكد من الحذف نهائياً؟")) return;
+    
     const item = emergencies[index];
-    let idValue = item.id ? item.id : item.permit;
-    let colName = item.id ? 'id' : 'permit';
+    if (!item) return alert("❌ خطأ: العنصر غير موجود!");
+
+    const identifier = item.id || item.permit;
+    const column = item.id ? 'id' : 'permit';
+
+    if (!identifier) return alert("❌ خطأ: لا يوجد id أو permit!");
+
     try {
         await initSupabase();
-        if (!client) return alert("خطأ في الاتصال");
-        const { error } = await client.from('emergencies').delete().eq(colName, idValue);
-        if (error) return alert("خطأ: " + error.message);
+        if (typeof client === 'undefined' || !client) return alert("❌ خطأ: client غير معرف!");
+        
+        const { error } = await client.from('emergencies').delete().eq(column, identifier);
+        if (error) return alert("❌ خطأ Supabase: " + error.message);
+        
         emergencies.splice(index, 1);
         renderEmergencies();
         updateDashboard();
-        alert("تم الحذف نهائياً");
-    } catch (err) { alert(err.message); }
+        alert("✅ تم الحذف نهائياً!");
+    } catch (err) { alert("🔥 خطأ: " + err.message); }
 }
 
 async function deleteNote(index) {
     if (!confirm("هل أنت متأكد من الحذف نهائياً؟")) return;
+    
     const item = notes[index];
-    let idValue = item.id ? item.id : item.permit;
-    let colName = item.id ? 'id' : 'permit';
+    if (!item) return alert("❌ خطأ: العنصر غير موجود!");
+
+    const identifier = item.id || item.permit;
+    const column = item.id ? 'id' : 'permit';
+
+    if (!identifier) return alert("❌ خطأ: لا يوجد id أو permit!");
+
     try {
         await initSupabase();
-        if (!client) return alert("خطأ في الاتصال");
-        const { error } = await client.from('notes').delete().eq(colName, idValue);
-        if (error) return alert("خطأ: " + error.message);
+        if (typeof client === 'undefined' || !client) return alert("❌ خطأ: client غير معرف!");
+        
+        const { error } = await client.from('notes').delete().eq(column, identifier);
+        if (error) return alert("❌ خطأ Supabase: " + error.message);
+        
         notes.splice(index, 1);
         renderNotes();
         updateDashboard();
-        alert("تم الحذف نهائياً");
-    } catch (err) { alert(err.message); }
+        alert("✅ تم الحذف نهائياً!");
+    } catch (err) { alert("🔥 خطأ: " + err.message); }
 }
