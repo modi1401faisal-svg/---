@@ -1834,3 +1834,94 @@ window.deleteClearance = async function(index) {
     }
 };
 </script>
+<script>
+// ==========================================
+// كود اعتراض أزرار الحذف وتوصيلها بـ Supabase مباشرة
+// ==========================================
+function setupSafeDelete() {
+    // البحث عن كل أزرار الحذف في الصفحة
+    const buttons = document.querySelectorAll('.delete');
+    
+    buttons.forEach(btn => {
+        // إذا لم يتم تركيب الكود الجديد على هذا الزر، نقوم بتركيبه
+        if(!btn.getAttribute('data-safe-delete')) {
+            btn.setAttribute('data-safe-delete', 'true');
+            btn.removeAttribute('onclick'); // إلغاء الدالة القديمة نهائياً!
+            btn.addEventListener('click', handleSafeDelete); // تركيب الدالة الجديدة
+        }
+    });
+}
+
+// تشغيل الكود كل ثانية للإمساك بأي زر جديد يظهر في الصفحة
+setInterval(setupSafeDelete, 1000);
+
+// الدالة الجديدة للحذف
+async function handleSafeDelete(e) {
+    e.preventDefault();
+    const btn = e.currentTarget;
+    const row = btn.closest('tr');
+    if (!row) return alert("❌ خطأ: لا يمكن العثور على الصف!");
+    
+    // محاولة استخراج رقم التصريح من الصف (غالباً يكون في أول خلية)
+    const cells = row.querySelectorAll('td');
+    const permitVal = cells[0] ? cells[0].innerText.trim() : "";
+    
+    if (!confirm("هل أنت متأكد من حذف العنصر: " + permitVal + " نهائياً؟")) return;
+    
+    // البحث عن العنصر في الذاكرة لمعرفة الـ id أو الـ permit
+    let foundArray = null;
+    let foundItem = null;
+    let foundIndex = -1;
+    let tableName = "";
+    
+    // 1. البحث في رخص الإخلاء
+    let idx = clearances.findIndex(c => String(c.permit) === permitVal);
+    if (idx !== -1) { foundArray = clearances; foundItem = clearances[idx]; foundIndex = idx; tableName = "clearances"; }
+    
+    // 2. البحث في رخص الطوارئ
+    if (!foundItem) {
+        idx = emergencies.findIndex(c => String(c.permit) === permitVal);
+        if (idx !== -1) { foundArray = emergencies; foundItem = emergencies[idx]; foundIndex = idx; tableName = "emergencies"; }
+    }
+    
+    // 3. البحث في الملاحظات
+    if (!foundItem) {
+        idx = notes.findIndex(c => String(c.permit) === permitVal);
+        if (idx !== -1) { foundArray = notes; foundItem = notes[idx]; foundIndex = idx; tableName = "notes"; }
+    }
+    
+    if (!foundItem) {
+        alert("❌ لم أجد العنصر في الذاكرة. الرقم المستخرج من الجدول هو: " + permitVal);
+        return;
+    }
+    
+    try {
+        // الاتصال بـ Supabase بطريقتك المعتادة
+        await initSupabase();
+        
+        if (typeof client === 'undefined' || !client) {
+            return alert("❌ خطأ: المتغير client غير معرف بعد!");
+        }
+        
+        // تحديد المعرف (id أو permit)
+        const identifier = foundItem.id || foundItem.permit;
+        const column = foundItem.id ? 'id' : 'permit';
+        
+        // إرسال أمر الحذف لـ Supabase
+        const { error } = await client.from(tableName).delete().eq(column, identifier);
+        
+        if (error) {
+            // إذا رفضت Supabase الحذف، ستظهر لك رسالة الخطأ بالضبط
+            alert("❌ خطأ من Supabase:\n" + error.message);
+        } else {
+            // إذا نجح الحذف من السحابة
+            foundArray.splice(foundIndex, 1);
+            // تحديث الجدول في الشاشة
+            if (tableName === 'clearances') renderClearances();
+            if (tableName === 'emergencies') renderEmergencies();
+            if (tableName === 'notes') renderNotes();
+            updateDashboard();
+            alert("✅ تم الحذف نهائياً من Supabase بنجاح!");
+        }
+    } catch (err) {
+        alert("🔥 خطأ برمجي
