@@ -1452,52 +1452,7 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 });
-</script>
-<!-- ========================================== -->
-<!-- كود زر التراجع عن الحذف (معدل ليحفظ الحذف فوراً) -->
-<!-- ========================================== -->
-<style>
-    #undo-container {
-        position: fixed;
-        bottom: 25px;
-        right: 25px;
-        background: #1d4d3d;
-        color: white;
-        padding: 15px 20px;
-        border-radius: 10px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-        display: none;
-        align-items: center;
-        gap: 20px;
-        z-index: 99999;
-        font-family: Tahoma, Arial, sans-serif;
-        animation: slideUp 0.3s ease-out;
-    }
-    @keyframes slideUp {
-        from { transform: translateY(100px); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
-    }
-    #undo-btn {
-        background: #dfeae4;
-        color: #1d4d3d;
-        border: none;
-        padding: 8px 18px;
-        border-radius: 6px;
-        cursor: pointer;
-        font-weight: bold;
-        font-size: 14px;
-        transition: 0.2s;
-    }
-    #undo-btn:hover {
-        background: #cbdcd3;
-    }
-</style>
-
-<div id="undo-container">
-    <span id="undo-text">تم حذف العنصر.</span>
-    <button id="undo-btn" onclick="restoreDeletedItem()">تراجع</button>
-</div>
-
+    
 <script>
     let deletedItemData = null;
     let undoTimer = null;
@@ -1706,5 +1661,70 @@ document.addEventListener("DOMContentLoaded", function() {
         display: none;
         font-size: 13px;
     }
+</script>
+    <script>
+// ==========================================
+// الاعتراض الجذري لأزرار الحذف وتوصيلها بـ Supabase
+// ==========================================
+document.addEventListener('click', async function(e) {
+    // التحقق مما إذا كان العنصر الذي تم النقر عليه هو زر الحذف
+    const btn = e.target.closest('.delete');
+    if (!btn) return; // إذا لم يكن زر حذف، تجاهل
+
+    // منع الكود القديم من العمل تماماً
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    // إثبات أن الكود الجديد التقط الزر
+    alert("✅ تم الضغط على زر الحذف! (الكود الجديد يعمل)");
+
+    if (!confirm("هل أنت متأكد من الحذف نهائياً من Supabase؟")) return;
+
+    const row = btn.closest('tr');
+    const tbody = row.closest('tbody');
+    
+    if (!row || !tbody) return alert("❌ خطأ: لا يمكن العثور على بيانات الصف!");
+
+    // استخراج رقم التصريح من أول عمود في الجدول
+    const permitCell = row.querySelector('td');
+    const permitValue = permitCell ? permitCell.innerText.trim() : "";
+
+    // تحديد اسم الجدول في Supabase بناءً على معرف الجدول في HTML
+    let tableName = "";
+    if (tbody.id === 'clearanceTable') tableName = 'clearances';
+    else if (tbody.id === 'emergencyTable') tableName = 'emergencies';
+    else if (tbody.id.includes('notesTable')) tableName = 'notes';
+    else return alert("❌ جدول غير معروف!");
+
+    try {
+        // التهيئة والاتصال بـ Supabase
+        await initSupabase();
+        if (typeof client === 'undefined' || !client) {
+            return alert("❌ خطأ: المتغير client غير معرف!");
+        }
+
+        // إرسال أمر الحذف إلى Supabase باستخدام رقم التصريح
+        const { error } = await client.from(tableName).delete().eq('permit', permitValue);
+        
+        if (error) {
+            // إذا رفضت Supabase الحذف، ستظهر لك هذه الرسالة
+            alert("❌ خطأ من Supabase:\n" + error.message);
+        } else {
+            // إذا نجح الحذف من السحابة، نحذف الصف من الشاشة
+            row.remove();
+            
+            // تحديث الذاكرة المحلية
+            let arr = tableName === 'clearances' ? clearances : tableName === 'emergencies' ? emergencies : notes;
+            const idx = arr.findIndex(item => String(item.permit) === permitValue);
+            if (idx !== -1) {
+                arr.splice(idx, 1);
+                updateDashboard();
+            }
+            alert("✅ تم الحذف نهائياً من Supabase بنجاح!");
+        }
+    } catch (err) {
+        alert("🔥 خطأ برمجي غير متوقع:\n" + err.message);
+    }
+});
 </script>
 </body>
