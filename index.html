@@ -1794,7 +1794,7 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 <!-- ========================================== -->
-<!-- كود الحذف مع التراجع (موصول بـ Supabase) -->
+<!-- كود الحذف مع التراجع (موصول بـ Supabase بالـ ID) -->
 <!-- ========================================== -->
 <style>
     #undo-container {
@@ -1847,8 +1847,8 @@ function showUndoBar() {
                 let tableName = deletedItemData.type === 'clearance' ? 'clearances' : 
                                 deletedItemData.type === 'emergency' ? 'emergencies' : 'notes';
                 
-                // إرسال أمر الحذف النهائي إلى Supabase باستخدام رقم التصريح
-                const { error } = await supabase.from(tableName).delete().eq('permit', deletedItemData.item.permit);
+                // إرسال أمر الحذف النهائي إلى Supabase باستخدام الـ ID
+                const { error } = await supabase.from(tableName).delete().eq('id', deletedItemData.item.id);
                 
                 if (error) {
                     console.error("خطأ في الحذف من Supabase:", error.message);
