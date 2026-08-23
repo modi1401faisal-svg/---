@@ -3564,88 +3564,41 @@ async function deleteNote(index) {
     } catch (err) { alert("🔥 خطأ: " + err.message); }
 }
 // ==========================================
-// التحكم النهائي بالحذف (يوضع في نهاية script.js)
+// إعادة رسم جدول الإخلاءات (يوضع في نهاية script.js)
 // ==========================================
+function renderClearances(data = clearances) {
+    const table = document.getElementById("clearanceTable");
+    if (!table) return;
+    table.innerHTML = "";
 
-window.deleteClearance = async function(index) {
-    if (!confirm("هل أنت متأكد من حذف هذه الرخصة نهائياً؟")) return;
-    
-    const item = clearances[index];
-    if (!item) return alert("العنصر غير موجود!");
-
-    try {
-        await initSupabase();
-        
-        if (typeof client === 'undefined' || !client) {
-            return alert("❌ خطأ: لا يوجد اتصال بـ Supabase!");
-        }
-
-        // تحديد المفتاح الأساسي (id أو permit)
-        const key = item.id ? 'id' : 'permit';
-        const value = item.id || item.permit;
-
-        if (!value) return alert("❌ خطأ: لا يوجد id أو permit لهذا العنصر!");
-
-        // إرسال أمر الحذف لـ Supabase
-        const { error } = await client.from('clearances').delete().eq(key, value);
-        
-        if (error) {
-            // إذا رفضت Supabase الحذف، ستظهر لك هذه الرسالة ولن نحذف من الشاشة
-            alert("❌ خطأ من Supabase:\n" + error.message);
-        } else {
-            // إذا نجح الحذف من السحابة، نحذفه من الشاشة
-            clearances.splice(index, 1);
-            renderClearances();
-            updateDashboard();
-            alert("✅ تم الحذف نهائياً من Supabase بنجاح!");
-        }
-    } catch (err) {
-        alert("🔥 خطأ برمجي غير متوقع:\n" + err.message);
+    if (data.length === 0) {
+        table.innerHTML = `<tr><td colspan="6">لا توجد رخص إخلاء مسجلة</td></tr>`;
+        return;
     }
-};
 
-window.deleteEmergency = async function(index) {
-    if (!confirm("هل أنت متأكد من الحذف نهائياً؟")) return;
-    const item = emergencies[index];
-    if (!item) return alert("العنصر غير موجود!");
-    
-    try {
-        await initSupabase();
-        if (typeof client === 'undefined' || !client) return alert("❌ لا يوجد اتصال بـ Supabase!");
+    data.forEach(function (item, index) {
+        let imagesHTML = "<span>لا توجد صور</span>";
+        if (item.images && item.images.length > 0) {
+            imagesHTML = "";
+            item.images.forEach(function (img) {
+                imagesHTML += `<img src="${img}" style="width:50px;height:50px;border-radius:5px;cursor:pointer;" onclick="openImage('${img}')">`;
+            });
+        }
         
-        const key = item.id ? 'id' : 'permit';
-        const value = item.id || item.permit;
-        if (!value) return alert("❌ خطأ: لا يوجد id أو permit!");
-
-        const { error } = await client.from('emergencies').delete().eq(key, value);
-        if (error) return alert("❌ خطأ Supabase: " + error.message);
-        
-        emergencies.splice(index, 1);
-        renderEmergencies();
-        updateDashboard();
-        alert("✅ تم الحذف نهائياً!");
-    } catch (err) { alert("🔥 خطأ: " + err.message); }
-};
-
-window.deleteNote = async function(index) {
-    if (!confirm("هل أنت متأكد من الحذف نهائياً؟")) return;
-    const item = notes[index];
-    if (!item) return alert("العنصر غير موجود!");
-    
-    try {
-        await initSupabase();
-        if (typeof client === 'undefined' || !client) return alert("❌ لا يوجد اتصال بـ Supabase!");
-        
-        const key = item.id ? 'id' : 'permit';
-        const value = item.id || item.permit;
-        if (!value) return alert("❌ خطأ: لا يوجد id أو permit!");
-
-        const { error } = await client.from('notes').delete().eq(key, value);
-        if (error) return alert("❌ خطأ Supabase: " + error.message);
-        
-        notes.splice(index, 1);
-        renderNotes();
-        updateDashboard();
-        alert("✅ تم الحذف نهائياً!");
-    } catch (err) { alert("🔥 خطأ: " + err.message); }
-};
+        table.innerHTML += `
+            <tr>
+                <td>${item.permit || ""}</td>
+                <td>${item.contractor || ""}</td>
+                <td>${item.owner || ""}</td>
+                <td>${item.location || ""}</td>
+                <td>${imagesHTML}</td>
+                <td>
+                    <button class="edit" onclick="editClearance(${index})">تعديل</button>
+                    <button class="delete" onclick="window.deleteClearance(${index})">حذف</button>
+                </td>
+            </tr>
+        `;
+    });
+}
+// إعادة تشغيل العرض فوراً
+renderClearances();
