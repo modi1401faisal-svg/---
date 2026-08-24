@@ -1818,122 +1818,70 @@ function isLate(note) {
 /* =========================================================
    21) عرض الملاحظات
    ========================================================= */
-
 function renderNotes() {
+    const tables = {
+        "مشاريع الأمانة": document.getElementById("notesTableAmanah"),
+        "المياه الوطنية": document.getElementById("notesTableWater"),
+        "الكهرباء": document.getElementById("notesTableElec"),
+        "الاتصالات": document.getElementById("notesTableTelecom"),
+        "مشاريع خاصة": document.getElementById("notesTablePrivate")
+    };
 
-    const tbody = ensureTableHeaders("notesTable", [
-        "م",
-        "التاريخ",
-        "رقم التصريح",
-        "اسم المقاول",
-        "الجهة المالكة",
-        "أسباب الرفض",
-        "الإجراء المتخذ",
-        "الحالة",
-        "الصور",
-        "الإجراءات"
-    ]);
-
-    if (!tbody) {
-        return;
+    for (let key in tables) {
+        if (tables[key]) {
+            tables[key].innerHTML = `<tr><td colspan="9">لا توجد ملاحظات مسجلة</td></tr>`;
+        }
     }
 
-    tbody.innerHTML = "";
+    if (!notes || notes.length === 0) return;
 
-    if (!notes || notes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10">لا توجد ملاحظات مسجلة</td></tr>';
-        return;
-    }
-
-    const categories = [
-        "مشاريع الأمانة",
-        "المياه الوطنية",
-        "الكهرباء",
-        "الاتصالات",
-        "مشاريع خاصة"
-    ];
-
-    categories.forEach(function (category) {
-
-        const categoryNotes = notes.filter(function (item) {
-            return (item.type || "مشاريع الأمانة") === category;
-        });
-
-        if (categoryNotes.length === 0) {
-            return;
+    notes.forEach(function (item, index) {
+        const late = isLate(item);
+        let status = "";
+        
+        if (item.completed) {
+            status = `<span class="status-done">✅ تم التعديل</span>`;
+        } else if (late) {
+            status = `<span class="status-open">🔴 متأخرة</span>`;
+        } else {
+            status = `<span class="status-follow">قيد المتابعة</span>`;
         }
 
-        tbody.innerHTML += `
-            <tr class="note-category-row">
-                <td colspan="10" style="font-weight:bold;text-align:right;padding:12px;">
-                    📁 ${category}
+        let imagesHTML = "<span>لا توجد صور</span>";
+        if (item.before || item.after) {
+            imagesHTML = "";
+            if (item.before) imagesHTML += `<div><small>قبل التعديل</small><br>${imageThumb(item.before, "صورة الملاحظة")}</div>`;
+            if (item.after) imagesHTML += `<div><small>بعد التعديل</small><br>${imageThumb(item.after, "صورة الملاحظة بعد التعديل")}</div>`;
+        }
+
+        const rowHTML = `
+            <tr ${late ? 'style="background:#fff0f0;"' : ""}>
+                <td>${item.date || ""}</td>
+                <td>${item.permit || ""}</td>
+                <td>${item.contractor || ""}</td>
+                <td>${item.owner || ""}</td>
+                <td>${item.reason || ""}</td>
+                <td>${item.action || ""}</td>
+                <td>${status}</td>
+                <td>${imagesHTML}</td>
+                <td>
+                    <button class="edit" onclick="editNote(${index})">تعديل</button>
+                    <button class="delete" onclick="deleteNote(${index})">حذف</button>
                 </td>
             </tr>
         `;
 
-        categoryNotes.forEach(function (item) {
-
-            const index = notes.indexOf(item);
-            const late = isLate(item);
-
-            let status = "";
-            if (item.completed) {
-                status = '<span class="status-done">✅ تم التعديل</span>';
-            } else if (late) {
-                status = '<span class="status-open">🔴 متأخرة</span>';
-            } else {
-                status = '<span class="status-follow">قيد المتابعة</span>';
+        const targetType = item.type || "مشاريع الأمانة";
+        if (tables[targetType]) {
+            if (tables[targetType].querySelector('td[colspan="9"]')) {
+                tables[targetType].innerHTML = "";
             }
-
-            let imagesHTML = "";
-
-            if (item.before) {
-                imagesHTML += `
-                    <div>
-                        <small>قبل التعديل</small>
-                        <br>
-                        ${imageThumb(item.before, "صورة الملاحظة")}
-                    </div>
-                `;
-            }
-
-            if (item.after) {
-                imagesHTML += `
-                    <div>
-                        <small>بعد التعديل</small>
-                        <br>
-                        ${imageThumb(item.after, "صورة الملاحظة بعد التعديل")}
-                    </div>
-                `;
-            }
-
-            if (!imagesHTML) {
-                imagesHTML = "<span>لا توجد صور</span>";
-            }
-
-            tbody.innerHTML += `
-                <tr ${late ? 'style="background:#fff0f0;"' : ""}>
-                    <td>${index + 1}</td>
-                    <td>${item.date || ""}</td>
-                    <td>${item.permit || ""}</td>
-                    <td>${item.contractor || ""}</td>
-                    <td>${item.owner || ""}</td>
-                    <td>${item.reason || ""}</td>
-                    <td>${item.action || ""}</td>
-                    <td>${status}</td>
-                    <td>${imagesHTML}</td>
-                    <td>
-                        <button class="edit" onclick="editNote(${index})">تعديل</button>
-                        <button class="delete" onclick="deleteNote(${index})">حذف</button>
-                    </td>
-                </tr>
-            `;
-        });
+            tables[targetType].innerHTML += rowHTML;
+        }
     });
 
     resolveIdbImages();
 }
-
 function editNote(index) {
 
     const item = notes[index];
