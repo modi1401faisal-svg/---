@@ -3472,3 +3472,4 @@ function renderNotes() {
             tables[targetType].innerHTML += rowHTML;
         }
     });
+}
