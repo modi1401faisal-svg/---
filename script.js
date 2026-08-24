@@ -1819,7 +1819,7 @@ function isLate(note) {
    21) عرض الملاحظات
    ========================================================= */
 /* =========================================================
-   21) عرض الملاحظات
+   21) عرض الملاحظات (مصنفة في جدول واحد)
    ========================================================= */
 function renderNotes() {
     const tbody = document.getElementById("notesTable");
@@ -1832,48 +1832,83 @@ function renderNotes() {
         return;
     }
 
-    notes.forEach(function (item, index) {
-        const late = isLate(item);
-        let status = "";
-        
-        if (item.completed) {
-            status = '<span class="status-done">✅ تم التعديل</span>';
-        } else if (late) {
-            status = '<span class="status-open">🔴 متأخرة</span>';
-        } else {
-            status = '<span class="status-follow">قيد المتابعة</span>';
-        }
+    // ترتيب التصنيفات ليظهر كل قسم تحت الآخر
+    const categories = [
+        "مشاريع الأمانة",
+        "المياه الوطنية",
+        "الكهرباء",
+        "الاتصالات",
+        "مشاريع خاصة"
+    ];
 
-        let imagesHTML = "<span>لا توجد صور</span>";
-        if (item.before || item.after) {
-            imagesHTML = "";
-            if (item.before) {
-                imagesHTML += `<div style="display:inline-block;text-align:center;margin-left:5px;"><small>قبل</small><br>${imageThumb(item.before, "صورة الملاحظة")}</div>`;
-            }
-            if (item.after) {
-                imagesHTML += `<div style="display:inline-block;text-align:center;margin-left:5px;"><small>بعد</small><br>${imageThumb(item.after, "صورة الملاحظة بعد التعديل")}</div>`;
-            }
-        }
+    // المرور على كل تصنيف لرسم ملاحظاته تحته
+    categories.forEach(function (category) {
 
+        // فلترة الملاحظات التي تنتمي لهذا التصنيف فقط
+        const categoryNotes = notes.filter(function (item) {
+            return (item.type || "مشاريع الأمانة") === category;
+        });
+
+        // إذا لم يكن هناك ملاحظات في هذا التصنيف، نتجاوزه
+        if (categoryNotes.length === 0) return;
+
+        // 1. رسم صف الفاصل (عنوان التصنيف)
         tbody.innerHTML += `
-            <tr ${late ? 'style="background:#fff0f0;"' : ""}>
-                <td>${item.date || ""}</td>
-                <td>${item.type || "مشاريع الأمانة"}</td>
-                <td>${item.permit || ""}</td>
-                <td>${item.contractor || ""}</td>
-                <td>${item.owner || ""}</td>
-                <td>${item.reason || ""}</td>
-                <td>${item.action || ""}</td>
-                <td>${status}</td>
-                <td>${imagesHTML}</td>
-                <td>
-                    <button class="edit" onclick="editNote(${index})">تعديل</button>
-                    <button class="delete" onclick="deleteNote(${index})">حذف</button>
+            <tr class="note-category-row">
+                <td colspan="10" style="font-weight:bold; text-align:right; padding:12px; background:#eaf3ee; color:#1d4d3d; border-bottom:2px solid #1d4d3d; font-size:15px;">
+                    📁 ${category}
                 </td>
             </tr>
         `;
+
+        // 2. رسم ملاحظات هذا التصنيف
+        categoryNotes.forEach(function (item) {
+            
+            const index = notes.indexOf(item); // معرفة رقمه الفعلي في الذاكرة
+            const late = isLate(item);
+
+            let status = "";
+            if (item.completed) {
+                status = '<span class="status-done">✅ تم التعديل</span>';
+            } else if (late) {
+                status = '<span class="status-open">🔴 متأخرة</span>';
+            } else {
+                status = '<span class="status-follow">قيد المتابعة</span>';
+            }
+
+            let imagesHTML = "<span>لا توجد صور</span>";
+            if (item.before || item.after) {
+                imagesHTML = "";
+                if (item.before) {
+                    imagesHTML += `<div style="display:inline-block; text-align:center; margin:2px;"><small>قبل</small><br>${imageThumb(item.before, "صورة الملاحظة")}</div>`;
+                }
+                if (item.after) {
+                    imagesHTML += `<div style="display:inline-block; text-align:center; margin:2px;"><small>بعد</small><br>${imageThumb(item.after, "صورة الملاحظة بعد التعديل")}</div>`;
+                }
+            }
+
+            // رسم صف الملاحظة
+            tbody.innerHTML += `
+                <tr ${late ? 'style="background:#fff0f0;"' : ""}>
+                    <td>${item.date || ""}</td>
+                    <td>${item.type || "مشاريع الأمانة"}</td>
+                    <td>${item.permit || ""}</td>
+                    <td>${item.contractor || ""}</td>
+                    <td>${item.owner || ""}</td>
+                    <td>${item.reason || ""}</td>
+                    <td>${item.action || ""}</td>
+                    <td>${status}</td>
+                    <td>${imagesHTML}</td>
+                    <td>
+                        <button class="edit" onclick="editNote(${index})">تعديل</button>
+                        <button class="delete" onclick="deleteNote(${index})">حذف</button>
+                    </td>
+                </tr>
+            `;
+        });
     });
 
+    // تحميل الصور المحلية إن وجدت
     if (typeof resolveIdbImages === 'function') {
         resolveIdbImages();
     }
