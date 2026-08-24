@@ -1870,7 +1870,7 @@ function renderNotes() {
                 </td>
             </tr>
         `;
-
+       
         const targetType = item.type || "مشاريع الأمانة";
         if (tables[targetType]) {
             if (tables[targetType].querySelector('td[colspan="9"]')) {
