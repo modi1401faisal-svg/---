@@ -1727,111 +1727,74 @@ document.addEventListener('click', async function(e) {
     }
 });
 </script>
-    <script>
 // ==========================================
-// كود استرجاع جداول الملاحظات ودالة العرض
+// كود إجباري لعرض الملاحظات بعد الحفظ مباشرة
 // ==========================================
-document.addEventListener("DOMContentLoaded", function() {
-    
-    // 1. التحقق من وجود الجداول، وإذا لم تكن موجودة نقوم بإنشائها
-    if (!document.getElementById('notesTableAmanah')) {
-        const notesSection = document.getElementById('notes');
-        if (notesSection) {
-            const tablesHTML = `
-                <div class="card table-card">
-                    <div class="card-header"><h3>ملاحظات مشاريع الأمانة</h3></div>
-                    <div class="table-container">
-                        <table>
-                            <thead><tr><th>التاريخ</th><th>رقم التصريح</th><th>المقاول</th><th>الجهة المالكة</th><th>سبب الرفض</th><th>الإجراء المتخذ</th><th>الحالة</th><th>الصور</th><th>الإجراءات</th></tr></thead>
-                            <tbody id="notesTableAmanah"></tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="card table-card">
-                    <div class="card-header"><h3>ملاحظات شركة المياه الوطنية</h3></div>
-                    <div class="table-container">
-                        <table>
-                            <thead><tr><th>التاريخ</th><th>رقم التصريح</th><th>المقاول</th><th>الجهة المالكة</th><th>سبب الرفض</th><th>الإجراء المتخذ</th><th>الحالة</th><th>الصور</th><th>الإجراءات</th></tr></thead>
-                            <tbody id="notesTableWater"></tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="card table-card">
-                    <div class="card-header"><h3>ملاحظات شركة الكهرباء</h3></div>
-                    <div class="table-container">
-                        <table>
-                            <thead><tr><th>التاريخ</th><th>رقم التصريح</th><th>المقاول</th><th>الجهة المالكة</th><th>سبب الرفض</th><th>الإجراء المتخذ</th><th>الحالة</th><th>الصور</th><th>الإجراءات</th></tr></thead>
-                            <tbody id="notesTableElec"></tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="card table-card">
-                    <div class="card-header"><h3>ملاحظات شركة الاتصالات</h3></div>
-                    <div class="table-container">
-                        <table>
-                            <thead><tr><th>التاريخ</th><th>رقم التصريح</th><th>المقاول</th><th>الجهة المالكة</th><th>سبب الرفض</th><th>الإجراء المتخذ</th><th>الحالة</th><th>الصور</th><th>الإجراءات</th></tr></thead>
-                            <tbody id="notesTableTelecom"></tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="card table-card">
-                    <div class="card-header"><h3>ملاحظات المشاريع الخاصة</h3></div>
-                    <div class="table-container">
-                        <table>
-                            <thead><tr><th>التاريخ</th><th>رقم التصريح</th><th>المقاول</th><th>الجهة المالكة</th><th>سبب الرفض</th><th>الإجراء المتخذ</th><th>الحالة</th><th>الصور</th><th>الإجراءات</th></tr></thead>
-                            <tbody id="notesTablePrivate"></tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
-            const noteForm = notesSection.querySelector('.card');
-            if (noteForm) {
-                noteForm.insertAdjacentHTML('afterend', tablesHTML);
-            } else {
-                notesSection.innerHTML += tablesHTML;
-            }
-        }
-    }
 
-    // 2. إعادة تعريف دالة renderNotes لضمان عملها وعرض البيانات
-    window.renderNotes = function() {
-        const tables = {
-            "مشاريع الأمانة": document.getElementById("notesTableAmanah"),
-            "المياه الوطنية": document.getElementById("notesTableWater"),
-            "الكهرباء": document.getElementById("notesTableElec"),
-            "الاتصالات": document.getElementById("notesTableTelecom"),
-            "مشاريع خاصة": document.getElementById("notesTablePrivate")
-        };
+// 1. إعادة كتابة دالة renderNotes لتكون هي المعتمدة
+window.renderNotes = function() {
+    const notesSection = document.getElementById('notes');
+    if (!notesSection) return;
 
+    // البحث عن جميع الجداول الموجودة في صفحة الملاحظات
+    const tables = {
+        "مشاريع الأمانة": document.getElementById("notesTableAmanah"),
+        "المياه الوطنية": document.getElementById("notesTableWater"),
+        "الكهرباء": document.getElementById("notesTableElec"),
+        "الاتصالات": document.getElementById("notesTableTelecom"),
+        "مشاريع خاصة": document.getElementById("notesTablePrivate")
+    };
+
+    // إذا كان التطبيق يستخدم جدولاً واحداً فقط (مثل id="noteTable")
+    const singleTable = document.getElementById('noteTable') || document.getElementById('notesTable');
+
+    // إذا وجدنا الجداول المصنفة (5 جداول)
+    if (tables["مشاريع الأمانة"]) {
         for (let key in tables) {
-            if (tables[key]) {
-                tables[key].innerHTML = `<tr><td colspan="9">لا توجد ملاحظات مسجلة</td></tr>`;
-            }
+            if (tables[key]) tables[key].innerHTML = `<tr><td colspan="9">لا توجد ملاحظات مسجلة</td></tr>`;
         }
-
         if (notes.length === 0) return;
 
-        notes.forEach(function (item, index) {
-            const late = isLate(item);
-            let status = "";
+        notes.forEach(function(item, index) {
+            let target = tables[item.type || "مشاريع الأمانة"];
+            if (target) {
+                if (target.querySelector('td[colspan="9"]')) target.innerHTML = "";
+                
+                let status = item.completed ? '<span class="status-done">✅ تم التعديل</span>' : '<span class="status-open">🔴 متأخرة</span>';
+                let imagesHTML = item.before ? `<img src="${item.before}" style="width:50px;height:50px;border-radius:5px;cursor:pointer;" onclick="openImage('${item.before}')">` : 'لا توجد صور';
+
+                target.innerHTML += `
+                    <tr>
+                        <td>${item.date || ""}</td>
+                        <td>${item.permit || ""}</td>
+                        <td>${item.contractor || ""}</td>
+                        <td>${item.owner || ""}</td>
+                        <td>${item.reason || ""}</td>
+                        <td>${item.action || ""}</td>
+                        <td>${status}</td>
+                        <td>${imagesHTML}</td>
+                        <td>
+                            <button class="edit" onclick="editNote(${index})">تعديل</button>
+                            <button class="delete" onclick="window.deleteNote(${index})">حذف</button>
+                        </td>
+                    </tr>
+                `;
+            }
+        });
+    } 
+    // إذا كان التطبيق يستخدم جدولاً واحداً
+    else if (singleTable) {
+        singleTable.innerHTML = '';
+        if (notes.length === 0) {
+            singleTable.innerHTML = '<tr><td colspan="9">لا توجد ملاحظات مسجلة</td></tr>';
+            return;
+        }
+        notes.forEach(function(item, index) {
+            let status = item.completed ? '<span class="status-done">✅ تم التعديل</span>' : '<span class="status-open">🔴 متأخرة</span>';
+            let imagesHTML = item.before ? `<img src="${item.before}" style="width:50px;height:50px;border-radius:5px;cursor:pointer;" onclick="openImage('${item.before}')">` : 'لا توجد صور';
             
-            if (item.completed) {
-                status = `<span class="status-done">✅ تم التعديل</span>`;
-            } else if (late) {
-                status = `<span class="status-open">🔴 متأخرة</span>`;
-            } else {
-                status = `<span class="status-follow">قيد المتابعة</span>`;
-            }
-
-            let imagesHTML = "<span>لا توجد صور</span>";
-            if (item.before || item.after) {
-                imagesHTML = "";
-                if (item.before) imagesHTML += `<div><small>قبل</small><br>${imageThumb(item.before, "صورة الملاحظة")}</div>`;
-                if (item.after) imagesHTML += `<div><small>بعد</small><br>${imageThumb(item.after, "صورة بعد التعديل")}</div>`;
-            }
-
-            const rowHTML = `
-                <tr ${late ? 'style="background:#fff0f0;"' : ""}>
+            singleTable.innerHTML += `
+                <tr>
                     <td>${item.date || ""}</td>
                     <td>${item.permit || ""}</td>
                     <td>${item.contractor || ""}</td>
@@ -1846,21 +1809,20 @@ document.addEventListener("DOMContentLoaded", function() {
                     </td>
                 </tr>
             `;
-
-            const targetType = item.type || "مشاريع الأمانة";
-            if (tables[targetType]) {
-                if (tables[targetType].querySelector('td[colspan="9"]')) {
-                    tables[targetType].innerHTML = "";
-                }
-                tables[targetType].innerHTML += rowHTML;
-            }
         });
-    };
+    }
+};
 
-    // إعادة عرض الملاحظات فوراً
-    if (typeof notes !== 'undefined') {
+// 2. اعتراض دالة التنقل لتشغيل العرض عند فتح صفحة الملاحظات
+const originalShowPageNotes = window.showPage;
+window.showPage = function(pageId) {
+    if (originalShowPageNotes) originalShowPageNotes(pageId);
+    if (pageId === 'notes') {
         renderNotes();
     }
-});
-</script>
+};
+
+// 3. تشغيل العرض عند فتح التطبيق
+document.addEventListener("DOMContentLoaded", renderNotes);
+</script>  
 </body>
