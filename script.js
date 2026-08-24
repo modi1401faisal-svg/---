@@ -1925,7 +1925,7 @@ async function deleteNote(index) {
     if (item && item.id) {
         await dbDelete("notes", item.id);
     }
-
+   
     notes.splice(index, 1);
     await saveLocalData("notes", notes);
 
