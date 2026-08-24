@@ -1726,7 +1726,7 @@ document.addEventListener('click', async function(e) {
         alert("🔥 خطأ برمجي غير متوقع:\n" + err.message);
     }
 });
-</script>
+
 // ==========================================
 // كود إجباري لعرض الملاحظات بعد الحفظ مباشرة
 // ==========================================
@@ -1825,4 +1825,82 @@ window.showPage = function(pageId) {
 // 3. تشغيل العرض عند فتح التطبيق
 document.addEventListener("DOMContentLoaded", renderNotes);
 </script>  
+        <script>
+// كود إجباري لعرض الملاحظات عند فتح التطبيق وتحديث الصفحة
+document.addEventListener("DOMContentLoaded", function() {
+    // إعادة تعريف دالة العرض لتكون قوية ومباشرة
+    window.renderNotes = function() {
+        const tables = {
+            "مشاريع الأمانة": document.getElementById("notesTableAmanah"),
+            "المياه الوطنية": document.getElementById("notesTableWater"),
+            "الكهرباء": document.getElementById("notesTableElec"),
+            "الاتصالات": document.getElementById("notesTableTelecom"),
+            "مشاريع خاصة": document.getElementById("notesTablePrivate")
+        };
+
+        // تفريغ الجداول
+        for (let key in tables) {
+            if (tables[key]) {
+                tables[key].innerHTML = `<tr><td colspan="9">لا توجد ملاحظات مسجلة</td></tr>`;
+            }
+        }
+
+        if (typeof notes === 'undefined' || notes.length === 0) return;
+
+        // ملء الجداول بالبيانات
+        notes.forEach(function (item, index) {
+            const late = (typeof isLate === 'function') ? isLate(item) : false;
+            let status = "";
+            
+            if (item.completed) {
+                status = `<span class="status-done">✅ تم التعديل</span>`;
+            } else if (late) {
+                status = `<span class="status-open">🔴 متأخرة</span>`;
+            } else {
+                status = `<span class="status-follow">قيد المتابعة</span>`;
+            }
+
+            let imagesHTML = "<span>لا توجد صور</span>";
+            if (item.before || item.after) {
+                imagesHTML = "";
+                if (item.before) imagesHTML += `<div><small>قبل</small><br>${imageThumb(item.before, "صورة الملاحظة")}</div>`;
+                if (item.after) imagesHTML += `<div><small>بعد</small><br>${imageThumb(item.after, "صورة بعد التعديل")}</div>`;
+            }
+
+            const rowHTML = `
+                <tr ${late ? 'style="background:#fff0f0;"' : ""}>
+                    <td>${item.date || ""}</td>
+                    <td>${item.permit || ""}</td>
+                    <td>${item.contractor || ""}</td>
+                    <td>${item.owner || ""}</td>
+                    <td>${item.reason || ""}</td>
+                    <td>${item.action || ""}</td>
+                    <td>${status}</td>
+                    <td>${imagesHTML}</td>
+                    <td>
+                        <button class="edit" onclick="editNote(${index})">تعديل</button>
+                        <button class="delete" onclick="deleteNote(${index})">حذف</button>
+                    </td>
+                </tr>
+            `;
+
+            const targetType = item.type || "مشاريع الأمانة";
+            if (tables[targetType]) {
+                if (tables[targetType].querySelector('td[colspan="9"]')) {
+                    tables[targetType].innerHTML = "";
+                }
+                tables[targetType].innerHTML += rowHTML;
+            }
+        });
+        if (typeof resolveIdbImages === 'function') resolveIdbImages();
+    };
+
+    // إجبار العرض فوراً عند فتح الصفحة
+    setTimeout(function() {
+        if (typeof notes !== 'undefined') {
+            renderNotes();
+        }
+    }, 1500); // ننتظر ثانية ونصف ليتسنى للبيانات أن تُجلب من Supabase
+});
+</script>
 </body>
