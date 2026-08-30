@@ -3311,3 +3311,145 @@ async function resolveExportItems(items) {
 
     document.addEventListener("DOMContentLoaded", initAutocomplete);
 })();
+// =========================================================
+// كود صفحة تصنيف المقاولين (مستقل تماماً ولا يؤثر على أي أزرار)
+// =========================================================
+
+var barChartInstance = null;
+var pieChartInstance = null;
+
+// 1. دالة التنقل الخاصة بصفحة التصنيف فقط
+function goToPerformance() {
+    var pages = document.querySelectorAll('.page');
+    for (var i = 0; i < pages.length; i++) {
+        pages[i].classList.remove('active');
+    }
+    var perfPage = document.getElementById('performance');
+    if (perfPage) {
+        perfPage.classList.add('active');
+    }
+    renderPerformanceData();
+}
+
+// 2. دالة جمع البيانات ورسم الجدول والمخططات
+function renderPerformanceData() {
+    var tbody = document.getElementById("performanceTableBody");
+    if (!tbody) return; // نخرج إذا لم نكن في الصفحة
+
+    // التأكد من تحميل المكتبة والبيانات
+    if (typeof Chart === 'undefined' || typeof clearances === 'undefined' || typeof emergencies === 'undefined' || typeof notes === 'undefined') {
+        setTimeout(renderPerformanceData, 1000); // نحاول مرة أخرى بعد ثانية
+        return;
+    }
+
+    var contractorStats = {};
+
+    // دمج التصاريح
+    var allPermits = clearances.concat(emergencies);
+    allPermits.forEach(function(p) {
+        var name = (p.contractor || "غير معروف").trim();
+        if (name) {
+            if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+            contractorStats[name].permits++;
+        }
+    });
+
+    // دمج الملاحظات
+    notes.forEach(function(n) {
+        var name = (n.contractor || "غير معروف").trim();
+        if (name) {
+            if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+            contractorStats[name].notes++;
+        }
+    });
+
+    var labels = Object.keys(contractorStats);
+    if (labels.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5">لا توجد بيانات حالياً</td></tr>';
+        return;
+    }
+
+    var tableRows = '';
+    var chartLabels = [];
+    var chartPermits = [];
+    var chartNotes = [];
+    var classCounts = { A: 0, B: 0, C: 0, D: 0 };
+
+    // تصنيف كل مقاول
+    labels.forEach(function(c) {
+        var data = contractorStats[c];
+        var ratio = data.permits > 0 ? (data.notes / data.permits) * 100 : 0;
+        var classification = '';
+        var classColor = '';
+
+        if (ratio === 0) {
+            classification = '🟢 A (ممتاز)';
+            classColor = 'background:#dcefe4; color:#24704d;';
+            classCounts.A++;
+        } else if (ratio <= 30) {
+            classification = '🔵 B (جيد)';
+            classColor = 'background:#e8eee9; color:#5d7066;';
+            classCounts.B++;
+        } else if (ratio <= 60) {
+            classification = '🟡 C (متوسط)';
+            classColor = 'background:#fff8e1; color:#8a6d3b;';
+            classCounts.C++;
+        } else {
+            classification = '🔴 D (خطر عالي)';
+            classColor = 'background:#f7dddd; color:#a33f3f;';
+            classCounts.D++;
+        }
+
+        chartLabels.push(c);
+        chartPermits.push(data.permits);
+        chartNotes.push(data.notes);
+
+        tableRows += '<tr>' +
+            '<td style="font-weight:bold;">' + c + '</td>' +
+            '<td style="text-align:center;">' + data.permits + '</td>' +
+            '<td style="text-align:center;">' + data.notes + '</td>' +
+            '<td style="text-align:center; font-weight:bold;">' + ratio.toFixed(1) + '%</td>' +
+            '<td style="text-align:center; font-weight:bold; padding:8px; border-radius:8px; ' + classColor + '">' + classification + '</td>' +
+        '</tr>';
+    });
+
+    // تحديث الجدول
+    tbody.innerHTML = tableRows;
+
+    // رسم المخطط العمودي
+    var barCtx = document.getElementById('contractorBarChart');
+    if (barCtx) {
+        if (barChartInstance) barChartInstance.destroy();
+        barChartInstance = new Chart(barCtx, {
+            type: 'bar',
+            data: {
+                labels: chartLabels,
+                datasets: [
+                    { label: 'إجمالي التصاريح', data: chartPermits, backgroundColor: '#245c49' },
+                    { label: 'إجمالي الملاحظات', data: chartNotes, backgroundColor: '#b3402a' }
+                ]
+            },
+            options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        });
+    }
+
+    // رسم المخطط الدائري
+    var pieCtx = document.getElementById('classificationPieChart');
+    if (pieCtx) {
+        if (pieChartInstance) pieChartInstance.destroy();
+        pieChartInstance = new Chart(pieCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['ممتاز (A)', 'جيد (B)', 'متوسط (C)', 'خطر عالي (D)'],
+                datasets: [{
+                    data: [classCounts.A, classCounts.B, classCounts.C, classCounts.D],
+                    backgroundColor: ['#24704d', '#5d7066', '#8a6d3b', '#a33f3f']
+                }]
+            },
+            options: { responsive: true }
+        });
+    }
+}
+
+// 3. تشغيل تلقائي عند فتح التطبيق (بعد 3 ثوانٍ لضمان جلب البيانات من السحابة)
+setTimeout(renderPerformanceData, 3000);
