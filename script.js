@@ -3311,3 +3311,103 @@ async function resolveExportItems(items) {
 
     document.addEventListener("DOMContentLoaded", initAutocomplete);
 })();
+
+/* =========================================================
+   26) تصنيف أداء المقاولين (العدالة الإحصائية + تحديث أسبوعي)
+   ========================================================= */
+
+// متغير لحفظ تاريخ آخر تحديث للتصنيف
+let lastPerformanceUpdate = localStorage.getItem("lastPerformanceUpdate") || 0;
+
+function renderPerformanceReport() {
+    const tbody = document.getElementById("performanceTableBody");
+    if (!tbody) return;
+
+    let contractorStats = {};
+
+    // 1. جمع كل التصاريح (إخلاء + طوارئ) لكل مقاول
+    [...clearances, ...emergencies].forEach(p => {
+        const name = p.contractor || "غير معروف";
+        if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+        contractorStats[name].permits++;
+    });
+
+    // 2. جمع كل الملاحظات لكل مقاول
+    notes.forEach(n => {
+        const name = n.contractor || "غير معروف";
+        if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+        contractorStats[name].notes++;
+    });
+
+    const contractors = Object.keys(contractorStats);
+    if (contractors.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6">لا توجد بيانات كافية لإنشاء التقرير</td></tr>';
+        return;
+    }
+
+    // 3. حساب الوسيط (Median) لعدد التصاريح لتحديد "خط الفصل العادل"
+    const permitCounts = contractors.map(c => contractorStats[c].permits).sort((a, b) => a - b);
+    const mid = Math.floor(permitCounts.length / 2);
+    const medianPermits = permitCounts.length % 2 !== 0 ? permitCounts[mid] : (permitCounts[mid - 1] + permitCounts[mid]) / 2;
+
+    // المتوسط العام لنسبة الأخطاء (لتحديد من هو الجيد ومن هو السيئ)
+    const totalPermits = contractors.reduce((sum, c) => sum + contractorStats[c].permits, 0);
+    const totalObs = contractors.reduce((sum, c) => sum + contractorStats[c].notes, 0);
+    const avgRatio = totalPermits > 0 ? (totalObs / totalPermits) * 100 : 0;
+
+    let tableRows = '';
+
+    // 4. تطبيق التصنيف على كل مقاول
+    contractors.forEach(c => {
+        let data = contractorStats[c];
+        let ratio = data.permits > 0 ? (data.notes / data.permits) * 100 : 0;
+        let size = data.permits >= medianPermits ? 'كبير' : 'صغير';
+        let ratioStatus = ratio < avgRatio ? 'جيدة' : 'سيئة';
+        
+        let classification = '';
+        let classColor = '';
+        
+        if (size === 'كبير' && ratioStatus === 'جيدة') { classification = '🟢 A (ممتاز)'; classColor = 'background:#dcefe4; color:#24704d;'; }
+        else if (size === 'كبير' && ratioStatus === 'سيئة') { classification = '🔴 D (خطر عالي)'; classColor = 'background:#f7dddd; color:#a33f3f;'; }
+        else if (size === 'صغير' && ratioStatus === 'سيئة') { classification = '🟡 B (تحت المجهر)'; classColor = 'background:#fff8e1; color:#8a6d3b;'; }
+        else { classification = '🔵 B (جيد)'; classColor = 'background:#e8eee9; color:#5d7066;'; }
+
+        tableRows += `
+            <tr>
+                <td style="font-weight:bold;">${c}</td>
+                <td style="text-align:center;">${data.permits}</td>
+                <td style="text-align:center;">${data.notes}</td>
+                <td style="text-align:center; font-weight:bold;">${ratio.toFixed(1)}%</td>
+                <td style="text-align:center;">${size}</td>
+                <td style="text-align:center; font-weight:bold; padding:8px; border-radius:8px; ${classColor}">${classification}</td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = tableRows;
+
+    // 5. تحديث تاريخ آخر تحديث وحفظه (للتحديث الأسبوعي)
+    let now = new Date().getTime();
+    localStorage.setItem("lastPerformanceUpdate", now);
+    lastPerformanceUpdate = now;
+}
+
+// دالة التحقق من مرور 7 أيام على آخر تحديث
+function checkWeeklyPerformanceUpdate() {
+    let now = new Date().getTime();
+    let weekInMs = 7 * 24 * 60 * 60 * 1000; // 7 أيام بالملي ثانية
+
+    if (!lastPerformanceUpdate || (now - parseInt(lastPerformanceUpdate)) > weekInMs) {
+        renderPerformanceReport(); // إذا مرت 7 أيام، قم بتحديث التقرير تلقائياً
+    }
+}
+
+// تشغيل التقرير عند فتح صفحة التصنيف
+const originalShowPagePerf = window.showPage;
+window.showPage = function(pageId) {
+    if (originalShowPagePerf) originalShowPagePerf(pageId);
+    if (pageId === 'performance') {
+        checkWeeklyPerformanceUpdate(); // التحقق من التحديث الأسبوعي عند فتح الصفحة
+        renderPerformanceReport(); // عرض التقرير الحالي دائماً
+    }
+};
