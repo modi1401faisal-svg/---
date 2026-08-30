@@ -109,11 +109,24 @@
             </table>
         </div>
     </div>
-    
     <div class="form-actions" style="justify-content:center; margin-top:20px;">
         <button class="btn-primary" onclick="showPage('dashboard')">الانتقال للوحة المتابعة</button>
     </div>
 </section>
+    <div style="display:flex; flex-wrap:wrap; gap:20px; margin-bottom:20px;">
+    <div class="card" style="flex:2; min-width:300px;">
+        <div class="card-header"><h3>مقارنة التصاريح بالملاحظات لكل مقاول</h3></div>
+        <div style="padding:15px;">
+            <canvas id="contractorBarChart"></canvas>
+        </div>
+    </div>
+    <div class="card" style="flex:1; min-width:300px;">
+        <div class="card-header"><h3>توزيع تصنيف المقاولين</h3></div>
+        <div style="padding:15px;">
+            <canvas id="classificationPieChart"></canvas>
+        </div>
+    </div>
+</div>
 <!-- ==================================================
 
      الرئيسية
@@ -1943,4 +1956,5 @@ document.addEventListener("DOMContentLoaded", function() {
     }, 1500); // ننتظر ثانية ونصف ليتسنى للبيانات أن تُجلب من Supabase
 });
 </script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </body>
