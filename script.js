@@ -3453,3 +3453,23 @@ function renderPerformanceData() {
 
 // 3. تشغيل تلقائي عند فتح التطبيق (بعد 3 ثوانٍ لضمان جلب البيانات من السحابة)
 setTimeout(renderPerformanceData, 3000);
+// =========================================================
+// مستمع آمن لزر التصنيف (يرسم البيانات عند فتح الصفحة)
+// =========================================================
+document.addEventListener("DOMContentLoaded", function() {
+    var navButtons = document.querySelectorAll('.navbar button');
+    navButtons.forEach(function(btn) {
+        var onclickAttr = btn.getAttribute('onclick') || '';
+        // إذا كان الزر هو زر صفحة التصنيف (performance)
+        if (onclickAttr.indexOf("performance") !== -1) {
+            btn.addEventListener('click', function() {
+                // ننتظر نصف ثانية حتى تفتح الصفحة، ثم نرسم البيانات
+                setTimeout(function() {
+                    if (typeof renderPerformanceData === 'function') {
+                        renderPerformanceData();
+                    }
+                }, 500);
+            });
+        }
+    });
+});
