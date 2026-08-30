@@ -3311,34 +3311,51 @@ async function resolveExportItems(items) {
 
     document.addEventListener("DOMContentLoaded", initAutocomplete);
 })();
-
 /* =========================================================
-   كود تصنيف أداء المقاولين (يشتغل تلقائياً)
+   كود تصنيف أداء المقاولين (يعمل بعد تحميل البيانات مباشرة)
    ========================================================= */
 
 function renderPerformanceReport() {
     const tbody = document.getElementById("performanceTableBody");
-    if (!tbody) return;
+    if (!tbody) return; // إذا لم نكن في صفحة التصنيف، لا تفعل شيء
 
     let contractorStats = {};
 
     // 1. جمع كل التصاريح (إخلاء + طوارئ)
-    [...clearances, ...emergencies].forEach(p => {
-        const name = p.contractor || "غير معروف";
-        if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
-        contractorStats[name].permits++;
-    });
+    if (typeof clearances !== 'undefined') {
+        clearances.forEach(p => {
+            const name = (p.contractor || "غير معروف").trim();
+            if (name) {
+                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+                contractorStats[name].permits++;
+            }
+        });
+    }
+    
+    if (typeof emergencies !== 'undefined') {
+        emergencies.forEach(p => {
+            const name = (p.contractor || "غير معروف").trim();
+            if (name) {
+                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+                contractorStats[name].permits++;
+            }
+        });
+    }
 
     // 2. جمع كل الملاحظات
-    notes.forEach(n => {
-        const name = n.contractor || "غير معروف";
-        if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
-        contractorStats[name].notes++;
-    });
+    if (typeof notes !== 'undefined') {
+        notes.forEach(n => {
+            const name = (n.contractor || "غير معروف").trim();
+            if (name) {
+                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+                contractorStats[name].notes++;
+            }
+        });
+    }
 
     const contractors = Object.keys(contractorStats);
     if (contractors.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5">لا توجد بيانات كافية لإنشاء التقرير</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5">لا توجد بيانات للمقاولين حالياً</td></tr>';
         return;
     }
 
@@ -3380,19 +3397,25 @@ function renderPerformanceReport() {
     tbody.innerHTML = tableRows;
 }
 
-// تشغيل التقرير تلقائياً عند فتح التطبيق
-document.addEventListener("DOMContentLoaded", function() {
-    // نعطي تأخيراً بسيطاً (نصف ثانية) ليتسنى للبيانات أن تُجلب من الذاكرة أو السحابة
-    setTimeout(function() {
-        renderPerformanceReport();
-    }, 500);
-});
+// 1. اعتراض دالة التحديث الرئيسية (updateDashboard) لتشغيل الحساب بعد تحميل البيانات
+const originalUpdateDashboard = window.updateDashboard || function() {};
+window.updateDashboard = function() {
+    if (originalUpdateDashboard) originalUpdateDashboard();
+    renderPerformanceReport(); // حساب التصنيف فور تحديث البيانات
+};
 
-// إعادة تشغيل التقرير إذا تم العودة للصفحة
-const originalShowPagePerf = window.showPage;
+// 2. اعتراض دالة التنقل لتشغيل الحساب عند فتح الصفحة
+const originalShowPagePerf = window.showPage || function(page){ document.getElementById(page).classList.add('active'); };
 window.showPage = function(pageId) {
     if (originalShowPagePerf) originalShowPagePerf(pageId);
     if (pageId === 'performance') {
         renderPerformanceReport();
     }
 };
+
+// 3. تشغيل الحساب عند فتح التطبيق (بعد ثانية ونص لضمان جلب البيانات من Supabase)
+document.addEventListener("DOMContentLoaded", function() {
+    setTimeout(function() {
+        renderPerformanceReport();
+    }, 1500);
+});
