@@ -50,7 +50,7 @@
 
 <main class="container">
 <!-- ==================================================
-     صفحة تصنيف أداء المقاولين
+     صفحة تصنيف أداء المقاولين (مستقلة تماماً)
 ================================================== -->
 <section id="performance" class="page">
     <div class="section-title">
@@ -84,7 +84,7 @@
                         <th>اسم المقاول</th>
                         <th>إجمالي التصاريح</th>
                         <th>إجمالي الملاحظات</th>
-                        <th>نسبة الأخطاء (%)</th>
+                        <th>نسبة الأخطاء</th>
                         <th>التصنيف النهائي</th>
                     </tr>
                 </thead>
@@ -95,6 +95,109 @@
         </div>
     </div>
 </section>
+
+<!-- كود الرسوم البيانية الذكي (يوضع في نهاية index.html قبل </body>) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// هذا الكود يراقب الصفحة ويرسم البيانات فور فتحها دون التأثير على أي أزرار
+var perfChartDrawn = false;
+
+function drawPerformanceChartsSafe() {
+    var perfPage = document.getElementById('performance');
+    // إذا كانت صفحة التصنيف مفتوحة ولم نرسم الرسوم بعد
+    if (perfPage && perfPage.classList.contains('active') && !perfChartDrawn) {
+        
+        // التأكد من توفر المكتبة والبيانات
+        if (typeof Chart === 'undefined' || typeof clearances === 'undefined' || typeof notes === 'undefined') {
+            return; // ننتظر حتى تتوفر
+        }
+
+        perfChartDrawn = true; // وضع علامة أننا بدأنا الرسم
+
+        var contractorStats = {};
+        clearances.concat(emergencies).forEach(function(p) {
+            var name = (p.contractor || "غير معروف").trim();
+            if (name) {
+                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+                contractorStats[name].permits++;
+            }
+        });
+        notes.forEach(function(n) {
+            var name = (n.contractor || "غير معروف").trim();
+            if (name) {
+                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+                contractorStats[name].notes++;
+            }
+        });
+
+        var labels = Object.keys(contractorStats);
+        var tbody = document.getElementById("performanceTableBody");
+        var tableRows = '';
+        var chartLabels = [], chartPermits = [], chartNotes = [];
+        var classCounts = { A: 0, B: 0, C: 0, D: 0 };
+
+        labels.forEach(function(c) {
+            var data = contractorStats[c];
+            var ratio = data.permits > 0 ? (data.notes / data.permits) * 100 : 0;
+            var classification = '', classColor = '';
+
+            if (ratio === 0) { classification = '🟢 A (ممتاز)'; classColor = 'background:#dcefe4; color:#24704d;'; classCounts.A++; }
+            else if (ratio <= 30) { classification = '🔵 B (جيد)'; classColor = 'background:#e8eee9; color:#5d7066;'; classCounts.B++; }
+            else if (ratio <= 60) { classification = '🟡 C (متوسط)'; classColor = 'background:#fff8e1; color:#8a6d3b;'; classCounts.C++; }
+            else { classification = '🔴 D (خطر عالي)'; classColor = 'background:#f7dddd; color:#a33f3f;'; classCounts.D++; }
+
+            chartLabels.push(c);
+            chartPermits.push(data.permits);
+            chartNotes.push(data.notes);
+
+            tableRows += '<tr>' +
+                '<td style="font-weight:bold;">' + c + '</td>' +
+                '<td style="text-align:center;">' + data.permits + '</td>' +
+                '<td style="text-align:center;">' + data.notes + '</td>' +
+                '<td style="text-align:center; font-weight:bold;">' + ratio.toFixed(1) + '%</td>' +
+                '<td style="text-align:center; font-weight:bold; padding:8px; border-radius:8px; ' + classColor + '">' + classification + '</td>' +
+            '</tr>';
+        });
+
+        if (tbody) tbody.innerHTML = tableRows;
+
+        // رسم المخطط العمودي
+        var barCtx = document.getElementById('contractorBarChart');
+        if (barCtx) {
+            new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: chartLabels,
+                    datasets: [
+                        { label: 'إجمالي التصاريح', data: chartPermits, backgroundColor: '#245c49' },
+                        { label: 'إجمالي الملاحظات', data: chartNotes, backgroundColor: '#b3402a' }
+                    ]
+                },
+                options: { responsive: true, scales: { y: { beginAtZero: true } } }
+            });
+        }
+
+        // رسم المخطط الدائري
+        var pieCtx = document.getElementById('classificationPieChart');
+        if (pieCtx) {
+            new Chart(pieCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['ممتاز (A)', 'جيد (B)', 'متوسط (C)', 'خطر عالي (D)'],
+                    datasets: [{
+                        data: [classCounts.A, classCounts.B, classCounts.C, classCounts.D],
+                        backgroundColor: ['#24704d', '#5d7066', '#8a6d3b', '#a33f3f']
+                    }]
+                },
+                options: { responsive: true }
+            });
+        }
+    }
+}
+
+// فحص الصفحة كل ثانية لرسم البيانات فور فتحها
+setInterval(drawPerformanceChartsSafe, 1000);
+</script>
 <!-- ==================================================
 
      الرئيسية
