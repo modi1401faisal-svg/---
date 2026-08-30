@@ -310,7 +310,7 @@ window.showPage = function(pageId) {
 document.addEventListener("DOMContentLoaded", renderNotes);
 </script>
 
-<!-- كود الرسوم البيانية وتصدير المقاولين -->
+<!-- كود الرسوم البيانية وتصدير المقاولين (محدث مع صور الرسوم في PDF) -->
 <script>
 var perfChartInterval = setInterval(function() {
     if (typeof Chart === 'undefined' || typeof clearances === 'undefined' || typeof notes === 'undefined') return;
@@ -354,6 +354,19 @@ var perfChartInterval = setInterval(function() {
 
 }, 1000);
 
+function getPerformanceDataArray() {
+    if (typeof clearances === 'undefined') return [];
+    var stats = {};
+    clearances.concat(emergencies || []).forEach(function(p) { var n = (p.contractor || "غير معروف").trim(); if (n) { if (!stats[n]) stats[n] = { permits: 0, notes: 0 }; stats[n].permits++; } });
+    notes.forEach(function(n) { var name = (n.contractor || "غير معروف").trim(); if (name) { if (!stats[name]) stats[name] = { permits: 0, notes: 0 }; stats[name].notes++; } });
+    var arr = []; var i = 1;
+    Object.keys(stats).forEach(function(name) {
+        var d = stats[name]; var r = d.permits > 0 ? (d.notes / d.permits) * 100 : 0;
+        arr.push({ "م": i++, "اسم المقاول": name, "إجمالي التصاريح": d.permits, "إجمالي الملاحظات": d.notes, "نسبة الأخطاء (%)": r.toFixed(1), "التصنيف": r === 0 ? 'ممتاز (A)' : r <= 30 ? 'جيد (B)' : r <= 60 ? 'متوسط (C)' : 'خطر عالي (D)' });
+    });
+    return arr;
+}
+
 function exportPerformanceToExcel() {
     if (typeof XLSX === 'undefined') return alert("جاري تحميل مكتبة Excel...");
     var data = getPerformanceDataArray();
@@ -369,28 +382,78 @@ function exportPerformanceToExcel() {
 }
 
 function exportPerformanceToPDF() {
-    if (typeof html2pdf === 'undefined') return alert("جاري تحميل مكتبة PDF...");
+    if (typeof html2pdf === 'undefined') { alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واضغط مرة أخرى"); return; }
+    
     var data = getPerformanceDataArray();
-    if (data.length === 0) return alert("لا توجد بيانات");
+    if (data.length === 0) { alert("لا توجد بيانات للتصدير"); return; }
+
+    // 1. التقاط صورة من الرسوم البيانية المرسومة على الشاشة
+    var barChartImg = "";
+    var barCanvas = document.getElementById('contractorBarChart');
+    if (barCanvas) {
+        barChartImg = '<div style="text-align:center; margin-bottom:15px;"><h3 style="color:#1d4d3d;">مقارنة التصاريح بالملاحظات</h3><img src="' + barCanvas.toDataURL('image/png') + '" style="max-width:100%; height:auto;"></div>';
+    }
+
+    var pieChartImg = "";
+    var pieCanvas = document.getElementById('classificationPieChart');
+    if (pieCanvas) {
+        pieChartImg = '<div style="text-align:center; margin-bottom:15px;"><h3 style="color:#1d4d3d;">توزيع تصنيف المقاولين</h3><img src="' + pieCanvas.toDataURL('image/png') + '" style="max-width:300px; height:auto;"></div>';
+    }
+
+    // 2. بناء صفوف الجدول
     var rows = "";
     data.forEach(function(item) {
-        rows += '<tr><td style="text-align:center; border:1px solid #999; padding:6px;">' + item["م"] + '</td><td style="border:1px solid #999; padding:6px;">' + item["اسم المقاول"] + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + item["إجمالي التصاريح"] + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + item["إجمالي الملاحظات"] + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + item["نسبة الأخطاء (%)"] + '</td><td style="text-align:center; border:1px solid #999; padding:6px; font-weight:bold;">' + item["التصنيف"] + '</td></tr>';
+        var color = item["التصنيف"].includes("A") ? "#24704d" : item["التصنيف"].includes("B") ? "#5d7066" : item["التصنيف"].includes("C") ? "#8a6d3b" : "#a33f3f";
+        rows += '<tr>' +
+            '<td style="text-align:center; border:1px solid #999; padding:6px;">' + item["م"] + '</td>' +
+            '<td style="border:1px solid #999; padding:6px;">' + item["اسم المقاول"] + '</td>' +
+            '<td style="text-align:center; border:1px solid #999; padding:6px;">' + item["إجمالي التصاريح"] + '</td>' +
+            '<td style="text-align:center; border:1px solid #999; padding:6px;">' + item["إجمالي الملاحظات"] + '</td>' +
+            '<td style="text-align:center; border:1px solid #999; padding:6px;">' + item["نسبة الأخطاء (%)"] + '</td>' +
+            '<td style="text-align:center; border:1px solid #999; padding:6px; color:' + color + '; font-weight:bold;">' + item["التصنيف"] + '</td>' +
+        '</tr>';
     });
-    var content = '<div dir="rtl" style="font-family:Arial;"><div style="text-align:center; border-bottom:3px solid #173f32; padding-bottom:8px; margin-bottom:12px;"><h2 style="color:#173f32;">نظام مختبر جودة المشاريع</h2><h3>تقرير تصنيف أداء المقاولين</h3></div><table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#173f32; color:#fff;"><th style="padding:8px; border:1px solid #999;">م</th><th style="padding:8px; border:1px solid #999;">اسم المقاول</th><th style="padding:8px; border:1px solid #999;">التصاريح</th><th style="padding:8px; border:1px solid #999;">الملاحظات</th><th style="padding:8px; border:1px solid #999;">نسبة الأخطاء</th><th style="padding:8px; border:1px solid #999;">التصنيف</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
-    html2pdf().set({ margin: 10, filename: 'تقرير_تصنيف_المقاولين.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
-}
 
-function getPerformanceDataArray() {
-    if (typeof clearances === 'undefined') return [];
-    var stats = {};
-    clearances.concat(emergencies || []).forEach(function(p) { var n = (p.contractor || "غير معروف").trim(); if (n) { if (!stats[n]) stats[n] = { permits: 0, notes: 0 }; stats[n].permits++; } });
-    notes.forEach(function(n) { var name = (n.contractor || "غير معروف").trim(); if (name) { if (!stats[name]) stats[name] = { permits: 0, notes: 0 }; stats[name].notes++; } });
-    var arr = []; var i = 1;
-    Object.keys(stats).forEach(function(name) {
-        var d = stats[name]; var r = d.permits > 0 ? (d.notes / d.permits) * 100 : 0;
-        arr.push({ "م": i++, "اسم المقاول": name, "إجمالي التصاريح": d.permits, "إجمالي الملاحظات": d.notes, "نسبة الأخطاء (%)": r.toFixed(1), "التصنيف": r === 0 ? 'ممتاز (A)' : r <= 30 ? 'جيد (B)' : r <= 60 ? 'متوسط (C)' : 'خطر عالي (D)' });
-    });
-    return arr;
+    // 3. تجميع الـ PDF (الرسوم البيانية فوق، والجدول أسفل)
+    var content = '<div dir="rtl" style="font-family:Arial, Helvetica, sans-serif;">' +
+        '<div style="text-align:center; border-bottom:3px solid #173f32; padding-bottom:8px; margin-bottom:15px;">' +
+            '<h2 style="color:#173f32; margin:0;">نظام مختبر جودة المشاريع</h2>' +
+            '<h3 style="color:#333; margin:8px 0 4px;">تقرير تصنيف أداء المقاولين</h3>' +
+        '</div>' +
+        
+        // وضع الرسوم البيانية جنباً إلى جنب
+        '<div style="display:flex; justify-content:space-around; flex-wrap:wrap; gap:10px; margin-bottom:20px;">' +
+            '<div style="flex:2; min-width:300px;">' + barChartImg + '</div>' +
+            '<div style="flex:1; min-width:200px;">' + pieChartImg + '</div>' +
+        '</div>' +
+
+        // الجدول
+        '<table style="width:100%; border-collapse:collapse;">' +
+            '<thead>' +
+                '<tr style="background:#173f32; color:#fff;">' +
+                    '<th style="padding:8px; border:1px solid #999;">م</th>' +
+                    '<th style="padding:8px; border:1px solid #999;">اسم المقاول</th>' +
+                    '<th style="padding:8px; border:1px solid #999;">التصاريح</th>' +
+                    '<th style="padding:8px; border:1px solid #999;">الملاحظات</th>' +
+                    '<th style="padding:8px; border:1px solid #999;">نسبة الأخطاء</th>' +
+                    '<th style="padding:8px; border:1px solid #999;">التصنيف</th>' +
+                '</tr>' +
+            '</thead>' +
+            '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+        '<p style="text-align:center; color:#999; font-size:11px; margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p>' +
+    '</div>';
+
+    // 4. إعدادات التصدير
+    var opt = {
+        margin: 10,
+        filename: 'تقرير_تصنيف_المقاولين.pdf',
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+    };
+
+    html2pdf().set(opt).from(content).save();
 }
 </script>
 
