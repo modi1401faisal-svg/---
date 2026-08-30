@@ -79,14 +79,50 @@
 </nav>
 
 <main class="container">
+ <!-- ==================================================
+  
+ صفحة تصنيف أداء المقاولين (تظهر أولاً بعد الدخول)
+    
+================================================== -->
+<section id="performance" class="page active">
+    <div class="section-title">
+        <h2>تقرير أداء المقاولين</h2>
+        <p>تحليل وتصنيف أداء المقاولين بناءً على التصاريح والملاحظات</p>
+    </div>
 
+    <div class="card">
+        <div class="card-header">
+            <h3>التحليل الإحصائي للأداء</h3>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>اسم المقاول</th>
+                        <th>إجمالي التصاريح (إخلاء + طوارئ)</th>
+                        <th>إجمالي الملاحظات</th>
+                        <th>نسبة الأخطاء (%)</th>
+                        <th>التصنيف النهائي</th>
+                    </tr>
+                </thead>
+                <tbody id="performanceTableBody">
+                    <tr><td colspan="5">جاري حساب البيانات...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div class="form-actions" style="justify-content:center; margin-top:20px;">
+        <button class="btn-primary" onclick="showPage('dashboard')">الانتقال للوحة المتابعة</button>
+    </div>
+</section>
 <!-- ==================================================
 
      الرئيسية
 
 ================================================== -->
 
-<section id="dashboard" class="page active">
+<section id="dashboard" class="page">
 
     <div class="section-title">
 
@@ -196,44 +232,6 @@
 
     </div>
 
-</section>
-
-    <!-- ==================================================
-     صفحة تصنيف أداء المقاولين
-================================================== -->
-<section id="performance" class="page">
-    <div class="section-title">
-        <h2>تقرير أداء المقاولين</h2>
-        <p>تحليل وتصنيف أداء المقاولين بناءً على التصاريح والملاحظات (يتم التحديث تلقائياً كل 7 أيام)</p>
-    </div>
-
-    <div class="card">
-        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
-            <h3>التحليل الإحصائي للأداء</h3>
-            <button class="btn-primary" style="padding:8px 15px;" onclick="renderPerformanceReport()">🔄 تحديث التقرير الآن</button>
-        </div>
-        <div style="padding:15px; background:#f4f7f5; border-radius:8px; margin:15px; font-size:14px; color:#1d4d3d;">
-            <strong>ملاحظة هامة:</strong> هذا التقرير يطبق "العدالة الإحصائية". المقاولون الذين لديهم تصاريح قليلة وملاحظات كثيرة لا يتم ظلمهم بوضعهم في الخطر، بل يوضعون تحت المجهر (B)، بينما أصحاب التصاريح الكثيرة والأخطاء الكثيرة يصنفون كخطر عالي (D).
-        </div>
-        
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>اسم المقاول</th>
-                        <th>إجمالي التصاريح (إخلاء + طوارئ)</th>
-                        <th>إجمالي الملاحظات</th>
-                        <th>نسبة الأخطاء (%)</th>
-                        <th>حجم العمل</th>
-                        <th>التصنيف النهائي (المصفوفة)</th>
-                    </tr>
-                </thead>
-                <tbody id="performanceTableBody">
-                    <tr><td colspan="6">جاري حساب البيانات...</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
 </section>
 
 <!-- ==================================================
