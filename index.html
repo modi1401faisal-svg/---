@@ -1936,4 +1936,95 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+                    <script>
+// ==========================================
+// كود الرسوم البيانية (معزول وآمن تماماً)
+// ==========================================
+var perfChartInterval = setInterval(function() {
+    // 1. التأكد من تحميل مكتبة الرسوم وتوفر بيانات التطبيق
+    if (typeof Chart === 'undefined' || typeof clearances === 'undefined' || typeof notes === 'undefined') {
+        return; // إذا لم تكن جاهزة، ينتظر ثانية ويحاول مجدداً
+    }
+
+    // 2. إذا وصلنا لهنا، البيانات جاهزة. نوقف الفحص
+    clearInterval(perfChartInterval);
+
+    // 3. جمع البيانات
+    var contractorStats = {};
+    
+    // دمج التصاريح
+    [...clearances, ...emergencies].forEach(function(p) {
+        var name = (p.contractor || "غير معروف").trim();
+        if (name) {
+            if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+            contractorStats[name].permits++;
+        }
+    });
+
+    // دمج الملاحظات
+    notes.forEach(function(n) {
+        var name = (n.contractor || "غير معروف").trim();
+        if (name) {
+            if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+            contractorStats[name].notes++;
+        }
+    });
+
+    var labels = Object.keys(contractorStats);
+    var permitsData = labels.map(function(c) { return contractorStats[c].permits; });
+    var notesData = labels.map(function(c) { return contractorStats[c].notes; });
+
+    // 4. رسم المخطط العمودي
+    var barCtx = document.getElementById('contractorBarChart');
+    if (barCtx) {
+        new Chart(barCtx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'إجمالي التصاريح', data: permitsData, backgroundColor: '#245c49' },
+                    { label: 'إجمالي الملاحظات', data: notesData, backgroundColor: '#b3402a' }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true } },
+                plugins: { legend: { labels: { font: { size: 14 } } } }
+            }
+        });
+    }
+
+    // 5. حساب التصنيفات للمخطط الدائري
+    var classCounts = { A: 0, B: 0, C: 0, D: 0 };
+    labels.forEach(function(c) {
+        var data = contractorStats[c];
+        var ratio = data.permits > 0 ? (data.notes / data.permits) * 100 : 0;
+        if (ratio === 0) classCounts.A++;
+        else if (ratio <= 30) classCounts.B++;
+        else if (ratio <= 60) classCounts.C++;
+        else classCounts.D++;
+    });
+
+    // 6. رسم المخطط الدائري
+    var pieCtx = document.getElementById('classificationPieChart');
+    if (pieCtx) {
+        new Chart(pieCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['ممتاز (A)', 'جيد (B)', 'متوسط (C)', 'خطر عالي (D)'],
+                datasets: [{
+                    data: [classCounts.A, classCounts.B, classCounts.C, classCounts.D],
+                    backgroundColor: ['#24704d', '#5d7066', '#8a6d3b', '#a33f3f'],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom', labels: { font: { size: 14 } } } }
+            }
+        });
+    }
+
+}, 1000); // يفحص كل ثانية
+</script>
 </body>
