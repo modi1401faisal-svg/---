@@ -198,6 +198,11 @@ function drawPerformanceChartsSafe() {
 // فحص الصفحة كل ثانية لرسم البيانات فور فتحها
 setInterval(drawPerformanceChartsSafe, 1000);
 </script>
+    <!-- أزرار التصدير -->
+<div style="display:flex; gap:10px; margin-bottom:20px; justify-content:center;">
+    <button class="btn-primary" style="padding:10px 20px;" onclick="exportPerformanceToExcel()">📥 تصدير Excel</button>
+    <button class="btn-primary" style="padding:10px 20px;" onclick="exportPerformanceToPDF()">📄 تصدير PDF</button>
+</div>
 <!-- ==================================================
 
      الرئيسية
@@ -2118,5 +2123,112 @@ var perfChartInterval = setInterval(function() {
     }
 
 }, 1000); // يفحص كل ثانية
+</script>
+    <script>
+// =========================================================
+// كود تصدير تقرير المقاولين (آمن ومستقل تماماً)
+// =========================================================
+
+function getPerformanceDataArray() {
+    if (typeof clearances === 'undefined' || typeof notes === 'undefined') return [];
+    
+    var contractorStats = {};
+    
+    clearances.concat(emergencies || []).forEach(function(p) {
+        var name = (p.contractor || "غير معروف").trim();
+        if (name) { if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 }; contractorStats[name].permits++; }
+    });
+    notes.forEach(function(n) {
+        var name = (n.contractor || "غير معروف").trim();
+        if (name) { if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 }; contractorStats[name].notes++; }
+    });
+
+    var dataArray = [];
+    var i = 1;
+    Object.keys(contractorStats).forEach(function(name) {
+        var data = contractorStats[name];
+        var ratio = data.permits > 0 ? (data.notes / data.permits) * 100 : 0;
+        var classification = ratio === 0 ? 'ممتاز (A)' : ratio <= 30 ? 'جيد (B)' : ratio <= 60 ? 'متوسط (C)' : 'خطر عالي (D)';
+        
+        dataArray.push({
+            "م": i++,
+            "اسم المقاول": name,
+            "إجمالي التصاريح": data.permits,
+            "إجمالي الملاحظات": data.notes,
+            "نسبة الأخطاء (%)": ratio.toFixed(1),
+            "التصنيف": classification
+        });
+    });
+    return dataArray;
+}
+
+function exportPerformanceToExcel() {
+    if (typeof XLSX === 'undefined') { alert("جاري تحميل مكتبة Excel...\nانتظر ثانية واضغط مرة أخرى"); return; }
+    
+    var data = getPerformanceDataArray();
+    if (data.length === 0) { alert("لا توجد بيانات للتصدير"); return; }
+
+    var ws = XLSX.utils.json_to_sheet(data);
+    ws["!cols"] = [{ wch: 5 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "تصنيف المقاولين");
+    
+    if (!wb.Workbook) wb.Workbook = {};
+    if (!wb.Workbook.Views) wb.Workbook.Views = [];
+    wb.Workbook.Views.push({ RTL: true });
+    
+    XLSX.writeFile(wb, "تقرير_تصنيف_المقاولين.xlsx");
+}
+
+function exportPerformanceToPDF() {
+    if (typeof html2pdf === 'undefined') { alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واضغط مرة أخرى"); return; }
+    
+    var data = getPerformanceDataArray();
+    if (data.length === 0) { alert("لا توجد بيانات للتصدير"); return; }
+
+    var rows = "";
+    data.forEach(function(item) {
+        var color = item["التصنيف"].includes("A") ? "#24704d" : item["التصنيف"].includes("B") ? "#5d7066" : item["التصنيف"].includes("C") ? "#8a6d3b" : "#a33f3f";
+        rows += '<tr>' +
+            '<td style="text-align:center; border:1px solid #999; padding:6px;">' + item["م"] + '</td>' +
+            '<td style="border:1px solid #999; padding:6px;">' + item["اسم المقاول"] + '</td>' +
+            '<td style="text-align:center; border:1px solid #999; padding:6px;">' + item["إجمالي التصاريح"] + '</td>' +
+            '<td style="text-align:center; border:1px solid #999; padding:6px;">' + item["إجمالي الملاحظات"] + '</td>' +
+            '<td style="text-align:center; border:1px solid #999; padding:6px;">' + item["نسبة الأخطاء (%)"] + '</td>' +
+            '<td style="text-align:center; border:1px solid #999; padding:6px; color:' + color + '; font-weight:bold;">' + item["التصنيف"] + '</td>' +
+        '</tr>';
+    });
+
+    var content = '<div dir="rtl" style="font-family:Arial, Helvetica, sans-serif;">' +
+        '<div style="text-align:center; border-bottom:3px solid #173f32; padding-bottom:8px; margin-bottom:12px;">' +
+            '<h2 style="color:#173f32; margin:0;">نظام مختبر جودة المشاريع</h2>' +
+            '<h3 style="color:#333; margin:8px 0 4px;">تقرير تصنيف أداء المقاولين</h3>' +
+        '</div>' +
+        '<table style="width:100%; border-collapse:collapse;">' +
+            '<thead>' +
+                '<tr style="background:#173f32; color:#fff;">' +
+                    '<th style="padding:8px; border:1px solid #999;">م</th>' +
+                    '<th style="padding:8px; border:1px solid #999;">اسم المقاول</th>' +
+                    '<th style="padding:8px; border:1px solid #999;">التصاريح</th>' +
+                    '<th style="padding:8px; border:1px solid #999;">الملاحظات</th>' +
+                    '<th style="padding:8px; border:1px solid #999;">نسبة الأخطاء</th>' +
+                    '<th style="padding:8px; border:1px solid #999;">التصنيف</th>' +
+                '</tr>' +
+            '</thead>' +
+            '<tbody>' + rows + '</tbody>' +
+        '</table>' +
+        '<p style="text-align:center; color:#999; font-size:11px; margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p>' +
+    '</div>';
+
+    var opt = {
+        margin: 10,
+        filename: 'تقرير_تصنيف_المقاولين.pdf',
+        image: { type: 'jpeg', quality: 0.95 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+    };
+
+    html2pdf().set(opt).from(content).save();
+}
 </script>
 </body>
