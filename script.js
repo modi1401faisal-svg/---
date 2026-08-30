@@ -3419,3 +3419,110 @@ document.addEventListener("DOMContentLoaded", function() {
         renderPerformanceReport();
     }, 1500);
 });
+// =========================================================
+// كود الرسوم البيانية لتصنيف المقاولين (آمن ولا يؤثر على أي شيء)
+// =========================================================
+
+var barChartInstance = null;
+var pieChartInstance = null;
+
+function renderPerformanceCharts() {
+    // 1. التأكد من تحميل مكتبة Chart.js
+    if (typeof Chart === 'undefined') {
+        // إذا لم تكن المكتبة تحملت بعد، نحاول مرة أخرى بعد نصف ثانية
+        setTimeout(renderPerformanceCharts, 500);
+        return;
+    }
+
+    // 2. التأكد من تحميل بيانات التطبيق
+    if (typeof clearances === 'undefined' || typeof emergencies === 'undefined' || typeof notes === 'undefined') {
+        setTimeout(renderPerformanceCharts, 500);
+        return;
+    }
+
+    // 3. جمع البيانات
+    var contractorStats = {};
+
+    function addPermit(arr) {
+        arr.forEach(function(p) {
+            var name = (p.contractor || "غير معروف").trim();
+            if (name) {
+                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+                contractorStats[name].permits++;
+            }
+        });
+    }
+
+    function addNotes(arr) {
+        arr.forEach(function(n) {
+            var name = (n.contractor || "غير معروف").trim();
+            if (name) {
+                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+                contractorStats[name].notes++;
+            }
+        });
+    }
+
+    addPermit(clearances);
+    addPermit(emergencies);
+    addNotes(notes);
+
+    var labels = Object.keys(contractorStats);
+    var permitsData = labels.map(function(c) { return contractorStats[c].permits; });
+    var notesData = labels.map(function(c) { return contractorStats[c].notes; });
+
+    // 4. رسم المخطط العمودي (Bar Chart)
+    var barCtx = document.getElementById('contractorBarChart');
+    if (barCtx) {
+        if (barChartInstance) barChartInstance.destroy();
+        barChartInstance = new Chart(barCtx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'إجمالي التصاريح', data: permitsData, backgroundColor: '#245c49' },
+                    { label: 'إجمالي الملاحظات', data: notesData, backgroundColor: '#b3402a' }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: { y: { beginAtZero: true } },
+                plugins: { legend: { labels: { font: { size: 14 } } } }
+            }
+        });
+    }
+
+    // 5. رسم المخطط الدائري (Doughnut Chart)
+    var classCounts = { A: 0, B: 0, C: 0, D: 0 };
+    labels.forEach(function(c) {
+        var data = contractorStats[c];
+        var ratio = data.permits > 0 ? (data.notes / data.permits) * 100 : 0;
+        if (ratio === 0) classCounts.A++;
+        else if (ratio <= 30) classCounts.B++;
+        else if (ratio <= 60) classCounts.C++;
+        else classCounts.D++;
+    });
+
+    var pieCtx = document.getElementById('classificationPieChart');
+    if (pieCtx) {
+        if (pieChartInstance) pieChartInstance.destroy();
+        pieChartInstance = new Chart(pieCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['ممتاز (A)', 'جيد (B)', 'متوسط (C)', 'خطر عالي (D)'],
+                datasets: [{
+                    data: [classCounts.A, classCounts.B, classCounts.C, classCounts.D],
+                    backgroundColor: ['#24704d', '#5d7066', '#8a6d3b', '#a33f3f'],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom', labels: { font: { size: 14 } } } }
+            }
+        });
+    }
+}
+
+// تشغيل الدالة لأول مرة عند فتح الصفحة (بعد ثانيتين لضمان جلب البيانات من السحابة)
+setTimeout(renderPerformanceCharts, 2000);
