@@ -3312,56 +3312,57 @@ async function resolveExportItems(items) {
     document.addEventListener("DOMContentLoaded", initAutocomplete);
 })();
 /* =========================================================
-   كود تصنيف أداء المقاولين (يعمل بعد تحميل البيانات مباشرة)
+   26) تصنيف أداء المقاولين (الجدول + الرسوم البيانية موحدة)
    ========================================================= */
+
+let barChartInstance = null;
+let pieChartInstance = null;
 
 function renderPerformanceReport() {
     const tbody = document.getElementById("performanceTableBody");
-    if (!tbody) return; // إذا لم نكن في صفحة التصنيف، لا تفعل شيء
+    if (!tbody) return; // نخرج إذا لم نكن في صفحة التصنيف
+
+    // التأكد من تحميل المكتبة والبيانات قبل البدء
+    if (typeof Chart === 'undefined' || typeof clearances === 'undefined' || typeof emergencies === 'undefined' || typeof notes === 'undefined') {
+        setTimeout(renderPerformanceReport, 1000); // ننتظر ثانية ونحاول مجدداً
+        return;
+    }
 
     let contractorStats = {};
 
     // 1. جمع كل التصاريح (إخلاء + طوارئ)
-    if (typeof clearances !== 'undefined') {
-        clearances.forEach(p => {
-            const name = (p.contractor || "غير معروف").trim();
-            if (name) {
-                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
-                contractorStats[name].permits++;
-            }
-        });
-    }
-    
-    if (typeof emergencies !== 'undefined') {
-        emergencies.forEach(p => {
-            const name = (p.contractor || "غير معروف").trim();
-            if (name) {
-                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
-                contractorStats[name].permits++;
-            }
-        });
-    }
+    [...clearances, ...emergencies].forEach(p => {
+        const name = (p.contractor || "غير معروف").trim();
+        if (name) {
+            if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+            contractorStats[name].permits++;
+        }
+    });
 
     // 2. جمع كل الملاحظات
-    if (typeof notes !== 'undefined') {
-        notes.forEach(n => {
-            const name = (n.contractor || "غير معروف").trim();
-            if (name) {
-                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
-                contractorStats[name].notes++;
-            }
-        });
-    }
+    notes.forEach(n => {
+        const name = (n.contractor || "غير معروف").trim();
+        if (name) {
+            if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+            contractorStats[name].notes++;
+        }
+    });
 
     const contractors = Object.keys(contractorStats);
     if (contractors.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5">لا توجد بيانات للمقاولين حالياً</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5">لا توجد بيانات كافية لإنشاء التقرير</td></tr>';
         return;
     }
 
     let tableRows = '';
+    
+    // مصفوفات لتخزين بيانات الرسوم البيانية
+    let chartLabels = [];
+    let chartPermits = [];
+    let chartNotes = [];
+    let classCounts = { A: 0, B: 0, C: 0, D: 0 };
 
-    // 3. تصنيف كل مقاول بناءً على نسبة أخطائه
+    // 3. تصنيف كل مقاول وملء بيانات الجدول والرسوم
     contractors.forEach(c => {
         let data = contractorStats[c];
         let ratio = data.permits > 0 ? (data.notes / data.permits) * 100 : 0;
@@ -3372,17 +3373,27 @@ function renderPerformanceReport() {
         if (ratio === 0) { 
             classification = '🟢 A (ممتاز)'; 
             classColor = 'background:#dcefe4; color:#24704d;'; 
+            classCounts.A++;
         } else if (ratio <= 30) { 
             classification = '🔵 B (جيد)'; 
             classColor = 'background:#e8eee9; color:#5d7066;'; 
+            classCounts.B++;
         } else if (ratio <= 60) { 
             classification = '🟡 C (متوسط)'; 
             classColor = 'background:#fff8e1; color:#8a6d3b;'; 
+            classCounts.C++;
         } else { 
             classification = '🔴 D (خطر عالي)'; 
             classColor = 'background:#f7dddd; color:#a33f3f;'; 
+            classCounts.D++;
         }
 
+        // إضافة بيانات للرسوم البيانية
+        chartLabels.push(c);
+        chartPermits.push(data.permits);
+        chartNotes.push(data.notes);
+
+        // بناء صف الجدول
         tableRows += `
             <tr>
                 <td style="font-weight:bold;">${c}</td>
@@ -3394,82 +3405,8 @@ function renderPerformanceReport() {
         `;
     });
 
+    // تحديث الجدول
     tbody.innerHTML = tableRows;
-}
-
-// 1. اعتراض دالة التحديث الرئيسية (updateDashboard) لتشغيل الحساب بعد تحميل البيانات
-const originalUpdateDashboard = window.updateDashboard || function() {};
-window.updateDashboard = function() {
-    if (originalUpdateDashboard) originalUpdateDashboard();
-    renderPerformanceReport(); // حساب التصنيف فور تحديث البيانات
-};
-
-// 2. اعتراض دالة التنقل لتشغيل الحساب عند فتح الصفحة
-const originalShowPagePerf = window.showPage || function(page){ document.getElementById(page).classList.add('active'); };
-window.showPage = function(pageId) {
-    if (originalShowPagePerf) originalShowPagePerf(pageId);
-    if (pageId === 'performance') {
-        renderPerformanceReport();
-    }
-};
-
-// 3. تشغيل الحساب عند فتح التطبيق (بعد ثانية ونص لضمان جلب البيانات من Supabase)
-document.addEventListener("DOMContentLoaded", function() {
-    setTimeout(function() {
-        renderPerformanceReport();
-    }, 1500);
-});
-// =========================================================
-// كود الرسوم البيانية لتصنيف المقاولين (آمن ولا يؤثر على أي شيء)
-// =========================================================
-
-var barChartInstance = null;
-var pieChartInstance = null;
-
-function renderPerformanceCharts() {
-    // 1. التأكد من تحميل مكتبة Chart.js
-    if (typeof Chart === 'undefined') {
-        // إذا لم تكن المكتبة تحملت بعد، نحاول مرة أخرى بعد نصف ثانية
-        setTimeout(renderPerformanceCharts, 500);
-        return;
-    }
-
-    // 2. التأكد من تحميل بيانات التطبيق
-    if (typeof clearances === 'undefined' || typeof emergencies === 'undefined' || typeof notes === 'undefined') {
-        setTimeout(renderPerformanceCharts, 500);
-        return;
-    }
-
-    // 3. جمع البيانات
-    var contractorStats = {};
-
-    function addPermit(arr) {
-        arr.forEach(function(p) {
-            var name = (p.contractor || "غير معروف").trim();
-            if (name) {
-                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
-                contractorStats[name].permits++;
-            }
-        });
-    }
-
-    function addNotes(arr) {
-        arr.forEach(function(n) {
-            var name = (n.contractor || "غير معروف").trim();
-            if (name) {
-                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
-                contractorStats[name].notes++;
-            }
-        });
-    }
-
-    addPermit(clearances);
-    addPermit(emergencies);
-    addNotes(notes);
-
-    var labels = Object.keys(contractorStats);
-    var permitsData = labels.map(function(c) { return contractorStats[c].permits; });
-    var notesData = labels.map(function(c) { return contractorStats[c].notes; });
 
     // 4. رسم المخطط العمودي (Bar Chart)
     var barCtx = document.getElementById('contractorBarChart');
@@ -3478,51 +3415,10 @@ function renderPerformanceCharts() {
         barChartInstance = new Chart(barCtx, {
             type: 'bar',
             data: {
-                labels: labels,
+                labels: chartLabels,
                 datasets: [
-                    { label: 'إجمالي التصاريح', data: permitsData, backgroundColor: '#245c49' },
-                    { label: 'إجمالي الملاحظات', data: notesData, backgroundColor: '#b3402a' }
+                    { label: 'إجمالي التصاريح', data: chartPermits, backgroundColor: '#245c49' },
+                    { label: 'إجمالي الملاحظات', data: chartNotes, backgroundColor: '#b3402a' }
                 ]
             },
             options: {
-                responsive: true,
-                scales: { y: { beginAtZero: true } },
-                plugins: { legend: { labels: { font: { size: 14 } } } }
-            }
-        });
-    }
-
-    // 5. رسم المخطط الدائري (Doughnut Chart)
-    var classCounts = { A: 0, B: 0, C: 0, D: 0 };
-    labels.forEach(function(c) {
-        var data = contractorStats[c];
-        var ratio = data.permits > 0 ? (data.notes / data.permits) * 100 : 0;
-        if (ratio === 0) classCounts.A++;
-        else if (ratio <= 30) classCounts.B++;
-        else if (ratio <= 60) classCounts.C++;
-        else classCounts.D++;
-    });
-
-    var pieCtx = document.getElementById('classificationPieChart');
-    if (pieCtx) {
-        if (pieChartInstance) pieChartInstance.destroy();
-        pieChartInstance = new Chart(pieCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['ممتاز (A)', 'جيد (B)', 'متوسط (C)', 'خطر عالي (D)'],
-                datasets: [{
-                    data: [classCounts.A, classCounts.B, classCounts.C, classCounts.D],
-                    backgroundColor: ['#24704d', '#5d7066', '#8a6d3b', '#a33f3f'],
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: { legend: { position: 'bottom', labels: { font: { size: 14 } } } }
-            }
-        });
-    }
-}
-
-// تشغيل الدالة لأول مرة عند فتح الصفحة (بعد ثانيتين لضمان جلب البيانات من السحابة)
-setTimeout(renderPerformanceCharts, 2000);
