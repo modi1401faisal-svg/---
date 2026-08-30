@@ -206,11 +206,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="script.js?v=6"></script>
 
-<!-- أكواد الشعارات -->
+<!-- أكواد الشعارات (تم إصلاح الروابط) -->
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-    const amanahLogoUrl = "https://z-cdn-media.chatglm.cn/files/14388a2b-5b5d-42d4-8e2f-ac93f8ede780.jpeg";
-    const labLogoUrl = "https://z-cdn-media.chatglm.cn/files/6222b48e-df16-4cef-8578-44b41893fc0e.jpeg";
+    const amanahLogoUrl = "https://z-cdn-media.chatglm.cn/files/14388a2b-5b5d-42d4-8e2f-ac93f8ede780.jpeg?auth_key=1887326183-5ce98f505449411fb3298ff8de264250-0-b067337c641d6b6447fcb70ea49bc8c3";
+    const labLogoUrl = "https://z-cdn-media.chatglm.cn/files/6222b48e-df16-4cef-8578-44b41893fc0e.jpeg?auth_key=1887326183-74b52225407b4b17ba4f3e9406b863d1-0-e1d1a0fe8d683b6a3c118333f8ce6900";
 
     const headerContent = document.querySelector('.header-content');
     if (headerContent && !document.getElementById('injected-amanah-logo')) {
@@ -387,7 +387,6 @@ function exportPerformanceToPDF() {
     var data = getPerformanceDataArray();
     if (data.length === 0) { alert("لا توجد بيانات للتصدير"); return; }
 
-    // 1. التقاط صورة من الرسوم البيانية المرسومة على الشاشة
     var barChartImg = "";
     var barCanvas = document.getElementById('contractorBarChart');
     if (barCanvas) {
@@ -400,7 +399,6 @@ function exportPerformanceToPDF() {
         pieChartImg = '<div style="text-align:center; margin-bottom:15px;"><h3 style="color:#1d4d3d;">توزيع تصنيف المقاولين</h3><img src="' + pieCanvas.toDataURL('image/png') + '" style="max-width:300px; height:auto;"></div>';
     }
 
-    // 2. بناء صفوف الجدول
     var rows = "";
     data.forEach(function(item) {
         var color = item["التصنيف"].includes("A") ? "#24704d" : item["التصنيف"].includes("B") ? "#5d7066" : item["التصنيف"].includes("C") ? "#8a6d3b" : "#a33f3f";
@@ -414,20 +412,15 @@ function exportPerformanceToPDF() {
         '</tr>';
     });
 
-    // 3. تجميع الـ PDF (الرسوم البيانية فوق، والجدول أسفل)
     var content = '<div dir="rtl" style="font-family:Arial, Helvetica, sans-serif;">' +
         '<div style="text-align:center; border-bottom:3px solid #173f32; padding-bottom:8px; margin-bottom:15px;">' +
             '<h2 style="color:#173f32; margin:0;">نظام مختبر جودة المشاريع</h2>' +
             '<h3 style="color:#333; margin:8px 0 4px;">تقرير تصنيف أداء المقاولين</h3>' +
         '</div>' +
-        
-        // وضع الرسوم البيانية جنباً إلى جنب
         '<div style="display:flex; justify-content:space-around; flex-wrap:wrap; gap:10px; margin-bottom:20px;">' +
             '<div style="flex:2; min-width:300px;">' + barChartImg + '</div>' +
             '<div style="flex:1; min-width:200px;">' + pieChartImg + '</div>' +
         '</div>' +
-
-        // الجدول
         '<table style="width:100%; border-collapse:collapse;">' +
             '<thead>' +
                 '<tr style="background:#173f32; color:#fff;">' +
@@ -444,7 +437,6 @@ function exportPerformanceToPDF() {
         '<p style="text-align:center; color:#999; font-size:11px; margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p>' +
     '</div>';
 
-    // 4. إعدادات التصدير
     var opt = {
         margin: 10,
         filename: 'تقرير_تصنيف_المقاولين.pdf',
