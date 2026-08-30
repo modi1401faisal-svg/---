@@ -50,45 +50,39 @@
 
 <main class="container">
 <!-- ==================================================
-     صفحة تصنيف أداء المقاولين (تظهر أولاً بعد الدخول)
+     صفحة تصنيف أداء المقاولين
 ================================================== -->
-<section id="performance" class="page active">
+<section id="performance" class="page">
     <div class="section-title">
         <h2>تقرير أداء المقاولين</h2>
         <p>تحليل وتصنيف أداء المقاولين بناءً على التصاريح والملاحظات</p>
     </div>
 
-    <!-- 1. الرسوم البيانية (تظهر في الأعلى) -->
+    <!-- 1. الرسوم البيانية -->
     <div style="display:flex; flex-wrap:wrap; gap:20px; margin-bottom:20px;">
         <div class="card" style="flex:2; min-width:300px;">
-            <div class="card-header">
-                <h3>مقارنة التصاريح بالملاحظات لكل مقاول</h3>
-            </div>
+            <div class="card-header"><h3>مقارنة التصاريح بالملاحظات</h3></div>
             <div style="padding:15px;">
                 <canvas id="contractorBarChart"></canvas>
             </div>
         </div>
         <div class="card" style="flex:1; min-width:300px;">
-            <div class="card-header">
-                <h3>توزيع تصنيف المقاولين</h3>
-            </div>
+            <div class="card-header"><h3>توزيع تصنيف المقاولين</h3></div>
             <div style="padding:15px;">
                 <canvas id="classificationPieChart"></canvas>
             </div>
         </div>
     </div>
 
-    <!-- 2. جدول التصنيف (يظهر أسفل الرسوم) -->
-    <div class="card">
-        <div class="card-header">
-            <h3>التحليل الإحصائي للأداء</h3>
-        </div>
+    <!-- 2. جدول التصنيف -->
+    <div class="card table-card">
+        <div class="card-header"><h3>التفاصيل الكاملة لتصنيف المقاولين</h3></div>
         <div class="table-container">
             <table>
                 <thead>
                     <tr>
                         <th>اسم المقاول</th>
-                        <th>إجمالي التصاريح (إخلاء + طوارئ)</th>
+                        <th>إجمالي التصاريح</th>
                         <th>إجمالي الملاحظات</th>
                         <th>نسبة الأخطاء (%)</th>
                         <th>التصنيف النهائي</th>
@@ -99,11 +93,6 @@
                 </tbody>
             </table>
         </div>
-    </div>
-
-    <!-- زر الانتقال للوحة المتابعة -->
-    <div class="form-actions" style="justify-content:center; margin-top:20px;">
-        <button class="btn-primary" onclick="showPage('dashboard')">الانتقال للوحة المتابعة</button>
     </div>
 </section>
 <!-- ==================================================
