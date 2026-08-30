@@ -3419,3 +3419,102 @@ document.addEventListener("DOMContentLoaded", function() {
         renderPerformanceReport();
     }, 1500);
 });
+// =========================================================
+// كود صفحة تصنيف المقاولين (مستقل تماماً ولا يؤثر على أي شيء)
+// =========================================================
+
+function showPerformancePage() {
+    // 1. إخفاء كل الصفحات
+    var pages = document.querySelectorAll('.page');
+    for (var i = 0; i < pages.length; i++) {
+        pages[i].classList.remove('active');
+    }
+    
+    // 2. إظهار صفحة التصنيف فقط
+    var perfPage = document.getElementById('performance');
+    if (perfPage) {
+        perfPage.classList.add('active');
+    }
+    
+    // 3. تشغيل دالة الحساب لعرض البيانات
+    renderPerformanceReport();
+}
+
+function renderPerformanceReport() {
+    var tbody = document.getElementById("performanceTableBody");
+    if (!tbody) return;
+
+    var contractorStats = {};
+
+    // جمع كل التصاريح (إخلاء + طوارئ)
+    if (typeof clearances !== 'undefined') {
+        clearances.forEach(function(p) {
+            var name = (p.contractor || "غير معروف").trim();
+            if (name) {
+                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+                contractorStats[name].permits++;
+            }
+        });
+    }
+    if (typeof emergencies !== 'undefined') {
+        emergencies.forEach(function(p) {
+            var name = (p.contractor || "غير معروف").trim();
+            if (name) {
+                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+                contractorStats[name].permits++;
+            }
+        });
+    }
+
+    // جمع كل الملاحظات
+    if (typeof notes !== 'undefined') {
+        notes.forEach(function(n) {
+            var name = (n.contractor || "غير معروف").trim();
+            if (name) {
+                if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
+                contractorStats[name].notes++;
+            }
+        });
+    }
+
+    var contractors = Object.keys(contractorStats);
+    if (contractors.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5">لا توجد بيانات للمقاولين حالياً</td></tr>';
+        return;
+    }
+
+    var tableRows = '';
+
+    // تصنيف كل مقاول بناءً على نسبة أخطائه
+    contractors.forEach(function(c) {
+        var data = contractorStats[c];
+        var ratio = data.permits > 0 ? (data.notes / data.permits) * 100 : 0;
+        
+        var classification = '';
+        var classColor = '';
+        
+        if (ratio === 0) { 
+            classification = '🟢 A (ممتاز)'; 
+            classColor = 'background:#dcefe4; color:#24704d;'; 
+        } else if (ratio <= 30) { 
+            classification = '🔵 B (جيد)'; 
+            classColor = 'background:#e8eee9; color:#5d7066;'; 
+        } else if (ratio <= 60) { 
+            classification = '🟡 C (متوسط)'; 
+            classColor = 'background:#fff8e1; color:#8a6d3b;'; 
+        } else { 
+            classification = '🔴 D (خطر عالي)'; 
+            classColor = 'background:#f7dddd; color:#a33f3f;'; 
+        }
+
+        tableRows += '<tr>' +
+            '<td style="font-weight:bold;">' + c + '</td>' +
+            '<td style="text-align:center;">' + data.permits + '</td>' +
+            '<td style="text-align:center;">' + data.notes + '</td>' +
+            '<td style="text-align:center; font-weight:bold;">' + ratio.toFixed(1) + '%</td>' +
+            '<td style="text-align:center; font-weight:bold; padding:8px; border-radius:8px; ' + classColor + '">' + classification + '</td>' +
+        '</tr>';
+    });
+
+    tbody.innerHTML = tableRows;
+}
