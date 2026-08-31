@@ -176,7 +176,7 @@
                 <div class="form-group"><label>اسم المقاول</label><input id="noteContractor" type="text"></div>
                 <div class="form-group"><label>الجهة المالكة</label><input id="noteOwner" type="text"></div>
                 <div class="form-group full"><label>أسباب الرفض</label><textarea id="noteReason"></textarea></div>
-                <div class="form-group full"><label>الإجراء المتخذ</label><textarea id="noteAction" readonly>تم إبلاغ المقاول بالملاحظات واتخاذ الإجراء اللازم</textarea></div>
+                <div class="form-group full"><label>الإجراء المتخذ</label><textarea id="noteAction" readonly> تم رفض الطلب و إبلاغ المقاول بالملاحظات </textarea></div>
                 <div class="form-group"><label>صورة الملاحظة</label><input id="beforeImage" type="file" accept="image/*"></div>
                 <div class="form-group"><label>صورة الملاحظة بعد التعديل</label><input id="afterImage" type="file" accept="image/*"></div>
             </div>
@@ -204,9 +204,9 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-<script src="script.js?v=6"></script>
+<script src="script.js?v=7"></script>
 
-<!-- أكواد الشعارات (تم إصلاح الروابط) -->
+<!-- أكواد الشعارات -->
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     const amanahLogoUrl = "https://z-cdn-media.chatglm.cn/files/14388a2b-5b5d-42d4-8e2f-ac93f8ede780.jpeg?auth_key=1887326183-5ce98f505449411fb3298ff8de264250-0-b067337c641d6b6447fcb70ea49bc8c3";
@@ -286,22 +286,86 @@ document.addEventListener('click', async function(e) {
 });
 </script>
 
-<!-- كود إجباري لعرض الملاحظات -->
+<!-- كود إجباري مصنف لعرض الملاحظات (يحتوي على التصنيفات وصور قبل وبعد) -->
 <script>
 window.renderNotes = function() {
-    const singleTable = document.getElementById('notesTable');
-    if (!singleTable) return;
-    singleTable.innerHTML = '';
+    const tbody = document.getElementById('notesTable');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
     if (typeof notes === 'undefined' || notes.length === 0) {
-        singleTable.innerHTML = '<tr><td colspan="10">لا توجد ملاحظات مسجلة</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10">لا توجد ملاحظات مسجلة</td></tr>';
         return;
     }
-    notes.forEach(function(item, index) {
-        let status = item.completed ? '<span class="status-done">✅ تم التعديل</span>' : '<span class="status-open">🔴 متأخرة</span>';
-        let imagesHTML = item.before ? `<img src="${item.before}" style="width:50px;height:50px;border-radius:5px;cursor:pointer;" onclick="openImage('${item.before}')">` : 'لا توجد صور';
-        singleTable.innerHTML += `<tr><td>${item.date || ""}</td><td>${item.type || ""}</td><td>${item.permit || ""}</td><td>${item.contractor || ""}</td><td>${item.owner || ""}</td><td>${item.reason || ""}</td><td>${item.action || ""}</td><td>${status}</td><td>${imagesHTML}</td><td><button class="edit" onclick="editNote(${index})">تعديل</button><button class="delete" onclick="window.deleteNote(${index})">حذف</button></td></tr>`;
+
+    const categories = ["مشاريع الأمانة", "المياه الوطنية", "الكهرباء", "الاتصالات", "مشاريع خاصة"];
+
+    categories.forEach(function(category) {
+        const categoryNotes = notes.filter(function(item) {
+            return (item.type || "مشاريع الأمانة") === category;
+        });
+
+        if (categoryNotes.length === 0) return;
+
+        // صف عنوان التصنيف
+        tbody.innerHTML += `
+            <tr class="note-category-row">
+                <td colspan="10" style="font-weight:bold; text-align:right; padding:12px; background:#eaf3ee; color:#1d4d3d; border-bottom:2px solid #1d4d3d; font-size:15px;">
+                    📁 ${category}
+                </td>
+            </tr>
+        `;
+
+        // صفوف الملاحظات
+        categoryNotes.forEach(function(item) {
+            const index = notes.indexOf(item);
+            const late = (typeof isLate === 'function') ? isLate(item) : false;
+            let status = "";
+            
+            if (item.completed) {
+                status = '<span class="status-done">✅ تم التعديل</span>';
+            } else if (late) {
+                status = '<span class="status-open">🔴 متأخرة</span>';
+            } else {
+                status = '<span class="status-follow">قيد المتابعة</span>';
+            }
+
+            let imagesHTML = "<span>لا توجد صور</span>";
+            if (item.before || item.after) {
+                imagesHTML = "";
+                if (item.before) {
+                    imagesHTML += `<div style="display:inline-block; text-align:center; margin:2px;"><small>قبل</small><br>${imageThumb(item.before, "صورة الملاحظة")}</div>`;
+                }
+                if (item.after) {
+                    imagesHTML += `<div style="display:inline-block; text-align:center; margin:2px;"><small>بعد</small><br>${imageThumb(item.after, "صورة الملاحظة بعد التعديل")}</div>`;
+                }
+            }
+
+            tbody.innerHTML += `
+                <tr ${late ? 'style="background:#fff0f0;"' : ""}>
+                    <td>${item.date || ""}</td>
+                    <td>${item.type || "مشاريع الأمانة"}</td>
+                    <td>${item.permit || ""}</td>
+                    <td>${item.contractor || ""}</td>
+                    <td>${item.owner || ""}</td>
+                    <td>${item.reason || ""}</td>
+                    <td>${item.action || ""}</td>
+                    <td>${status}</td>
+                    <td>${imagesHTML}</td>
+                    <td>
+                        <button class="edit" onclick="editNote(${index})">تعديل</button>
+                        <button class="delete" onclick="window.deleteNote(${index})">حذف</button>
+                    </td>
+                </tr>
+            `;
+        });
     });
+
+    if (typeof resolveIdbImages === 'function') {
+        resolveIdbImages();
+    }
 };
+
 const originalShowPageNotes = window.showPage;
 window.showPage = function(pageId) {
     if (originalShowPageNotes) originalShowPageNotes(pageId);
