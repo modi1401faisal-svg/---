@@ -35,6 +35,7 @@
 <!-- ========================= شريط التنقل ========================= -->
 <nav class="navbar">
     <button onclick="showPage('dashboard')">الرئيسية</button>
+    <button onclick="showPage('analytics')">إحصائيات ومؤشرات</button>
     <button onclick="showPage('performance')">تصنيف المقاولين</button>
     <button onclick="showPage('clearance')">رخص الإخلاءات</button>
     <button onclick="showPage('emergency')">رخص الطوارئ</button>
@@ -42,6 +43,70 @@
 </nav>
 
 <main class="container">
+
+    <!-- ================================================== صفحة الإحصائيات والمؤشرات الشاملة ================================================== -->
+    <section id="analytics" class="page">
+        <div class="section-title">
+            <h2>لوحة المؤشرات والإحصائيات</h2>
+            <p>نظرة شاملة على أداء المختبر والملاحظات الطارئة</p>
+        </div>
+
+        <!-- 1. المؤشرات السريعة (KPI Cards) -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">📄</div>
+                <div><span>رخص الإخلاء</span><strong id="kpiClearance">0</strong></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🚧</div>
+                <div><span>رخص الطوارئ</span><strong id="kpiEmergency">0</strong></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">📝</div>
+                <div><span>إجمالي الملاحظات</span><strong id="kpiNotes">0</strong></div>
+            </div>
+            <div class="stat-card" style="border-right: 5px solid #b3402a;">
+                <div class="stat-icon">🚨</div>
+                <div><span>ملاحظات طارئة</span><strong id="kpiEmergencyNotes" style="color:#b3402a;">0</strong></div>
+            </div>
+        </div>
+
+        <!-- 2. الرسوم البيانية التحليلية -->
+        <div style="display:flex; flex-wrap:wrap; gap:20px; margin-bottom:20px;">
+            <div class="card" style="flex:1; min-width:300px;">
+                <div class="card-header"><h3>توزيع العمل في المختبر</h3></div>
+                <div style="padding:15px;"><canvas id="workDistributionChart"></canvas></div>
+            </div>
+            <div class="card" style="flex:2; min-width:300px;">
+                <div class="card-header"><h3>توزيع الملاحظات حسب الجهة</h3></div>
+                <div style="padding:15px;"><canvas id="notesByEntityChart"></canvas></div>
+            </div>
+        </div>
+
+        <!-- 3. صندوق الملاحظات الطارئة -->
+        <div class="card table-card">
+            <div class="card-header" style="background:#b3402a;">
+                <h3>🚨 ملاحظات طارئة تتطلب تدخلاً فورياً</h3>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>التاريخ</th>
+                            <th>رقم التصريح</th>
+                            <th>المقاول</th>
+                            <th>الجهة</th>
+                            <th>سبب الرفض</th>
+                            <th>مضى (أيام)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="emergencyNotesTable">
+                        <tr><td colspan="6">جاري فحص البيانات...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
 
     <!-- ================================================== صفحة تصنيف المقاولين ================================================== -->
     <section id="performance" class="page">
@@ -307,7 +372,6 @@ window.renderNotes = function() {
 
         if (categoryNotes.length === 0) return;
 
-        // صف عنوان التصنيف
         tbody.innerHTML += `
             <tr class="note-category-row">
                 <td colspan="10" style="font-weight:bold; text-align:right; padding:12px; background:#eaf3ee; color:#1d4d3d; border-bottom:2px solid #1d4d3d; font-size:15px;">
@@ -316,7 +380,6 @@ window.renderNotes = function() {
             </tr>
         `;
 
-        // صفوف الملاحظات
         categoryNotes.forEach(function(item) {
             const index = notes.indexOf(item);
             const late = (typeof isLate === 'function') ? isLate(item) : false;
@@ -366,12 +429,94 @@ window.renderNotes = function() {
     }
 };
 
+// تم تحديث هذا الجزء ليشمل تشغيل صفحة الإحصائيات أيضاً
 const originalShowPageNotes = window.showPage;
 window.showPage = function(pageId) {
     if (originalShowPageNotes) originalShowPageNotes(pageId);
     if (pageId === 'notes') renderNotes();
+    if (pageId === 'analytics') {
+        setTimeout(renderAnalyticsPage, 300); // تشغيل الإحصائيات عند فتح الصفحة
+    }
 };
 document.addEventListener("DOMContentLoaded", renderNotes);
+</script>
+
+<!-- كود صفحة الإحصائيات والمؤشرات الشاملة (مستقل تماماً) -->
+<script>
+function renderAnalyticsPage() {
+    if (typeof clearances === 'undefined' || typeof Chart === 'undefined' || typeof notes === 'undefined') return;
+
+    document.getElementById('kpiClearance').innerText = clearances.length;
+    document.getElementById('kpiEmergency').innerText = emergencies.length;
+    document.getElementById('kpiNotes').innerText = notes.length;
+
+    var lateNotes = notes.filter(function(n) {
+        return !n.completed && typeof isLate === 'function' && isLate(n);
+    });
+    document.getElementById('kpiEmergencyNotes').innerText = lateNotes.length;
+
+    var emergTable = document.getElementById('emergencyNotesTable');
+    if (lateNotes.length === 0) {
+        emergTable.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#24704d; font-weight:bold; padding:15px;">لا توجد ملاحظات طارئة حالياً ✅</td></tr>';
+    } else {
+        var rows = "";
+        lateNotes.forEach(function(n) {
+            var days = (typeof daysPassed === 'function') ? daysPassed(n.date) : 0;
+            rows += '<tr style="background:#fff0f0;">' +
+                '<td>' + (n.date || "") + '</td>' +
+                '<td>' + (n.permit || "") + '</td>' +
+                '<td>' + (n.contractor || "") + '</td>' +
+                '<td>' + (n.type || "") + '</td>' +
+                '<td>' + (n.reason || "") + '</td>' +
+                '<td style="font-weight:bold; color:#b3402a;">' + days + ' يوم</td>' +
+            '</tr>';
+        });
+        emergTable.innerHTML = rows;
+    }
+
+    var ctx1 = document.getElementById('workDistributionChart');
+    if (ctx1 && !ctx1.dataset.drawn) {
+        ctx1.dataset.drawn = "true";
+        new Chart(ctx1, {
+            type: 'doughnut',
+            data: {
+                labels: ['رخص الإخلاء', 'رخص الطوارئ', 'الملاحظات'],
+                datasets: [{
+                    data: [clearances.length, emergencies.length, notes.length],
+                    backgroundColor: ['#245c49', '#39745d', '#b3402a']
+                }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        });
+    }
+
+    var ctx2 = document.getElementById('notesByEntityChart');
+    if (ctx2 && !ctx2.dataset.drawn) {
+        ctx2.dataset.drawn = "true";
+        var entityStats = {};
+        notes.forEach(function(n) {
+            var type = n.type || "غير مصنف";
+            if (!entityStats[type]) entityStats[type] = 0;
+            entityStats[type]++;
+        });
+
+        new Chart(ctx2, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(entityStats),
+                datasets: [{
+                    label: 'عدد الملاحظات',
+                    data: Object.values(entityStats),
+                    backgroundColor: '#173f32'
+                }]
+            },
+            options: { responsive: true, scales: { y: { beginAtZero: true } } }
+        });
+    }
+}
+
+// تشغيل مرة واحدة عند فتح التطبيق
+setTimeout(renderAnalyticsPage, 2500);
 </script>
 
 <!-- كود الرسوم البيانية وتصدير المقاولين (محدث مع صور الرسوم في PDF) -->
