@@ -114,6 +114,28 @@
             <div class="chart-body" style="height: 350px;"><canvas id="notesByEntityChart"></canvas></div>
         </div>
 
+        <!-- 4. الإحصاء السنوي والربع سنوي (مضاف حسب الطلب) -->
+        <div class="chart-container" style="margin-bottom:20px;">
+            <div class="chart-header">الإحصاء السنوي والربع سنوي (للسنة الحالية)</div>
+            <div class="chart-body" style="height: auto; padding: 20px;">
+                <table style="width: 100%; border-collapse: collapse; text-align: center;">
+                    <thead>
+                        <tr style="background: #173f32; color: #fff;">
+                            <th style="padding: 10px; border: 1px solid #e0ebe5;">الفئة</th>
+                            <th style="padding: 10px; border: 1px solid #e0ebe5;">الربع الأول</th>
+                            <th style="padding: 10px; border: 1px solid #e0ebe5;">الربع الثاني</th>
+                            <th style="padding: 10px; border: 1px solid #e0ebe5;">الربع الثالث</th>
+                            <th style="padding: 10px; border: 1px solid #e0ebe5;">الربع الرابع</th>
+                            <th style="padding: 10px; border: 1px solid #e0ebe5; background: #245c49;">الإجمالي السنوي</th>
+                        </tr>
+                    </thead>
+                    <tbody id="annualStatsTable">
+                        <tr><td colspan="6" style="padding: 10px; text-align: center;">جاري حساب البيانات...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <!-- 3. صندوق الملاحظات الطارئة -->
         <div class="card table-card" style="border:1px solid #c0392b; border-radius:12px; overflow:hidden;">
             <div class="card-header" style="background: linear-gradient(90deg, #c0392b, #e74c3c);">
@@ -295,7 +317,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-<script src="script.js?v=10"></script>
+<script src="script.js?v=11"></script>
 
 <!-- أكواد الشعارات -->
 <script>
@@ -536,6 +558,84 @@ function renderAnalyticsPage() {
             },
             options: { responsive: true, maintainAspectRatio: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }
         });
+    }
+
+    // 4. الإحصاء السنوي والربع سنوي (مضاف حسب الطلب)
+    var currentYear = new Date().getFullYear();
+    var q1 = { clearance: 0, emergency: 0, notes: 0 };
+    var q2 = { clearance: 0, emergency: 0, notes: 0 };
+    var q3 = { clearance: 0, emergency: 0, notes: 0 };
+    var q4 = { clearance: 0, emergency: 0, notes: 0 };
+    var totalAnnual = { clearance: 0, emergency: 0, notes: 0 };
+
+    function getQuarter(dateStr) {
+        if (!dateStr) return -1;
+        var d = new Date(dateStr);
+        if (isNaN(d.getTime())) return -1;
+        if (d.getFullYear() !== currentYear) return -1;
+        var m = d.getMonth();
+        if (m <= 2) return 1;
+        if (m <= 5) return 2;
+        if (m <= 8) return 3;
+        return 4;
+    }
+
+    clearances.forEach(function(c) {
+        var q = getQuarter(c.date); // محاولة إيجاد تاريخ، إن لم يوجد يعتبر للسنة الحالية
+        if (q === -1) {
+            totalAnnual.clearance++;
+            var m = new Date().getMonth();
+            if (m <= 2) q1.clearance++; else if (m <= 5) q2.clearance++; else if (m <= 8) q3.clearance++; else q4.clearance++;
+        } else {
+            totalAnnual.clearance++;
+            if (q === 1) q1.clearance++; else if (q === 2) q2.clearance++; else if (q === 3) q3.clearance++; else q4.clearance++;
+        }
+    });
+
+    emergencies.forEach(function(e) {
+        var q = getQuarter(e.labReceive || e.start);
+        if (q !== -1) {
+            totalAnnual.emergency++;
+            if (q === 1) q1.emergency++; else if (q === 2) q2.emergency++; else if (q === 3) q3.emergency++; else q4.emergency++;
+        }
+    });
+
+    notes.forEach(function(n) {
+        var q = getQuarter(n.date);
+        if (q !== -1) {
+            totalAnnual.notes++;
+            if (q === 1) q1.notes++; else if (q === 2) q2.notes++; else if (q === 3) q3.notes++; else q4.notes++;
+        }
+    });
+
+    var annualTable = document.getElementById('annualStatsTable');
+    if (annualTable) {
+        annualTable.innerHTML = `
+            <tr style="background: #f8fbfa;">
+                <td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold;">رخص الإخلاء</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5;">${q1.clearance}</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5;">${q2.clearance}</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5;">${q3.clearance}</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5;">${q4.clearance}</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold; color: #245c49;">${totalAnnual.clearance}</td>
+            </tr>
+            <tr style="background: #fff;">
+                <td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold;">رخص الطوارئ</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5;">${q1.emergency}</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5;">${q2.emergency}</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5;">${q3.emergency}</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5;">${q4.emergency}</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold; color: #245c49;">${totalAnnual.emergency}</td>
+            </tr>
+            <tr style="background: #f8fbfa;">
+                <td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold;">الملاحظات</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5;">${q1.notes}</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5;">${q2.notes}</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5;">${q3.notes}</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5;">${q4.notes}</td>
+                <td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold; color: #245c49;">${totalAnnual.notes}</td>
+            </tr>
+        `;
     }
 }
 setTimeout(renderAnalyticsPage, 2500);
