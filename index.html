@@ -27,7 +27,7 @@
         .bg-gray { background: linear-gradient(135deg, #435f6e 0%, #6b8a99 100%); }
 
         .chart-container { background: #fff; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); border: 1px solid #e0ebe5; overflow: hidden; margin-bottom: 20px; }
-        .chart-header { background: #f8fbfa; padding: 12px 18px; border-bottom: 1px solid #e0ebe5; font-weight: bold; color: #173f32; }
+        .chart-header { background: #f8fbga; padding: 12px 18px; border-bottom: 1px solid #e0ebe5; font-weight: bold; color: #173f32; }
         .chart-body { padding: 15px; position: relative; height: 320px; }
         .gauge-center-text { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
         .gauge-center-text .val { font-size: 36px; font-weight: 800; color: #173f32; display: block; }
@@ -70,7 +70,8 @@
     <!-- ================================================== لوحة القيادة التنفيذية المتطورة ================================================== -->
     <section id="analytics" class="page">
         <div class="section-title">
-            <h2>لوحة المؤشرات والإحصائيات الذكية</h2>
+            <!-- تم إضافة عنصر لعرض السنة الحالية تلقائياً -->
+            <h2>لوحة المؤشرات والإحصائيات الذكية <span id="analyticsCurrentYear" style="font-size: 18px; color: #666;"></span></h2>
             <p>تحليل متقدم ومؤشرات تفاعلية لأداء المختبر والمقاولين</p>
         </div>
 
@@ -122,10 +123,11 @@
                     <thead>
                         <tr style="background: #173f32; color: #fff;">
                             <th style="padding: 10px; border: 1px solid #e0ebe5;">الفئة</th>
-                            <th style="padding: 10px; border: 1px solid #e0ebe5;">الربع الأول</th>
-                            <th style="padding: 10px; border: 1px solid #e0ebe5;">الربع الثاني</th>
-                            <th style="padding: 10px; border: 1px solid #e0ebe5;">الربع الثالث</th>
-                            <th style="padding: 10px; border: 1px solid #e0ebe5;">الربع الرابع</th>
+                            <!-- تم إضافة كلاس للتعديل التلقائي للسنة -->
+                            <th class="annual-q-header" style="padding: 10px; border: 1px solid #e0ebe5;">الربع الأول</th>
+                            <th class="annual-q-header" style="padding: 10px; border: 1px solid #e0ebe5;">الربع الثاني</th>
+                            <th class="annual-q-header" style="padding: 10px; border: 1px solid #e0ebe5;">الربع الثالث</th>
+                            <th class="annual-q-header" style="padding: 10px; border: 1px solid #e0ebe5;">الربع الرابع</th>
                             <th style="padding: 10px; border: 1px solid #e0ebe5; background: #245c49;">الإجمالي السنوي</th>
                         </tr>
                     </thead>
@@ -317,7 +319,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-<script src="script.js?v=11"></script>
+<script src="script.js?v=12"></script>
 
 <!-- أكواد الشعارات -->
 <script>
@@ -446,6 +448,21 @@ var analyticsCharts = {};
 function renderAnalyticsPage() {
     if (typeof clearances === 'undefined' || typeof Chart === 'undefined' || typeof notes === 'undefined') return;
 
+    var currentYear = new Date().getFullYear();
+    
+    // تحديث عنوان الصفحة بالسنة الحالية
+    var yearSpan = document.getElementById('analyticsCurrentYear');
+    if (yearSpan) yearSpan.innerText = "(" + currentYear + ")";
+    
+    // تحديث رؤوس الأرباع بالسنة الحالية
+    var qHeaders = document.querySelectorAll('.annual-q-header');
+    if (qHeaders.length === 4) {
+        qHeaders[0].innerText = "الربع الأول " + currentYear;
+        qHeaders[1].innerText = "الربع الثاني " + currentYear;
+        qHeaders[2].innerText = "الربع الثالث " + currentYear;
+        qHeaders[3].innerText = "الربع الرابع " + currentYear;
+    }
+
     var totalPermits = clearances.length + emergencies.length;
     var totalNotes = notes.length;
     var today = new Date().toISOString().split('T')[0];
@@ -455,9 +472,11 @@ function renderAnalyticsPage() {
     }).length;
 
     var completedNotes = notes.filter(function(n) { return n.completed; }).length;
-    var lateNotes = notes.filter(function(n) { 
+    
+    // تصحيح حساب الملاحظات المتأخرة والحرجة لكي يظهر العدد الإجمالي للمتأخرة في البطاقة
+    var allLateNotes = notes.filter(function(n) { 
         var d = (typeof daysPassed === 'function') ? daysPassed(n.date) : 0; 
-        return !n.completed && d >= 5 && d <= 10; 
+        return !n.completed && d >= 5; 
     });
     var criticalNotes = notes.filter(function(n) { 
         var d = (typeof daysPassed === 'function') ? daysPassed(n.date) : 0; 
@@ -473,19 +492,18 @@ function renderAnalyticsPage() {
     document.getElementById('kpiTotalNotes').innerText = totalNotes;
     document.getElementById('kpiClosureRate').innerText = closureRate + '%';
     document.getElementById('kpiErrorRate').innerText = errorRate + '%';
-    document.getElementById('kpiLateNotes').innerText = lateNotes.length;
+    document.getElementById('kpiLateNotes').innerText = allLateNotes.length; // العدد الإجمالي للمتأخرة
     document.getElementById('kpiCriticalNotes').innerText = criticalNotes.length;
     document.getElementById('kpiOverduePermits').innerText = overduePermits;
     document.getElementById('gaugeValue').innerText = closureRate + '%';
 
     var emergTable = document.getElementById('emergencyNotesTable');
-    var allLate = lateNotes.concat(criticalNotes);
-    if (allLate.length === 0) {
+    if (allLateNotes.length === 0) {
         emergTable.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#24704d; font-weight:bold; padding:15px;">لا توجد ملاحظات طارئة حالياً ✅</td></tr>';
     } else {
-        allLate.sort(function(a,b){ return daysPassed(b.date) - daysPassed(a.date); });
+        allLateNotes.sort(function(a,b){ return daysPassed(b.date) - daysPassed(a.date); });
         var rows = "";
-        allLate.forEach(function(n) {
+        allLateNotes.forEach(function(n) {
             var days = (typeof daysPassed === 'function') ? daysPassed(n.date) : 0;
             var status = days > 10 ? '<span style="color:#5e0d0d; font-weight:bold;">حرجة جداً</span>' : '<span style="color:#b3402a;">متأخرة</span>';
             rows += '<tr style="background:#fff0f0;">' +
@@ -560,8 +578,7 @@ function renderAnalyticsPage() {
         });
     }
 
-    // 4. الإحصاء السنوي والربع سنوي (مضاف حسب الطلب)
-    var currentYear = new Date().getFullYear();
+    // 4. الإحصاء السنوي والربع سنوي
     var q1 = { clearance: 0, emergency: 0, notes: 0 };
     var q2 = { clearance: 0, emergency: 0, notes: 0 };
     var q3 = { clearance: 0, emergency: 0, notes: 0 };
@@ -572,7 +589,7 @@ function renderAnalyticsPage() {
         if (!dateStr) return -1;
         var d = new Date(dateStr);
         if (isNaN(d.getTime())) return -1;
-        if (d.getFullYear() !== currentYear) return -1;
+        if (d.getFullYear() !== currentYear) return -1; // تجاهل السنوات السابقة
         var m = d.getMonth();
         if (m <= 2) return 1;
         if (m <= 5) return 2;
@@ -581,12 +598,8 @@ function renderAnalyticsPage() {
     }
 
     clearances.forEach(function(c) {
-        var q = getQuarter(c.date); // محاولة إيجاد تاريخ، إن لم يوجد يعتبر للسنة الحالية
-        if (q === -1) {
-            totalAnnual.clearance++;
-            var m = new Date().getMonth();
-            if (m <= 2) q1.clearance++; else if (m <= 5) q2.clearance++; else if (m <= 8) q3.clearance++; else q4.clearance++;
-        } else {
+        var q = getQuarter(c.date || c.labReceive);
+        if (q !== -1) {
             totalAnnual.clearance++;
             if (q === 1) q1.clearance++; else if (q === 2) q2.clearance++; else if (q === 3) q3.clearance++; else q4.clearance++;
         }
@@ -611,7 +624,7 @@ function renderAnalyticsPage() {
     var annualTable = document.getElementById('annualStatsTable');
     if (annualTable) {
         annualTable.innerHTML = `
-            <tr style="background: #f8fbfa;">
+            <tr style="background: #f8fbga;">
                 <td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold;">رخص الإخلاء</td>
                 <td style="padding: 10px; border: 1px solid #e0ebe5;">${q1.clearance}</td>
                 <td style="padding: 10px; border: 1px solid #e0ebe5;">${q2.clearance}</td>
@@ -627,7 +640,7 @@ function renderAnalyticsPage() {
                 <td style="padding: 10px; border: 1px solid #e0ebe5;">${q4.emergency}</td>
                 <td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold; color: #245c49;">${totalAnnual.emergency}</td>
             </tr>
-            <tr style="background: #f8fbfa;">
+            <tr style="background: #f8fbga;">
                 <td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold;">الملاحظات</td>
                 <td style="padding: 10px; border: 1px solid #e0ebe5;">${q1.notes}</td>
                 <td style="padding: 10px; border: 1px solid #e0ebe5;">${q2.notes}</td>
