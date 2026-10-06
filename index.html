@@ -2,7 +2,8 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- تم تحسين viewport ليعمل بشكل أفضل على الجوال -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>نظام مختبر جودة المشاريع</title>
     <link rel="stylesheet" href="style.css">
     <style>
@@ -70,7 +71,6 @@
     <!-- ================================================== لوحة القيادة التنفيذية المتطورة ================================================== -->
     <section id="analytics" class="page">
         <div class="section-title">
-            <!-- تم إضافة عنصر لعرض السنة الحالية تلقائياً -->
             <h2>لوحة المؤشرات والإحصائيات الذكية <span id="analyticsCurrentYear" style="font-size: 18px; color: #666;"></span></h2>
             <p>تحليل متقدم ومؤشرات تفاعلية لأداء المختبر والمقاولين</p>
         </div>
@@ -115,7 +115,7 @@
             <div class="chart-body" style="height: 350px;"><canvas id="notesByEntityChart"></canvas></div>
         </div>
 
-        <!-- 4. الإحصاء السنوي والربع سنوي (مضاف حسب الطلب) -->
+        <!-- 4. الإحصاء السنوي والربع سنوي -->
         <div class="chart-container" style="margin-bottom:20px;">
             <div class="chart-header">الإحصاء السنوي والربع سنوي (للسنة الحالية)</div>
             <div class="chart-body" style="height: auto; padding: 20px;">
@@ -123,7 +123,6 @@
                     <thead>
                         <tr style="background: #173f32; color: #fff;">
                             <th style="padding: 10px; border: 1px solid #e0ebe5;">الفئة</th>
-                            <!-- تم إضافة كلاس للتعديل التلقائي للسنة -->
                             <th class="annual-q-header" style="padding: 10px; border: 1px solid #e0ebe5;">الربع الأول</th>
                             <th class="annual-q-header" style="padding: 10px; border: 1px solid #e0ebe5;">الربع الثاني</th>
                             <th class="annual-q-header" style="padding: 10px; border: 1px solid #e0ebe5;">الربع الثالث</th>
@@ -319,7 +318,10 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-<script src="script.js?v=12"></script>
+<!-- تم إضافة مكتبة Supabase هنا بشكل مباشر لضمان عملها على شبكات الجوال -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!-- تم تحديث رقم إصدار ملف script.js إلى v=13 لإجبار متصفح الجوال على تحديث الكاش -->
+<script src="script.js?v=13"></script>
 
 <!-- أكواد الشعارات -->
 <script>
@@ -450,11 +452,9 @@ function renderAnalyticsPage() {
 
     var currentYear = new Date().getFullYear();
     
-    // تحديث عنوان الصفحة بالسنة الحالية
     var yearSpan = document.getElementById('analyticsCurrentYear');
     if (yearSpan) yearSpan.innerText = "(" + currentYear + ")";
     
-    // تحديث رؤوس الأرباع بالسنة الحالية
     var qHeaders = document.querySelectorAll('.annual-q-header');
     if (qHeaders.length === 4) {
         qHeaders[0].innerText = "الربع الأول " + currentYear;
@@ -473,7 +473,6 @@ function renderAnalyticsPage() {
 
     var completedNotes = notes.filter(function(n) { return n.completed; }).length;
     
-    // تصحيح حساب الملاحظات المتأخرة والحرجة لكي يظهر العدد الإجمالي للمتأخرة في البطاقة
     var allLateNotes = notes.filter(function(n) { 
         var d = (typeof daysPassed === 'function') ? daysPassed(n.date) : 0; 
         return !n.completed && d >= 5; 
@@ -492,7 +491,7 @@ function renderAnalyticsPage() {
     document.getElementById('kpiTotalNotes').innerText = totalNotes;
     document.getElementById('kpiClosureRate').innerText = closureRate + '%';
     document.getElementById('kpiErrorRate').innerText = errorRate + '%';
-    document.getElementById('kpiLateNotes').innerText = allLateNotes.length; // العدد الإجمالي للمتأخرة
+    document.getElementById('kpiLateNotes').innerText = allLateNotes.length;
     document.getElementById('kpiCriticalNotes').innerText = criticalNotes.length;
     document.getElementById('kpiOverduePermits').innerText = overduePermits;
     document.getElementById('gaugeValue').innerText = closureRate + '%';
@@ -589,7 +588,7 @@ function renderAnalyticsPage() {
         if (!dateStr) return -1;
         var d = new Date(dateStr);
         if (isNaN(d.getTime())) return -1;
-        if (d.getFullYear() !== currentYear) return -1; // تجاهل السنوات السابقة
+        if (d.getFullYear() !== currentYear) return -1;
         var m = d.getMonth();
         if (m <= 2) return 1;
         if (m <= 5) return 2;
