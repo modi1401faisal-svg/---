@@ -78,7 +78,7 @@
             <div class="premium-card bg-teal"><div class="icon-box">⚙️</div><div class="data-box"><span>تصاريح نشطة اليوم</span><strong id="kpiActivePermits">0</strong></div></div>
             <div class="premium-card bg-blue"><div class="icon-box">📝</div><div class="data-box"><span>إجمالي الملاحظات</span><strong id="kpiTotalNotes">0</strong></div></div>
             <div class="premium-card bg-purple"><div class="icon-box">✅</div><div class="data-box"><span>معدل الإغلاق</span><strong id="kpiClosureRate">0%</strong></div></div>
-            <div class="premium-card bg-orange"><div class="icon-box">⚠️</div><div class="data-box"><span>نسبة الأخطاء</span><strong id="kpiErrorRate">0%</strong></div></div>
+            <div class="premium-card bg-orange"><div class="icon-box">⚠️</div><div class="data-box"><span>نسبة الأخطا</span><strong id="kpiErrorRate">0%</strong></div></div>
             <div class="premium-card bg-red"><div class="icon-box">🔴</div><div class="data-box"><span>ملاحظات متأخرة</span><strong id="kpiLateNotes">0</strong></div></div>
             <div class="premium-card bg-darkred"><div class="icon-box">🚨</div><div class="data-box"><span>ملاحظات حرجة جداً</span><strong id="kpiCriticalNotes">0</strong></div></div>
             <div class="premium-card bg-gray"><div class="icon-box">⏳</div><div class="data-box"><span>تصاريح منتهية</span><strong id="kpiOverduePermits">0</strong></div></div>
@@ -142,7 +142,7 @@
         <div class="card table-card">
             <div class="card-header"><h3>التفاصيل الكاملة لتصنيف المقاولين</h3></div>
             <div class="table-container">
-                <table><thead><tr><th>اسم المقاول</th><th>إجمالي التصاريح</th><th>إجمالي الملاحظات</th><th>نسبة الأخطاء</th><th>التصنيف النهائي</th></tr></thead>
+                <table><thead><tr><th>اسم المقاول</th><th>إجمالي التصاريح</th><th>إجمالي الملاحظات</th><th>نسبة الأخطا</th><th>التصنيف النهائي</th></tr></thead>
                     <tbody id="performanceTableBody"><tr><td colspan="5">جاري حساب البيانات...</td></tr></tbody>
                 </table>
             </div>
@@ -162,6 +162,11 @@
 
     <section id="clearance" class="page">
         <div class="section-title"><h2>رخص الإخلاءات</h2><p>إدخال والبحث ومتابعة رخص الإخلاءات</p></div>
+        <!-- أزرار التصدير المضافة لقسم الإخلاءات -->
+        <div style="display:flex; gap:10px; margin-bottom:20px; justify-content:center;">
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportClearancesToExcel()">📥 تصدير Excel</button>
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportClearancesToPDF()">📄 تصدير PDF</button>
+        </div>
         <div class="card search-card"><div class="card-header"><h3>🔎 البحث عن رخصة إخلاء</h3></div>
             <div class="search-row">
                 <input type="text" id="clearanceSearch" placeholder="اكتب رقم رخصة الإخلاء..." autocomplete="off">
@@ -187,6 +192,11 @@
 
     <section id="emergency" class="page">
         <div class="section-title"><h2>رخص الطوارئ</h2><p>إدخال والبحث ومتابعة رخص الطوارئ</p></div>
+        <!-- أزرار التصدير المضافة لقسم الطوارئ -->
+        <div style="display:flex; gap:10px; margin-bottom:20px; justify-content:center;">
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportEmergenciesToExcel()">📥 تصدير Excel</button>
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportEmergenciesToPDF()">📄 تصدير PDF</button>
+        </div>
         <div class="card search-card"><div class="card-header"><h3>🔎 البحث عن رخصة طوارئ</h3></div>
             <div class="search-row">
                 <input type="text" id="emergencySearch" placeholder="اكتب رقم رخصة الطوارئ..." autocomplete="off">
@@ -215,6 +225,11 @@
 
     <section id="notes" class="page">
         <div class="section-title"><h2>الملاحظات</h2><p>تسجيل ومتابعة ملاحظات المشاريع والمقاولين</p></div>
+        <!-- أزرار التصدير المضافة لقسم الملاحظات -->
+        <div style="display:flex; gap:10px; margin-bottom:20px; justify-content:center;">
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportNotesToExcel()">📥 تصدير Excel</button>
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportNotesToPDF()">📄 تصدير PDF</button>
+        </div>
         <div class="card"><div class="card-header"><h3>إدخال ملاحظة</h3></div>
             <div class="note-types">
                 <button onclick="setNoteType('مشاريع الأمانة')">مشاريع الأمانة</button>
@@ -250,7 +265,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="script.js?v=14"></script>
+<script src="script.js?v=15"></script>
 
 <!-- أكواد الشعارات -->
 <script>
@@ -327,48 +342,93 @@ window.showPage = function(pageId) {
 document.addEventListener("DOMContentLoaded", renderNotes);
 </script>
 
-<!-- كود تصدير PDF للإخلاءات والطوارئ والملاحظات (مستقل لتفادي الصفحات الفارغة) -->
+<!-- كود تصدير PDF المطور (Async) لتفادي الصفحات الفارغة وظهور الصور -->
 <script>
-function exportClearancesToPDF() {
+async function exportClearancesToPDF() {
     if (typeof html2pdf === 'undefined') { alert("جاري تحميل مكتبة PDF..."); return; }
     if (clearances.length === 0) { alert("لا توجد بيانات للتصدير"); return; }
+    
     var rows = "";
-    clearances.forEach(function(item, index) {
+    for (var i = 0; i < clearances.length; i++) {
+        var item = clearances[i];
         var imagesHTML = "";
-        (item.images || []).forEach(function(img) { if (img) imagesHTML += '<img src="' + img + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">'; });
+        if (item.images && item.images.length > 0) {
+            for (var j = 0; j < item.images.length; j++) {
+                var imgRef = item.images[j];
+                if (imgRef) {
+                    var imgSrc = imgRef;
+                    if (typeof resolveImageForExport === 'function') {
+                        imgSrc = await resolveImageForExport(imgRef);
+                    }
+                    if (imgSrc) {
+                        imagesHTML += '<img src="' + imgSrc + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
+                    }
+                }
+            }
+        }
         if (!imagesHTML) imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
-        rows += '<tr><td style="text-align:center; border:1px solid #999; padding:6px;">' + (index + 1) + '</td><td style="border:1px solid #999; padding:6px;">' + (item.permit || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.contractor || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.owner || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.location || "") + '</td><td style="border:1px solid #999; padding:6px;">' + imagesHTML + '</td></tr>';
-    });
+        rows += '<tr><td style="text-align:center; border:1px solid #999; padding:6px;">' + (i + 1) + '</td><td style="border:1px solid #999; padding:6px;">' + (item.permit || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.contractor || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.owner || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.location || "") + '</td><td style="border:1px solid #999; padding:6px;">' + imagesHTML + '</td></tr>';
+    }
+    
     var content = '<div dir="rtl" style="font-family:Arial, Helvetica, sans-serif;"><div style="text-align:center; border-bottom:3px solid #173f32; padding-bottom:8px; margin-bottom:15px;"><h2 style="color:#173f32; margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333; margin:8px 0 4px;">تقرير رخص الإخلاءات</h3><p style="color:#666; margin:0; font-size:12px;">إجمالي الرخص: ' + clearances.length + ' | تاريخ التقرير: ' + new Date().toLocaleDateString('ar-EG') + '</p></div><table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#173f32; color:#fff;"><th style="padding:8px; border:1px solid #999;">م</th><th style="padding:8px; border:1px solid #999;">رقم التصريح</th><th style="padding:8px; border:1px solid #999;">اسم المقاول</th><th style="padding:8px; border:1px solid #999;">الجهة المالكة</th><th style="padding:8px; border:1px solid #999;">الموقع</th><th style="padding:8px; border:1px solid #999;">الصور</th></tr></thead><tbody>' + rows + '</tbody></table><p style="text-align:center; color:#999; font-size:11px; margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p></div>';
     html2pdf().set({ margin: 10, filename: 'تقرير_رخص_الإخلاءات.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
 }
 
-function exportEmergenciesToPDF() {
+async function exportEmergenciesToPDF() {
     if (typeof html2pdf === 'undefined') { alert("جاري تحميل مكتبة PDF..."); return; }
     if (emergencies.length === 0) { alert("لا توجد بيانات للتصدير"); return; }
+    
     var rows = "";
-    emergencies.forEach(function(item, index) {
+    for (var i = 0; i < emergencies.length; i++) {
+        var item = emergencies[i];
         var imagesHTML = "";
-        (item.images || []).forEach(function(img) { if (img) imagesHTML += '<img src="' + img + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">'; });
+        if (item.images && item.images.length > 0) {
+            for (var j = 0; j < item.images.length; j++) {
+                var imgRef = item.images[j];
+                if (imgRef) {
+                    var imgSrc = imgRef;
+                    if (typeof resolveImageForExport === 'function') {
+                        imgSrc = await resolveImageForExport(imgRef);
+                    }
+                    if (imgSrc) {
+                        imagesHTML += '<img src="' + imgSrc + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
+                    }
+                }
+            }
+        }
         if (!imagesHTML) imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
-        rows += '<tr><td style="text-align:center; border:1px solid #999; padding:6px;">' + (index + 1) + '</td><td style="border:1px solid #999; padding:6px;">' + (item.permit || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.contractor || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.owner || "") + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + (item.labReceive || "") + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + (item.start || "") + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + (item.end || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.location || "") + '</td><td style="border:1px solid #999; padding:6px;">' + imagesHTML + '</td></tr>';
-    });
+        rows += '<tr><td style="text-align:center; border:1px solid #999; padding:6px;">' + (i + 1) + '</td><td style="border:1px solid #999; padding:6px;">' + (item.permit || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.contractor || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.owner || "") + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + (item.labReceive || "") + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + (item.start || "") + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + (item.end || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.location || "") + '</td><td style="border:1px solid #999; padding:6px;">' + imagesHTML + '</td></tr>';
+    }
+    
     var content = '<div dir="rtl" style="font-family:Arial, Helvetica, sans-serif;"><div style="text-align:center; border-bottom:3px solid #173f32; padding-bottom:8px; margin-bottom:15px;"><h2 style="color:#173f32; margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333; margin:8px 0 4px;">تقرير رخص الطوارئ</h3><p style="color:#666; margin:0; font-size:12px;">إجمالي الرخص: ' + emergencies.length + ' | تاريخ التقرير: ' + new Date().toLocaleDateString('ar-EG') + '</p></div><table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#173f32; color:#fff;"><th style="padding:8px; border:1px solid #999;">م</th><th style="padding:8px; border:1px solid #999;">رقم التصريح</th><th style="padding:8px; border:1px solid #999;">اسم المقاول</th><th style="padding:8px; border:1px solid #999;">الجهة المالكة</th><th style="padding:8px; border:1px solid #999;">استلام المختبر</th><th style="padding:8px; border:1px solid #999;">بداية العمل</th><th style="padding:8px; border:1px solid #999;">انتهاء العمل</th><th style="padding:8px; border:1px solid #999;">الموقع</th><th style="padding:8px; border:1px solid #999;">الصور</th></tr></thead><tbody>' + rows + '</tbody></table><p style="text-align:center; color:#999; font-size:11px; margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p></div>';
     html2pdf().set({ margin: 10, filename: 'تقرير_رخص_الطوارئ.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
 }
 
-function exportNotesToPDF() {
+async function exportNotesToPDF() {
     if (typeof html2pdf === 'undefined') { alert("جاري تحميل مكتبة PDF..."); return; }
     if (notes.length === 0) { alert("لا توجد بيانات للتصدير"); return; }
+    
     var rows = "";
-    notes.forEach(function(item, index) {
+    for (var i = 0; i < notes.length; i++) {
+        var item = notes[i];
         var imagesHTML = "";
-        if (item.before) imagesHTML += '<img src="' + item.before + '" style="width:50px;height:50px;border-radius:4px;margin:2px;">';
-        if (item.after) imagesHTML += '<img src="' + item.after + '" style="width:50px;height:50px;border-radius:4px;margin:2px;">';
+        if (item.before) {
+            var beforeSrc = item.before;
+            if (typeof resolveImageForExport === 'function') { beforeSrc = await resolveImageForExport(item.before); }
+            if (beforeSrc) imagesHTML += '<img src="' + beforeSrc + '" style="width:50px;height:50px;border-radius:4px;margin:2px;">';
+        }
+        if (item.after) {
+            var afterSrc = item.after;
+            if (typeof resolveImageForExport === 'function') { afterSrc = await resolveImageForExport(item.after); }
+            if (afterSrc) imagesHTML += '<img src="' + afterSrc + '" style="width:50px;height:50px;border-radius:4px;margin:2px;">';
+        }
         if (!imagesHTML) imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
+        
         var status = item.completed ? "تم التعديل" : (typeof isLate === 'function' && isLate(item) ? "متأخرة" : "قيد المتابعة");
-        rows += '<tr><td style="text-align:center; border:1px solid #999; padding:6px;">' + (index + 1) + '</td><td style="border:1px solid #999; padding:6px;">' + (item.type || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.date || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.permit || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.contractor || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.owner || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.reason || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.action || "") + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + status + '</td><td style="border:1px solid #999; padding:6px;">' + imagesHTML + '</td></tr>';
-    });
+        
+        rows += '<tr><td style="text-align:center; border:1px solid #999; padding:6px;">' + (i + 1) + '</td><td style="border:1px solid #999; padding:6px;">' + (item.type || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.date || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.permit || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.contractor || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.owner || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.reason || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (item.action || "") + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + status + '</td><td style="border:1px solid #999; padding:6px;">' + imagesHTML + '</td></tr>';
+    }
+    
     var content = '<div dir="rtl" style="font-family:Arial, Helvetica, sans-serif;"><div style="text-align:center; border-bottom:3px solid #173f32; padding-bottom:8px; margin-bottom:15px;"><h2 style="color:#173f32; margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333; margin:8px 0 4px;">تقرير الملاحظات</h3><p style="color:#666; margin:0; font-size:12px;">إجمالي الملاحظات: ' + notes.length + ' | تاريخ التقرير: ' + new Date().toLocaleDateString('ar-EG') + '</p></div><table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#173f32; color:#fff;"><th style="padding:8px; border:1px solid #999;">م</th><th style="padding:8px; border:1px solid #999;">التصنيف</th><th style="padding:8px; border:1px solid #999;">التاريخ</th><th style="padding:8px; border:1px solid #999;">رقم التصريح</th><th style="padding:8px; border:1px solid #999;">اسم المقاول</th><th style="padding:8px; border:1px solid #999;">الجهة المالكة</th><th style="padding:8px; border:1px solid #999;">أسباب الرفض</th><th style="padding:8px; border:1px solid #999;">الإجراء المتخذ</th><th style="padding:8px; border:1px solid #999;">الحالة</th><th style="padding:8px; border:1px solid #999;">الصور</th></tr></thead><tbody>' + rows + '</tbody></table><p style="text-align:center; color:#999; font-size:11px; margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p></div>';
     html2pdf().set({ margin: 10, filename: 'تقرير_الملاحظات.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
 }
@@ -471,7 +531,7 @@ function getPerformanceDataArray() {
     clearances.concat(emergencies || []).forEach(function(p) { var n = (p.contractor || "غير معروف").trim(); if (n) { if (!stats[n]) stats[n] = { permits: 0, notes: 0 }; stats[n].permits++; } });
     notes.forEach(function(n) { var name = (n.contractor || "غير معروف").trim(); if (name) { if (!stats[name]) stats[name] = { permits: 0, notes: 0 }; stats[name].notes++; } });
     var arr = []; var i = 1;
-    Object.keys(stats).forEach(function(name) { var d = stats[name]; var r = d.permits > 0 ? (d.notes / d.permits) * 100 : 0; arr.push({ "م": i++, "اسم المقاول": name, "إجمالي التصاريح": d.permits, "إجمالي الملاحظات": d.notes, "نسبة الأخطاء (%)": r.toFixed(1), "التصنيف": r === 0 ? 'ممتاز (A)' : r <= 30 ? 'جيد (B)' : r <= 60 ? 'متوسط (C)' : 'خطر عالي (D)' }); });
+    Object.keys(stats).forEach(function(name) { var d = stats[name]; var r = d.permits > 0 ? (d.notes / d.permits) * 100 : 0; arr.push({ "م": i++, "اسم المقاول": name, "إجمالي التصاريح": d.permits, "إجمالي الملاحظات": d.notes, "نسبة الأخطا (%)": r.toFixed(1), "التصنيف": r === 0 ? 'ممتاز (A)' : r <= 30 ? 'جيد (B)' : r <= 60 ? 'متوسط (C)' : 'خطر عالي (D)' }); });
     return arr;
 }
 function exportPerformanceToExcel() {
@@ -485,8 +545,8 @@ function exportPerformanceToPDF() {
     var barChartImg = ""; var barCanvas = document.getElementById('contractorBarChart'); if (barCanvas) barChartImg = '<div style="text-align:center; margin-bottom:15px;"><h3 style="color:#1d4d3d;">مقارنة التصاريح بالملاحظات</h3><img src="' + barCanvas.toDataURL('image/png') + '" style="max-width:100%; height:auto;"></div>';
     var pieChartImg = ""; var pieCanvas = document.getElementById('classificationPieChart'); if (pieCanvas) pieChartImg = '<div style="text-align:center; margin-bottom:15px;"><h3 style="color:#1d4d3d;">توزيع تصنيف المقاولين</h3><img src="' + pieCanvas.toDataURL('image/png') + '" style="max-width:300px; height:auto;"></div>';
     var rows = "";
-    data.forEach(function(item) { var color = item["التصنيف"].includes("A") ? "#24704d" : item["التصنيف"].includes("B") ? "#5d7066" : item["التصنيف"].includes("C") ? "#8a6d3b" : "#a33f3f"; rows += '<tr><td style="text-align:center; border:1px solid #999; padding:6px;">' + item["م"] + '</td><td style="border:1px solid #999; padding:6px;">' + item["اسم المقاول"] + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + item["إجمالي التصاريح"] + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + item["إجمالي الملاحظات"] + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + item["نسبة الأخطاء (%)"] + '</td><td style="text-align:center; border:1px solid #999; padding:6px; color:' + color + '; font-weight:bold;">' + item["التصنيف"] + '</td></tr>'; });
-    var content = '<div dir="rtl" style="font-family:Arial, Helvetica, sans-serif;"><div style="text-align:center; border-bottom:3px solid #173f32; padding-bottom:8px; margin-bottom:15px;"><h2 style="color:#173f32; margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333; margin:8px 0 4px;">تقرير تصنيف أداء المقاولين</h3></div><div style="display:flex; justify-content:space-around; flex-wrap:wrap; gap:10px; margin-bottom:20px;"><div style="flex:2; min-width:300px;">' + barChartImg + '</div><div style="flex:1; min-width:200px;">' + pieChartImg + '</div></div><table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#173f32; color:#fff;"><th style="padding:8px; border:1px solid #999;">م</th><th style="padding:8px; border:1px solid #999;">اسم المقاول</th><th style="padding:8px; border:1px solid #999;">التصاريح</th><th style="padding:8px; border:1px solid #999;">الملاحظات</th><th style="padding:8px; border:1px solid #999;">نسبة الأخطاء</th><th style="padding:8px; border:1px solid #999;">التصنيف</th></tr></thead><tbody>' + rows + '</tbody></table><p style="text-align:center; color:#999; font-size:11px; margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p></div>';
+    data.forEach(function(item) { var color = item["التصنيف"].includes("A") ? "#24704d" : item["التصنيف"].includes("B") ? "#5d7066" : item["التصنيف"].includes("C") ? "#8a6d3b" : "#a33f3f"; rows += '<tr><td style="text-align:center; border:1px solid #999; padding:6px;">' + item["م"] + '</td><td style="border:1px solid #999; padding:6px;">' + item["اسم المقاول"] + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + item["إجمالي التصاريح"] + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + item["إجمالي الملاحظات"] + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + item["نسبة الأخطا (%)"] + '</td><td style="text-align:center; border:1px solid #999; padding:6px; color:' + color + '; font-weight:bold;">' + item["التصنيف"] + '</td></tr>'; });
+    var content = '<div dir="rtl" style="font-family:Arial, Helvetica, sans-serif;"><div style="text-align:center; border-bottom:3px solid #173f32; padding-bottom:8px; margin-bottom:15px;"><h2 style="color:#173f32; margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333; margin:8px 0 4px;">تقرير تصنيف أداء المقاولين</h3></div><div style="display:flex; justify-content:space-around; flex-wrap:wrap; gap:10px; margin-bottom:20px;"><div style="flex:2; min-width:300px;">' + barChartImg + '</div><div style="flex:1; min-width:200px;">' + pieChartImg + '</div></div><table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#173f32; color:#fff;"><th style="padding:8px; border:1px solid #999;">م</th><th style="padding:8px; border:1px solid #999;">اسم المقاول</th><th style="padding:8px; border:1px solid #999;">التصاريح</th><th style="padding:8px; border:1px solid #999;">الملاحظات</th><th style="padding:8px; border:1px solid #999;">نسبة الأخطا</th><th style="padding:8px; border:1px solid #999;">التصنيف</th></tr></thead><tbody>' + rows + '</tbody></table><p style="text-align:center; color:#999; font-size:11px; margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p></div>';
     html2pdf().set({ margin: 10, filename: 'تقرير_تصنيف_المقاولين.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
 }
 </script>
