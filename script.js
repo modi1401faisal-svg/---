@@ -905,13 +905,30 @@ async function readImages(files) {
         return [];
     }
 
-    /* رفع كل الصور بالتوازي (parallel) بدل التسلسل
-       — أسرع بكثير خاصة عند وجود أكثر من صورة */
-    const urls = await Promise.all(
-        Array.from(files).map(function(f) { return readImage(f); })
-    );
+    /* معالجة تسلسلية (واحدة تلو الأخرى) - مهم جداً للجوال
+       المعالجة بالتوازي تسبب انهيار المتصفح بسبب استهلاك الذاكرة */
+    var result = [];
+    var fileList = Array.from(files);
 
-    return urls.filter(Boolean);
+    for (var i = 0; i < fileList.length; i++) {
+        try {
+            var imageUrl = await readImage(fileList[i]);
+            if (imageUrl) {
+                result.push(imageUrl);
+            }
+        } catch (e) {
+            console.warn("خطأ في معالجة الصورة " + (i + 1) + ":", e);
+        }
+
+        /* تأخير صغير بين كل صورة لتحرير الذاكرة ومنع انهيار المتصفح */
+        if (i < fileList.length - 1) {
+            await new Promise(function (resolve) {
+                setTimeout(resolve, 150);
+            });
+        }
+    }
+
+    return result;
 }
 
 /* =========================================================
