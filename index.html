@@ -182,7 +182,7 @@
                 <div class="form-group"><label>الموقع</label><input id="clearanceLocation" type="text"></div>
                 <div class="form-group full"><label>الصور</label><input id="clearanceImages" type="file" accept="image/*" multiple></div>
             </div>
-            <div class="form-actions"><button class="btn-primary" onclick="saveClearance()">حفظ الرخصة</button><button class="btn-secondary" onclick="clearClearance()">تفريغ</button></div>
+            <div class="form-actions"><button class="btn-primary" onclick="safeSaveClearance()">حفظ الرخصة</button><button class="btn-secondary" onclick="clearClearance()">تفريغ</button></div>
         </div>
         <div class="card table-card"><div class="card-header"><h3>سجل رخص الإخلاءات</h3></div>
             <div class="table-container"><table><thead><tr><th>رقم التصريح</th><th>المقاول</th><th>الجهة المالكة</th><th>الموقع</th><th>الصور</th><th>الإجراءات</th></tr></thead><tbody id="clearanceTable"></tbody></table></div>
@@ -214,7 +214,7 @@
                 <div class="form-group"><label>الموقع</label><input id="emergencyLocation" type="text"></div>
                 <div class="form-group full"><label>الصور</label><input id="emergencyImages" type="file" accept="image/*" multiple></div>
             </div>
-            <div class="form-actions"><button class="btn-primary" onclick="saveEmergency()">حفظ الرخصة</button><button class="btn-secondary" onclick="clearEmergency()">تفريغ</button></div>
+            <div class="form-actions"><button class="btn-primary" onclick="safeSaveEmergency()">حفظ الرخصة</button><button class="btn-secondary" onclick="clearEmergency()">تفريغ</button></div>
         </div>
         <div class="card table-card"><div class="card-header"><h3>سجل رخص الطوارئ</h3></div>
             <div class="table-container"><table><thead><tr><th>رقم التصريح</th><th>المقاول</th><th>الجهة المالكة</th><th>استلام المختبر</th><th>بدء العمل</th><th>انتهاء العمل</th><th>الموقع</th><th>الصور</th><th>الإجراءات</th></tr></thead><tbody id="emergencyTable"></tbody></table></div>
@@ -246,7 +246,7 @@
                 <div class="form-group"><label>صورة الملاحظة</label><input id="beforeImage" type="file" accept="image/*"></div>
                 <div class="form-group"><label>صورة الملاحظة بعد التعديل</label><input id="afterImage" type="file" accept="image/*"></div>
             </div>
-            <div class="form-actions"><button class="btn-primary" onclick="saveNote()">حفظ الملاحظة</button><button class="btn-secondary" onclick="clearNote()">تفريغ</button></div>
+            <div class="form-actions"><button class="btn-primary" onclick="safeSaveNote()">حفظ الملاحظة</button><button class="btn-secondary" onclick="clearNote()">تفريغ</button></div>
         </div>
         <div class="card table-card"><div class="card-header"><h3>سجل الملاحظات</h3></div>
             <div class="table-container"><table><thead><tr><th>التاريخ</th><th>نوع الملاحظة</th><th>رقم التصريح</th><th>المقاول</th><th>الجهة المالكة</th><th>سبب الرفض</th><th>الإجراء المتخذ</th><th>الحالة</th><th>الصور</th><th>الإجراءات</th></tr></thead><tbody id="notesTable"></tbody></table></div>
@@ -262,7 +262,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="script.js?v=20"></script>
+<script src="script.js?v=21"></script>
 
 <!-- تحسينات الأداء للجوال -->
 <script>
@@ -293,59 +293,135 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 
-<!-- ========== إصلاح 1: الحذف الفوري (يمنع الشاشة البيضاء والتحويل للرئيسية) ========== -->
+<!-- ========================================================== -->
+<!-- أكواد الطوارئ: حفظ وحذف فوري لمنع انهيار التطبيق (Safe Mode) -->
+<!-- ========================================================== -->
 <script>
-document.addEventListener('click', async function(e) {
+// دالة مساعدة لحفظ البيانات محلياً بشكل آمن
+function safeLocalSave(key, data) {
+    try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) { console.error("Save Error:", e); }
+}
+
+// 1. الحفظ الفوري للإخلاءات
+window.safeSaveClearance = async function() {
+    try {
+        const permit = document.getElementById("clearancePermit").value.trim();
+        const contractor = document.getElementById("clearanceContractor").value.trim();
+        const owner = document.getElementById("clearanceOwner").value.trim();
+        const location = document.getElementById("clearanceLocation").value.trim();
+        if (!permit || !contractor || !owner || !location) { alert("يرجى تعبئة جميع الحقول المطلوبة"); return; }
+
+        const files = document.getElementById("clearanceImages").files;
+        const images = files ? await readImages(files) : [];
+        const data = { permit, contractor, owner, location, images: images || [] };
+
+        if (editingClearance >= 0) {
+            clearances[editingClearance] = data; editingClearance = -1;
+        } else {
+            clearances.push(data);
+        }
+
+        safeLocalSave("clearances", clearances);
+        clearClearance(); renderClearances(); updateDashboard();
+        alert("تم حفظ الرخصة بنجاح ✅");
+    } catch (err) { alert("خطأ أثناء الحفظ: " + err.message); }
+};
+
+// 2. الحفظ الفوري للطوارئ
+window.safeSaveEmergency = async function() {
+    try {
+        const permit = document.getElementById("emergencyPermit").value.trim();
+        const contractor = document.getElementById("emergencyContractor").value.trim();
+        const owner = document.getElementById("emergencyOwner").value.trim();
+        if (!permit || !contractor || !owner) { alert("يرجى تعبئة الحقول المطلوبة"); return; }
+
+        const files = document.getElementById("emergencyImages").files;
+        const images = files ? await readImages(files) : [];
+        const data = {
+            permit, contractor, owner,
+            labReceive: document.getElementById("labReceiveDate").value,
+            start: document.getElementById("workStartDate").value,
+            end: document.getElementById("workEndDate").value,
+            location: document.getElementById("emergencyLocation").value.trim(),
+            images: images || []
+        };
+
+        if (editingEmergency >= 0) {
+            emergencies[editingEmergency] = data; editingEmergency = -1;
+        } else {
+            emergencies.push(data);
+        }
+
+        safeLocalSave("emergencies", emergencies);
+        clearEmergency(); renderEmergencies(); updateDashboard();
+        alert("تم حفظ الرخصة بنجاح ✅");
+    } catch (err) { alert("خطأ أثناء الحفظ: " + err.message); }
+};
+
+// 3. الحفظ الفوري للملاحظات
+window.safeSaveNote = async function() {
+    try {
+        const permit = document.getElementById("notePermit").value.trim();
+        const contractor = document.getElementById("noteContractor").value.trim();
+        const reason = document.getElementById("noteReason").value.trim();
+        if (!permit || !contractor || !reason) { alert("يرجى تعبئة الحقول المطلوبة"); return; }
+
+        const beforeFile = document.getElementById("beforeImage").files[0];
+        const afterFile = document.getElementById("afterImage").files[0];
+        const before = beforeFile ? await readImage(beforeFile) : "";
+        const after = afterFile ? await readImage(afterFile) : "";
+
+        const data = {
+            type: document.getElementById("noteType").value || "مشاريع الأمانة",
+            date: document.getElementById("noteDate").value,
+            permit, contractor,
+            owner: document.getElementById("noteOwner").value.trim(),
+            reason,
+            action: document.getElementById("noteAction").value.trim(),
+            before, after, completed: after !== ""
+        };
+
+        if (editingNote >= 0) {
+            notes[editingNote] = data; editingNote = -1;
+        } else {
+            notes.push(data);
+        }
+
+        safeLocalSave("notes", notes);
+        clearNote(); renderNotes(); updateDashboard();
+        alert("تم حفظ الملاحظة بنجاح ✅");
+    } catch (err) { alert("خطأ أثناء الحفظ: " + err.message); }
+};
+
+// 4. اعتراض الحذف (يحذف محلياً وفوراً لمنع التجمد)
+document.addEventListener('click', function(e) {
     const btn = e.target.closest('.delete');
     if (!btn) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-
+    e.preventDefault(); e.stopImmediatePropagation();
     if (!confirm("هل أنت متأكد من الحذف؟")) return;
 
-    const row = btn.closest('tr');
-    const tbody = row ? row.closest('tbody') : null;
-    if (!row || !tbody) return;
+    try {
+        const row = btn.closest('tr');
+        const tbody = row ? row.closest('tbody') : null;
+        if (!row || !tbody) return;
 
-    const permitCell = row.querySelector('td');
-    const permitValue = permitCell ? permitCell.innerText.trim() : "";
+        const permitCell = row.querySelector('td');
+        const permitValue = permitCell ? permitCell.innerText.trim() : "";
+        let tableName = "";
+        if (tbody.id === 'clearanceTable') tableName = 'clearances';
+        else if (tbody.id === 'emergencyTable') tableName = 'emergencies';
+        else if (tbody.id === 'notesTable') tableName = 'notes';
+        else return;
 
-    let tableName = "";
-    if (tbody.id === 'clearanceTable') tableName = 'clearances';
-    else if (tbody.id === 'emergencyTable') tableName = 'emergencies';
-    else if (tbody.id === 'notesTable') tableName = 'notes';
-    else return;
-
-    // 1. حذف فوري من الذاكرة
-    let arr = tableName === 'clearances' ? clearances : tableName === 'emergencies' ? emergencies : notes;
-    const idx = arr.findIndex(item => String(item.permit) === permitValue);
-    if (idx === -1) { alert("لم يتم العثور على العنصر"); return; }
-
-    const item = arr[idx];
-    arr.splice(idx, 1);
-
-    // 2. حفظ محلي فوري
-    localStorage.setItem(tableName, JSON.stringify(arr));
-
-    // 3. إزالة الصف من الشاشة فوراً
-    row.remove();
-
-    // 4. تحديث لوحة المتابعة
-    if (typeof updateDashboard === 'function') updateDashboard();
-
-    // 5. مزامنة الحذف مع السحابة في الخلفية (بدون انتظار)
-    setTimeout(async () => {
-        try {
-            if (item && item.id && typeof initSupabase === 'function') {
-                const client = await initSupabase();
-                if (client) {
-                    await client.from(tableName).delete().eq('id', item.id);
-                }
-            }
-        } catch (err) {
-            console.error("Background delete sync failed:", err);
+        let arr = tableName === 'clearances' ? clearances : tableName === 'emergencies' ? emergencies : notes;
+        const idx = arr.findIndex(item => String(item.permit) === permitValue);
+        if (idx !== -1) {
+            arr.splice(idx, 1);
+            safeLocalSave(tableName, arr);
+            row.remove();
+            updateDashboard();
         }
-    }, 50);
+    } catch (err) { console.error("Delete Error:", err); }
 });
 </script>
 
@@ -384,15 +460,15 @@ window.showPage = function(pageId) {
 document.addEventListener("DOMContentLoaded", renderNotes);
 </script>
 
-<!-- ========== إصلاح 2: البي دي اف (دالة موحدة قوية تعمل على الجوال واللابتوب) ========== -->
+<!-- ========================================================== -->
+<!-- كود البي دي اف (النسخة المستقرة التي تعمل على الجوال واللابتوب) -->
+<!-- ========================================================== -->
 <script>
-// دالة موحدة لاكتشاف الجوال وتحديد الدقة المناسبة
 function getPDFScale() {
     var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     return isMobile ? 1 : 2;
 }
 
-// دالة موحدة لحل الصور من أي مصدر (idb:// أو data: أو http)
 async function getImgSrc(ref) {
     if (!ref) return "";
     if (ref.indexOf("data:") === 0) return ref;
@@ -426,7 +502,7 @@ async function exportClearancesToPDF() {
             rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+(i+1)+'</td><td style="border:1px solid #999;padding:6px;">'+(item.permit||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.contractor||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.owner||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.location||"")+'</td><td style="border:1px solid #999;padding:6px;">'+imagesHTML+'</td></tr>';
         }
         var content = '<div dir="rtl" style="font-family:Arial,sans-serif;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير رخص الإخلاءات</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة المالكة</th><th style="padding:8px;border:1px solid #999;">الموقع</th><th style="padding:8px;border:1px solid #999;">الصور</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-        html2pdf().set({ margin: 10, filename: 'تقرير_رخص_الإخلاءات.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
+        html2pdf().set({ margin: 10, filename: 'تقرير_رخص_الإخلاءات.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, windowWidth: 1200, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
     } catch(err) { alert("خطأ أثناء التصدير: " + err.message); }
 }
 
@@ -448,7 +524,7 @@ async function exportEmergenciesToPDF() {
             rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+(i+1)+'</td><td style="border:1px solid #999;padding:6px;">'+(item.permit||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.contractor||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.owner||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+(item.labReceive||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+(item.start||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+(item.end||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.location||"")+'</td><td style="border:1px solid #999;padding:6px;">'+imagesHTML+'</td></tr>';
         }
         var content = '<div dir="rtl" style="font-family:Arial,sans-serif;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير رخص الطوارئ</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة المالكة</th><th style="padding:8px;border:1px solid #999;">استلام المختبر</th><th style="padding:8px;border:1px solid #999;">بداية العمل</th><th style="padding:8px;border:1px solid #999;">انتهاء العمل</th><th style="padding:8px;border:1px solid #999;">الموقع</th><th style="padding:8px;border:1px solid #999;">الصور</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-        html2pdf().set({ margin: 10, filename: 'تقرير_رخص_الطوارئ.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
+        html2pdf().set({ margin: 10, filename: 'تقرير_رخص_الطوارئ.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, windowWidth: 1200, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
     } catch(err) { alert("خطأ أثناء التصدير: " + err.message); }
 }
 
@@ -473,7 +549,7 @@ async function exportNotesToPDF() {
             rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+(i+1)+'</td><td style="border:1px solid #999;padding:6px;">'+(item.type||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.date||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.permit||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.contractor||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.owner||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.reason||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.action||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+status+'</td><td style="border:1px solid #999;padding:6px;">'+imagesHTML+'</td></tr>';
         }
         var content = '<div dir="rtl" style="font-family:Arial,sans-serif;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير الملاحظات</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">التصنيف</th><th style="padding:8px;border:1px solid #999;">التاريخ</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة المالكة</th><th style="padding:8px;border:1px solid #999;">أسباب الرفض</th><th style="padding:8px;border:1px solid #999;">الإجراء المتخذ</th><th style="padding:8px;border:1px solid #999;">الحالة</th><th style="padding:8px;border:1px solid #999;">الصور</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-        html2pdf().set({ margin: 10, filename: 'تقرير_الملاحظات.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
+        html2pdf().set({ margin: 10, filename: 'تقرير_الملاحظات.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, windowWidth: 1200, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
     } catch(err) { alert("خطأ أثناء التصدير: " + err.message); }
 }
 </script>
@@ -548,7 +624,7 @@ function exportAnalyticsToPDF() {
     var rows = ""; if (data.lateNotes.length === 0) rows = '<tr><td colspan="7" style="text-align:center; padding:10px;">لا توجد ملاحظات طارئة حالياً ✅</td></tr>';
     else data.lateNotes.forEach(function(n, i) { var days = (typeof daysPassed === 'function') ? daysPassed(n.date) : 0; rows += '<tr><td style="text-align:center; border:1px solid #999; padding:6px;">' + (i + 1) + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + (n.date || "") + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + (n.permit || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (n.contractor || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (n.type || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (n.reason || "") + '</td><td style="text-align:center; border:1px solid #999; padding:6px; color:#b3402a; font-weight:bold;">' + days + ' يوم</td></tr>'; });
     var content = '<div dir="rtl" style="font-family:Arial,sans-serif;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">لوحة المؤشرات والإحصائيات</h3></div><div style="display:flex;justify-content:space-around;margin-bottom:20px;"><div style="text-align:center;background:#f4f7f5;padding:15px;border-radius:8px;border:1px solid #ccc;"><h4>رخص الإخلاء</h4><h2 style="color:#245c49;margin:0;">'+data.totals["رخص الإخلاء"]+'</h2></div><div style="text-align:center;background:#f4f7f5;padding:15px;border-radius:8px;border:1px solid #ccc;"><h4>رخص الطوارئ</h4><h2 style="color:#245c49;margin:0;">'+data.totals["رخص الطوارئ"]+'</h2></div><div style="text-align:center;background:#f4f7f5;padding:15px;border-radius:8px;border:1px solid #ccc;"><h4>إجمالي الملاحظات</h4><h2 style="color:#245c49;margin:0;">'+data.totals["إجمالي الملاحظات"]+'</h2></div><div style="text-align:center;background:#fff0f0;padding:15px;border-radius:8px;border:1px solid #b3402a;"><h4>ملاحظات طارئة</h4><h2 style="color:#b3402a;margin:0;">'+data.totals["ملاحظات طارئة"]+'</h2></div></div>'+chartImg+'<h3 style="color:#b3402a;border-bottom:2px solid #b3402a;padding-bottom:5px;">🚨 ملاحظات طارئة تتطلب تدخلاً فورياً</h3><table style="width:100%;border-collapse:collapse;margin-top:10px;"><thead><tr style="background:#b3402a;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">التاريخ</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة</th><th style="padding:8px;border:1px solid #999;">سبب الرفض</th><th style="padding:8px;border:1px solid #999;">مضى</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-    html2pdf().set({ margin: 10, filename: 'تقرير_المؤشرات_والإحصائيات.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
+    html2pdf().set({ margin: 10, filename: 'تقرير_المؤشرات_والإحصائيات.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, windowWidth: 1200, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
 }
 </script>
 
@@ -591,7 +667,7 @@ function exportPerformanceToPDF() {
     var rows = "";
     data.forEach(function(item) { var color = item["التصنيف"].includes("A") ? "#24704d" : item["التصنيف"].includes("B") ? "#5d7066" : item["التصنيف"].includes("C") ? "#8a6d3b" : "#a33f3f"; rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["م"]+'</td><td style="border:1px solid #999;padding:6px;">'+item["اسم المقاول"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["إجمالي التصاريح"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["إجمالي الملاحظات"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["نسبة الأخطاء (%)"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;color:'+color+';font-weight:bold;">'+item["التصنيف"]+'</td></tr>'; });
     var content = '<div dir="rtl" style="font-family:Arial,sans-serif;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير تصنيف أداء المقاولين</h3></div><div style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:10px;margin-bottom:20px;"><div style="flex:2;min-width:300px;">'+barChartImg+'</div><div style="flex:1;min-width:200px;">'+pieChartImg+'</div></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">التصاريح</th><th style="padding:8px;border:1px solid #999;">الملاحظات</th><th style="padding:8px;border:1px solid #999;">نسبة الأخطاء</th><th style="padding:8px;border:1px solid #999;">التصنيف</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-    html2pdf().set({ margin: 10, filename: 'تقرير_تصنيف_المقاولين.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
+    html2pdf().set({ margin: 10, filename: 'تقرير_تصنيف_المقاولين.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, windowWidth: 1200, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
 }
 </script>
 
