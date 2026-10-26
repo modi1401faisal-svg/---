@@ -673,3 +673,276 @@ function exportPerformanceToPDF() {
 
 </body>
 </html>
+<!-- ========== إصلاح البي دي اف (يحل الصور والصفحات الفارغة) ========== -->
+<script>
+function getPDFScale() {
+    var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    return isMobile ? 1 : 2;
+}
+
+async function getImgSrcForPDF(ref) {
+    if (!ref) return "";
+    if (ref.indexOf("data:") === 0) return ref;
+    if (ref.indexOf("http") === 0) return ref;
+    if (ref.indexOf("idb://") === 0) {
+        if (typeof idbGet === 'function' && typeof idbKeyFromRef === 'function') {
+            try { var d = await idbGet(idbKeyFromRef(ref)); if (d) return d; } catch(e) {}
+        }
+    }
+    if (typeof resolveImageForExport === 'function') {
+        try { var r = await resolveImageForExport(ref); if (r) return r; } catch(e) {}
+    }
+    return "";
+}
+
+async function exportClearancesToPDF() {
+    if (typeof html2pdf === 'undefined') { alert("جاري تحميل مكتبة PDF..."); return; }
+    if (clearances.length === 0) { alert("لا توجد بيانات"); return; }
+    try {
+        var rows = "";
+        for (var i = 0; i < clearances.length; i++) {
+            var item = clearances[i];
+            var imagesHTML = "";
+            if (item.images && item.images.length > 0) {
+                for (var j = 0; j < item.images.length; j++) {
+                    var src = await getImgSrcForPDF(item.images[j]);
+                    if (src) imagesHTML += '<img src="' + src + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
+                }
+            }
+            if (!imagesHTML) imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
+            rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+(i+1)+'</td><td style="border:1px solid #999;padding:6px;">'+(item.permit||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.contractor||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.owner||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.location||"")+'</td><td style="border:1px solid #999;padding:6px;">'+imagesHTML+'</td></tr>';
+        }
+        var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير رخص الإخلاءات</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة المالكة</th><th style="padding:8px;border:1px solid #999;">الموقع</th><th style="padding:8px;border:1px solid #999;">الصور</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+        html2pdf().set({ margin: 10, filename: 'تقرير_رخص_الإخلاءات.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, windowWidth: 1200 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
+    } catch(err) { alert("خطأ أثناء التصدير: " + err.message); }
+}
+
+async function exportEmergenciesToPDF() {
+    if (typeof html2pdf === 'undefined') { alert("جاري تحميل مكتبة PDF..."); return; }
+    if (emergencies.length === 0) { alert("لا توجد بيانات"); return; }
+    try {
+        var rows = "";
+        for (var i = 0; i < emergencies.length; i++) {
+            var item = emergencies[i];
+            var imagesHTML = "";
+            if (item.images && item.images.length > 0) {
+                for (var j = 0; j < item.images.length; j++) {
+                    var src = await getImgSrcForPDF(item.images[j]);
+                    if (src) imagesHTML += '<img src="' + src + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
+                }
+            }
+            if (!imagesHTML) imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
+            rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+(i+1)+'</td><td style="border:1px solid #999;padding:6px;">'+(item.permit||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.contractor||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.owner||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+(item.labReceive||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+(item.start||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+(item.end||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.location||"")+'</td><td style="border:1px solid #999;padding:6px;">'+imagesHTML+'</td></tr>';
+        }
+        var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير رخص الطوارئ</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة المالكة</th><th style="padding:8px;border:1px solid #999;">استلام المختبر</th><th style="padding:8px;border:1px solid #999;">بداية العمل</th><th style="padding:8px;border:1px solid #999;">انتهاء العمل</th><th style="padding:8px;border:1px solid #999;">الموقع</th><th style="padding:8px;border:1px solid #999;">الصور</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+        html2pdf().set({ margin: 10, filename: 'تقرير_رخص_الطوارئ.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, windowWidth: 1200 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
+    } catch(err) { alert("خطأ أثناء التصدير: " + err.message); }
+}
+
+async function exportNotesToPDF() {
+    if (typeof html2pdf === 'undefined') { alert("جاري تحميل مكتبة PDF..."); return; }
+    if (notes.length === 0) { alert("لا توجد بيانات"); return; }
+    try {
+        var rows = "";
+        for (var i = 0; i < notes.length; i++) {
+            var item = notes[i];
+            var imagesHTML = "";
+            if (item.before) {
+                var bSrc = await getImgSrcForPDF(item.before);
+                if (bSrc) imagesHTML += '<img src="'+bSrc+'" style="width:50px;height:50px;border-radius:4px;margin:2px;">';
+            }
+            if (item.after) {
+                var aSrc = await getImgSrcForPDF(item.after);
+                if (aSrc) imagesHTML += '<img src="'+aSrc+'" style="width:50px;height:50px;border-radius:4px;margin:2px;">';
+            }
+            if (!imagesHTML) imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
+            var status = item.completed ? "تم التعديل" : (typeof isLate==='function'&&isLate(item)?"متأخرة":"قيد المتابعة");
+            rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+(i+1)+'</td><td style="border:1px solid #999;padding:6px;">'+(item.type||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.date||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.permit||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.contractor||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.owner||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.reason||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.action||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+status+'</td><td style="border:1px solid #999;padding:6px;">'+imagesHTML+'</td></tr>';
+        }
+        var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير الملاحظات</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">التصنيف</th><th style="padding:8px;border:1px solid #999;">التاريخ</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة المالكة</th><th style="padding:8px;border:1px solid #999;">أسباب الرفض</th><th style="padding:8px;border:1px solid #999;">الإجراء المتخذ</th><th style="padding:8px;border:1px solid #999;">الحالة</th><th style="padding:8px;border:1px solid #999;">الصور</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+        html2pdf().set({ margin: 10, filename: 'تقرير_الملاحظات.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, windowWidth: 1200 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
+    } catch(err) { alert("خطأ أثناء التصدير: " + err.message); }
+}
+</script>
+<!-- ========== تسريع الحفظ والحذف (يمنع تجمد الشاشة) ========== -->
+<script>
+function safeLocalSave(key, data) {
+    try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) { console.error("Save Error:", e); }
+}
+
+// 1. الحفظ الفوري للإخلاءات
+window.saveClearance = async function() {
+    try {
+        const permit = document.getElementById("clearancePermit").value.trim();
+        const contractor = document.getElementById("clearanceContractor").value.trim();
+        const owner = document.getElementById("clearanceOwner").value.trim();
+        const location = document.getElementById("clearanceLocation").value.trim();
+        if (!permit || !contractor || !owner || !location) { alert("يرجى تعبئة جميع الحقول المطلوبة"); return; }
+
+        const files = document.getElementById("clearanceImages").files;
+        const data = { permit, contractor, owner, location, images: [] };
+
+        if (editingClearance >= 0) { clearances[editingClearance] = data; editingClearance = -1; }
+        else { clearances.push(data); }
+
+        safeLocalSave("clearances", clearances);
+        clearClearance(); renderClearances(); updateDashboard();
+        alert("تم حفظ الرخصة بنجاح ✅");
+
+        // معالجة الصور والسحابة في الخلفية
+        setTimeout(async () => {
+            try {
+                const images = await readImages(files);
+                if (images && images.length > 0) data.images = images;
+                safeLocalSave("clearances", clearances);
+                renderClearances();
+                if (typeof initSupabase === 'function') {
+                    const client = await initSupabase();
+                    if (client) {
+                        if (data.id) await dbUpdate("clearances", data.id, clearanceToRow(data));
+                        else {
+                            const inserted = await dbInsert("clearances", clearanceToRow(data));
+                            if (inserted && inserted.id) data.id = inserted.id;
+                            safeLocalSave("clearances", clearances);
+                        }
+                    }
+                }
+            } catch (e) { console.error("Background upload error:", e); }
+        }, 100);
+    } catch (err) { alert("خطأ في الحفظ: " + err.message); }
+};
+
+// 2. الحفظ الفوري للطوارئ
+window.saveEmergency = async function() {
+    try {
+        const permit = document.getElementById("emergencyPermit").value.trim();
+        const contractor = document.getElementById("emergencyContractor").value.trim();
+        const owner = document.getElementById("emergencyOwner").value.trim();
+        if (!permit || !contractor || !owner) { alert("يرجى تعبئة الحقول المطلوبة"); return; }
+
+        const files = document.getElementById("emergencyImages").files;
+        const data = {
+            permit, contractor, owner,
+            labReceive: document.getElementById("labReceiveDate").value,
+            start: document.getElementById("workStartDate").value,
+            end: document.getElementById("workEndDate").value,
+            location: document.getElementById("emergencyLocation").value.trim(),
+            images: []
+        };
+
+        if (editingEmergency >= 0) { emergencies[editingEmergency] = data; editingEmergency = -1; }
+        else { emergencies.push(data); }
+
+        safeLocalSave("emergencies", emergencies);
+        clearEmergency(); renderEmergencies(); updateDashboard();
+        alert("تم حفظ الرخصة بنجاح ✅");
+
+        setTimeout(async () => {
+            try {
+                const images = await readImages(files);
+                if (images && images.length > 0) data.images = images;
+                safeLocalSave("emergencies", emergencies);
+                renderEmergencies();
+                if (typeof initSupabase === 'function') {
+                    const client = await initSupabase();
+                    if (client) {
+                        if (data.id) await dbUpdate("emergencies", data.id, emergencyToRow(data));
+                        else {
+                            const inserted = await dbInsert("emergencies", emergencyToRow(data));
+                            if (inserted && inserted.id) data.id = inserted.id;
+                            safeLocalSave("emergencies", emergencies);
+                        }
+                    }
+                }
+            } catch (e) { console.error("Background upload error:", e); }
+        }, 100);
+    } catch (err) { alert("خطأ في الحفظ: " + err.message); }
+};
+
+// 3. الحفظ الفوري للملاحظات
+window.saveNote = async function() {
+    try {
+        const date = document.getElementById("noteDate").value;
+        const permit = document.getElementById("notePermit").value.trim();
+        const contractor = document.getElementById("noteContractor").value.trim();
+        const owner = document.getElementById("noteOwner").value.trim();
+        const reason = document.getElementById("noteReason").value.trim();
+        const action = document.getElementById("noteAction").value.trim();
+        const type = document.getElementById("noteType").value || "مشاريع الأمانة";
+        if (!date || !permit || !contractor || !reason || !action) { alert("يرجى تعبئة الحقول المطلوبة"); return; }
+
+        const beforeFile = document.getElementById("beforeImage").files[0];
+        const afterFile = document.getElementById("afterImage").files[0];
+        const data = { type, date, permit, contractor, owner, reason, action, before: "", after: "", completed: false };
+
+        if (editingNote >= 0) { notes[editingNote] = data; editingNote = -1; }
+        else { notes.push(data); }
+
+        safeLocalSave("notes", notes);
+        clearNote(); renderNotes(); updateDashboard();
+        alert("تم حفظ الملاحظة بنجاح ✅");
+
+        setTimeout(async () => {
+            try {
+                const before = beforeFile ? await readImage(beforeFile) : "";
+                const after = afterFile ? await readImage(afterFile) : "";
+                data.before = before; data.after = after; data.completed = (after !== "");
+                safeLocalSave("notes", notes);
+                renderNotes();
+                if (typeof initSupabase === 'function') {
+                    const client = await initSupabase();
+                    if (client) {
+                        if (data.id) await dbUpdate("notes", data.id, noteToRow(data));
+                        else {
+                            const inserted = await dbInsert("notes", noteToRow(data));
+                            if (inserted && inserted.id) data.id = inserted.id;
+                            safeLocalSave("notes", notes);
+                        }
+                    }
+                }
+            } catch (e) { console.error("Background upload error:", e); }
+        }, 100);
+    } catch (err) { alert("خطأ في الحفظ: " + err.message); }
+};
+
+// 4. اعتراض الحذف (يحذف فورياً لمنع التجمد والشاشة البيضاء)
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.delete');
+    if (!btn) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (!confirm("هل أنت متأكد من الحذف؟")) return;
+
+    try {
+        const row = btn.closest('tr');
+        const tbody = row ? row.closest('tbody') : null;
+        if (!row || !tbody) return;
+
+        const permitCell = row.querySelector('td');
+        const permitValue = permitCell ? permitCell.innerText.trim() : "";
+        let tableName = "";
+        if (tbody.id === 'clearanceTable') tableName = 'clearances';
+        else if (tbody.id === 'emergencyTable') tableName = 'emergencies';
+        else if (tbody.id === 'notesTable') tableName = 'notes';
+        else return;
+
+        let arr = tableName === 'clearances' ? clearances : tableName === 'emergencies' ? emergencies : notes;
+        const idx = arr.findIndex(item => String(item.permit) === permitValue);
+        if (idx !== -1) {
+            const item = arr[idx];
+            arr.splice(idx, 1);
+            safeLocalSave(tableName, arr);
+            row.remove();
+            updateDashboard();
+            // مزامنة السحابة في الخلفية
+            setTimeout(async () => {
+                try {
+                    if (item && item.id && typeof initSupabase === 'function') {
+                        const client = await initSupabase();
+                        if (client) await client.from(tableName).delete().eq('id', item.id);
+                    }
+                } catch (err) { console.error("Background delete error:", err); }
+            }, 50);
+        }
+    } catch (err) { console.error("Delete Error:", err); }
+});
+</script>
