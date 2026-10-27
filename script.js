@@ -856,18 +856,17 @@ async function readImage(file) {
         return "";
     }
 
-    /* تقليل الحجم من 1400 إلى 800 — أسرع 3 مرات في الضغط والرفع
-       مع الحفاظ على جودة كافية للوثائق */
-    const uploadBlob = await compressImageToBlob(file, 800, 0.7);
+    const uploadBlob = await compressImageToBlob(file, 1400, 0.85);
 
     let cloudUrl = "";
 
     try {
         if (uploadBlob) {
-            /* تقليل المهلة من 60 ثانية إلى 30 — سرعة أعلى في الفشل */
-            cloudUrl = await withTimeout(uploadToSupabase(uploadBlob, "image/jpeg"), 30000);
+            cloudUrl = await withTimeout(uploadToSupabase(uploadBlob, "image/jpeg"), 60000);
         }
-        /* تم إزالة المحاولة الثانية (رفع الملف الأصلي) — كانت مضيعة للوقت */
+        if (!cloudUrl) {
+            cloudUrl = await withTimeout(uploadToSupabase(file, file.type), 60000);
+        }
     } catch (error) {
         console.warn("تعذر رفع الصورة للسحابة: " + (error && error.message ? error.message : error));
     }
@@ -881,7 +880,7 @@ async function readImage(file) {
     let fallbackBlob = uploadBlob;
 
     if (!fallbackBlob) {
-        fallbackBlob = await compressImageToBlob(file, 600, 0.6);
+        fallbackBlob = await compressImageToBlob(file, 1000, 0.7);
     }
 
     if (fallbackBlob) {
@@ -901,30 +900,16 @@ async function readImage(file) {
 
 async function readImages(files) {
 
+    const result = [];
+
     if (!files || files.length === 0) {
-        return [];
+        return result;
     }
 
-    /* معالجة تسلسلية (واحدة تلو الأخرى) - مهم جداً للجوال
-       المعالجة بالتوازي تسبب انهيار المتصفح بسبب استهلاك الذاكرة */
-    var result = [];
-    var fileList = Array.from(files);
-
-    for (var i = 0; i < fileList.length; i++) {
-        try {
-            var imageUrl = await readImage(fileList[i]);
-            if (imageUrl) {
-                result.push(imageUrl);
-            }
-        } catch (e) {
-            console.warn("خطأ في معالجة الصورة " + (i + 1) + ":", e);
-        }
-
-        /* تأخير صغير بين كل صورة لتحرير الذاكرة ومنع انهيار المتصفح */
-        if (i < fileList.length - 1) {
-            await new Promise(function (resolve) {
-                setTimeout(resolve, 150);
-            });
+    for (let i = 0; i < files.length; i++) {
+        const imageUrl = await readImage(files[i]);
+        if (imageUrl) {
+            result.push(imageUrl);
         }
     }
 
@@ -2373,63 +2358,27 @@ function generatePDFFromHTML(content, filename, orientation, btn) {
         btn.setAttribute("data-old-text", btn.innerText);
         btn.innerText = "جاري الإنشاء...";
     }
-    try {
-        /* الحل النهائي: استخدام window.print() بدلاً من html2pdf
-           - لا صفحات فارغة (المتصفح يرسم الصور بنفسه)
-           - لا مشاكل CORS (المتصفح يتعامل معها أصلاً)
-           - يعمل على الجوال واللابتوب بنفس الكفاءة
-           - المستخدم يضغط "حفظ كـ PDF" من نافذة الطباعة */
-        var printArea = document.getElementById("printArea");
-        if (!printArea) {
-            printArea = document.createElement("div");
-            printArea.id = "printArea";
-            document.body.appendChild(printArea);
-        }
-        printArea.innerHTML = content;
-
-        var style = document.getElementById("printStyle");
-        if (!style) {
-            style = document.createElement("style");
-            style.id = "printStyle";
-            document.head.appendChild(style);
-        }
-        style.innerHTML =
-            "@media print{" +
-                "body *{visibility:hidden;}" +
-                "#printArea,#printArea *{visibility:visible;}" +
-                "#printArea{position:absolute;left:0;top:0;width:100%;padding:10px;}" +
-                "@page{margin:1cm;size:A4 " + (orientation === "landscape" ? "landscape" : "portrait") + ";}" +
-            "}" +
-            "@media screen{#printArea{display:none;}}";
-
-        /* انتظار تحميل كل الصور قبل الطباعة */
-        var imgs = printArea.querySelectorAll("img");
-        var imgPromises = Array.from(imgs).map(function(img) {
-            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-            return new Promise(function(resolve) {
-                img.onload = resolve;
-                img.onerror = resolve;
-                setTimeout(resolve, 5000); /* مهلة 5 ثوانٍ لكل صورة */
-            });
-        });
-
-        Promise.all(imgPromises).then(function() {
-            setTimeout(function() {
-                window.print();
-                if (btn) {
-                    btn.disabled = false;
-                    btn.innerText = btn.getAttribute("data-old-text");
-                }
-            }, 200);
-        });
-    } catch (e) {
-        console.error("Print error:", e);
-        alert("حدث خطأ أثناء إنشاء ملف PDF: " + (e && e.message ? e.message : e));
+    var element = document.createElement("div");
+    element.innerHTML = content;
+    html2pdf().set({
+        margin: 10,
+        filename: filename,
+        image: { type: "jpeg", quality: 0.95 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm", format: "a4", orientation: orientation || "landscape" },
+        pagebreak: { mode: ["css", "legacy"], avoid: ["tr", ".pdf-avoid-break"] }
+    }).from(element).save().then(function () {
         if (btn) {
             btn.disabled = false;
             btn.innerText = btn.getAttribute("data-old-text");
         }
-    }
+    }).catch(function () {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = btn.getAttribute("data-old-text");
+        }
+        alert("حدث خطأ أثناء إنشاء ملف PDF، حاول مرة أخرى");
+    });
 }
 
 function downloadExcel(rows, sheetName, cols, filename) {
@@ -3524,387 +3473,3 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
 });
-
-/* =========================================================
-   =========================================================
-   إصلاحات نهائية للجوال واللاب توب
-   - يُلصق في آخر الملف ولا يؤثر على أي كود سابق
-   =========================================================
-   ========================================================= */
-
-(function () {
-    "use strict";
-
-    /* -----------------------------------------------------
-       1) حفظ الصفحة النشطة في sessionStorage
-          السبب: عند انهيار المتصفح على الجوال أثناء الحفظ
-          (بسبب ضغط الصور)، تُعاد تحميل الصفحة وتفتح على
-          أول صفحة في DOM (تصنيف المقاولين).
-          الحل: نتذكر الصفحة الحالية ونستعيدها بعد التحميل.
-       ----------------------------------------------------- */
-
-    var LAB_PAGE_KEY = "labActivePage";
-
-    // حفظ الصفحة الحالية
-    function rememberPage(pageName) {
-        try {
-            sessionStorage.setItem(LAB_PAGE_KEY, pageName);
-        } catch (e) { }
-    }
-
-    // استعادة الصفحة المحفوظة
-    function restoreSavedPage() {
-        try {
-            var saved = sessionStorage.getItem(LAB_PAGE_KEY);
-            if (saved && document.getElementById(saved)) {
-                document.querySelectorAll(".page").forEach(function (p) {
-                    p.classList.remove("active");
-                });
-                document.getElementById(saved).classList.add("active");
-                return true;
-            }
-        } catch (e) { }
-        return false;
-    }
-
-    // اعتراض showPage لحفظ الصفحة في كل مرة
-    if (typeof window.showPage === "function") {
-        var originalShowPage = window.showPage;
-        window.showPage = function (page) {
-            rememberPage(page);
-            return originalShowPage.apply(this, arguments);
-        };
-    }
-
-    // اعتراض goToPerformance أيضاً
-    if (typeof window.goToPerformance === "function") {
-        var originalGoToPerformance = window.goToPerformance;
-        window.goToPerformance = function () {
-            rememberPage("performance");
-            return originalGoToPerformance.apply(this, arguments);
-        };
-    }
-
-    // استعادة الصفحة بعد التحميل
-    document.addEventListener("DOMContentLoaded", function () {
-        // تأخير بسيط ليكون بعد كل الكود الأصلي
-        setTimeout(function () {
-            restoreSavedPage();
-        }, 100);
-    });
-
-    /* -----------------------------------------------------
-       2) PDF أكثر موثوقية: فتح نافذة منبثقة مستقلة
-          السبب: window.print() على نفس الصفحة قد يفشل على
-          الجوال بسبب حجم DOM الكبير ووجود صور data URL.
-          الحل: نفتح نافذة جديدة بمحتوى نظيف، ثم نطبعها.
-       ----------------------------------------------------- */
-
-    // تجاوز الدالة generatePDFFromHTML بنسخة أكثر موثوقية
-    window.generatePDFFromHTML = function (content, filename, orientation, btn) {
-        if (btn) {
-            btn.disabled = true;
-            btn.setAttribute("data-old-text", btn.innerText);
-            btn.innerText = "جاري الإنشاء...";
-        }
-
-        try {
-            // محاولة فتح نافذة منبثقة للطباعة
-            var printWindow = window.open("", "_blank", "width=1024,height=768");
-
-            if (printWindow && !printWindow.closed) {
-                // الطريقة 1: نافذة منبثقة - الأفضل للجوال واللاب توب
-                printWindow.document.open();
-                printWindow.document.write([
-                    '<!DOCTYPE html>',
-                    '<html dir="rtl" lang="ar">',
-                    '<head>',
-                    '<meta charset="UTF-8">',
-                    '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
-                    '<title>' + (filename || "تقرير") + '</title>',
-                    '<style>',
-                    '@page { margin: 1cm; size: A4 ' + (orientation === "landscape" ? "landscape" : "portrait") + '; }',
-                    'body { font-family: Arial, Helvetica, sans-serif; direction: rtl; margin: 0; padding: 15px; color: #222; background: #fff; }',
-                    'img { max-width: 100%; }',
-                    'table { page-break-inside: auto; }',
-                    'tr { page-break-inside: avoid; page-break-after: auto; }',
-                    'thead { display: table-header-group; }',
-                    '</style>',
-                    '</head>',
-                    '<body>',
-                    content,
-                    '<script>',
-                    'window.onload = function() {',
-                    '  var imgs = document.querySelectorAll("img");',
-                    '  var promises = Array.from(imgs).map(function(img) {',
-                    '    if (img.complete && img.naturalWidth > 0) return Promise.resolve();',
-                    '    return new Promise(function(resolve) {',
-                    '      img.onload = resolve;',
-                    '      img.onerror = resolve;',
-                    '      setTimeout(resolve, 8000);', // مهلة 8 ثوانٍ لكل صورة
-                    '    });',
-                    '  });',
-                    '  Promise.all(promises).then(function() {',
-                    '    setTimeout(function() {',
-                    '      try { window.print(); } catch(e) { console.error(e); }',
-                    '    }, 500);',
-                    '  });',
-                    '};',
-                    '</scr' + 'ipt>',
-                    '</body>',
-                    '</html>'
-                ].join('\n'));
-                printWindow.document.close();
-            } else {
-                // الطريقة 2: fallback - استخدام window.print على نفس الصفحة
-                console.warn("Popup blocked, falling back to window.print()");
-
-                var printArea = document.getElementById("printArea");
-                if (!printArea) {
-                    printArea = document.createElement("div");
-                    printArea.id = "printArea";
-                    document.body.appendChild(printArea);
-                }
-                printArea.innerHTML = content;
-
-                var style = document.getElementById("printStyle");
-                if (!style) {
-                    style = document.createElement("style");
-                    style.id = "printStyle";
-                    document.head.appendChild(style);
-                }
-                style.innerHTML =
-                    "@media print{" +
-                    "body *{visibility:hidden;}" +
-                    "#printArea,#printArea *{visibility:visible;}" +
-                    "#printArea{position:absolute;left:0;top:0;width:100%;padding:10px;background:#fff;}" +
-                    "@page{margin:1cm;size:A4 " + (orientation === "landscape" ? "landscape" : "portrait") + ";}" +
-                    "}" +
-                    "@media screen{#printArea{display:none;}}";
-
-                var imgs = printArea.querySelectorAll("img");
-                var imgPromises = Array.from(imgs).map(function (img) {
-                    if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-                    return new Promise(function (resolve) {
-                        img.onload = resolve;
-                        img.onerror = resolve;
-                        setTimeout(resolve, 8000);
-                    });
-                });
-
-                Promise.all(imgPromises).then(function () {
-                    setTimeout(function () {
-                        window.print();
-                    }, 300);
-                });
-            }
-
-            if (btn) {
-                btn.disabled = false;
-                btn.innerText = btn.getAttribute("data-old-text");
-            }
-        } catch (e) {
-            console.error("PDF generation error:", e);
-            alert("حدث خطأ في إنشاء PDF: " + (e && e.message ? e.message : e));
-            if (btn) {
-                btn.disabled = false;
-                btn.innerText = btn.getAttribute("data-old-text");
-            }
-        }
-    };
-
-    /* -----------------------------------------------------
-       3) تسريع الحفظ على الجوال: تخزين الصور محلياً أولاً
-          ثم الرفع للسحابة في الخلفية
-          السبب: الانتظار لرفع كل صورة للسحابة يبطئ الحفظ
-          ويسبب انهيار المتصفح على الجوال.
-          الحل: نحفظ السجل فورياً (مع مراجع idb://) ثم
-          نرفع الصور للسحابة لاحقاً.
-       ----------------------------------------------------- */
-
-    // اعتراض readImage لتخزين محلي أولاً ثم الرفع في الخلفية
-    if (typeof window.readImage === "function") {
-        var originalReadImage = window.readImage;
-        window.readImage = async function (file) {
-            if (!file) return "";
-
-            // 1) ضغط الصورة (مرة واحدة بحجم صغير للسرعة)
-            var blob = await compressImageToBlob(file, 700, 0.65);
-            if (!blob) {
-                // fallback للملف الأصلي
-                return await originalReadImage(file);
-            }
-
-            // 2) تخزين محلي فوري في IndexedDB (سريع جداً)
-            var dataUrl = await blobToDataUrl(blob);
-            if (!dataUrl) {
-                skippedImagesCount++;
-                return "";
-            }
-
-            var ref = await storeImageInIdb(dataUrl);
-            if (!ref) {
-                skippedImagesCount++;
-                return "";
-            }
-
-            // 3) رفع للسحابة في الخلفية (بدون انتظار)
-            //    عند نجاح الرفع، يُستبدل المرجع idb:// بالرابط السحابي
-            //    تلقائياً عبر migrateIdbImagesToCloud الموجود في الكود الأصلي
-            setTimeout(function () {
-                try {
-                    uploadToSupabase(blob, "image/jpeg").then(function (cloudUrl) {
-                        if (cloudUrl) {
-                            // استبدال المرجع في السجلات
-                            [
-                                { arr: clearances, table: "clearances", toRow: clearanceToRow },
-                                { arr: emergencies, table: "emergencies", toRow: emergencyToRow },
-                                { arr: notes, table: "notes", toRow: noteToRow }
-                            ].forEach(function (task) {
-                                task.arr.forEach(function (item) {
-                                    var imgs = item.images || [];
-                                    var idx = imgs.indexOf(ref);
-                                    if (idx >= 0) {
-                                        imgs[idx] = cloudUrl;
-                                        if (item.id) {
-                                            dbUpdate(task.table, item.id, task.toRow(item));
-                                        }
-                                    }
-                                    if (item.before === ref) {
-                                        item.before = cloudUrl;
-                                        if (item.id) {
-                                            dbUpdate(task.table, item.id, task.toRow(item));
-                                        }
-                                    }
-                                    if (item.after === ref) {
-                                        item.after = cloudUrl;
-                                        if (item.id) {
-                                            dbUpdate(task.table, item.id, task.toRow(item));
-                                        }
-                                    }
-                                });
-                            });
-
-                            // حفظ محلي + تحديث العرض
-                            try {
-                                localStorage.setItem("clearances", JSON.stringify(clearances));
-                                localStorage.setItem("emergencies", JSON.stringify(emergencies));
-                                localStorage.setItem("notes", JSON.stringify(notes));
-                            } catch (e) { }
-
-                            // حذف من IndexedDB (لم نعد بحاجة له)
-                            idbDelete(idbKeyFromRef(ref));
-
-                            // تحديث العرض
-                            if (typeof renderClearances === "function") renderClearances();
-                            if (typeof renderEmergencies === "function") renderEmergencies();
-                            if (typeof renderNotes === "function") renderNotes();
-
-                            console.log("✅ تم رفع صورة للسحابة في الخلفية");
-                        }
-                    }).catch(function (e) {
-                        console.warn("Background upload failed:", e);
-                    });
-                } catch (e) {
-                    console.warn("Background upload error:", e);
-                }
-            }, 100);
-
-            // 4) إرجاع المرجع المحلي فوراً (بدون انتظار الرفع)
-            return ref;
-        };
-    }
-
-    /* -----------------------------------------------------
-       4) منع إعادة التوجيه لأي صفحة بعد الحفظ
-          التأكد من أن setSaveBusy لا يسبب أي تأثيرات جانبية
-       ----------------------------------------------------- */
-
-    // التأكد من أن زر الحفظ لا يقوم بأي تنقل بعد الحفظ
-    document.addEventListener("DOMContentLoaded", function () {
-        // مراقبة أي تغيير في الصفحة النشطة
-        var lastActivePage = sessionStorage.getItem(LAB_PAGE_KEY);
-        var observer = new MutationObserver(function (mutations) {
-            mutations.forEach(function (m) {
-                if (m.attributeName === "class" && m.target.classList.contains("active")) {
-                    // صفحة أصبحت نشطة - تحقق إن لم تكن من فعل المستخدم
-                    var currentPage = m.target.id;
-                    if (currentPage && currentPage !== lastActivePage) {
-                        // إذا كانت التغييرات تلقائية (مثلاً بعد الحفظ)، نتجاهلها
-                        // ونحتفظ بالصفحة التي كان عليها المستخدم
-                    }
-                }
-            });
-        });
-
-        // مراقبة كل الصفحات
-        setTimeout(function () {
-            document.querySelectorAll(".page").forEach(function (p) {
-                observer.observe(p, { attributes: true });
-            });
-        }, 1000);
-    });
-
-    /* -----------------------------------------------------
-       5) ضمان بقاء الصفحة الحالية بعد الحفظ
-          عند انتهاء أي دالة حفظ، نتأكد أننا لا ننتقل لصفحة أخرى
-       ----------------------------------------------------- */
-
-    // اعتراض دوال الحفظ لمنع أي تنقل
-    ["saveClearance", "saveEmergency", "saveNote"].forEach(function (fnName) {
-        if (typeof window[fnName] === "function") {
-            var original = window[fnName];
-            window[fnName] = async function () {
-                // حفظ الصفحة الحالية قبل الحفظ
-                var activePage = document.querySelector(".page.active");
-                var activePageId = activePage ? activePage.id : null;
-
-                try {
-                    var result = await original.apply(this, arguments);
-
-                    // بعد الحفظ: التأكد من البقاء في نفس الصفحة
-                    if (activePageId) {
-                        var currentActive = document.querySelector(".page.active");
-                        if (!currentActive || currentActive.id !== activePageId) {
-                            // الصفحة تغيرت! نعيدها
-                            document.querySelectorAll(".page").forEach(function (p) {
-                                p.classList.remove("active");
-                            });
-                            var target = document.getElementById(activePageId);
-                            if (target) {
-                                target.classList.add("active");
-                            }
-                            rememberPage(activePageId);
-                        }
-                    }
-                    return result;
-                } catch (e) {
-                    console.error(fnName + " error:", e);
-                    throw e;
-                }
-            };
-        }
-    });
-
-    /* -----------------------------------------------------
-       6) منع انهيار المتصفح على الجوال: تقليل استهلاك الذاكرة
-          عند الضغط على زر الحفظ، نمنع العمليات الثقيلة المتزامنة
-       ----------------------------------------------------- */
-
-    // تحسين معالجة الصور لتقليل استهلاك الذاكرة
-    if (typeof window.compressImageToBlob === "function") {
-        var originalCompress = window.compressImageToBlob;
-        window.compressImageToBlob = function (file, maxDim, quality) {
-            // تقليل الأبعاد على الجوال تلقائياً
-            var isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-            if (isMobile && maxDim > 600) {
-                maxDim = 600;
-                quality = Math.min(quality, 0.6);
-            }
-            return originalCompress.call(this, file, maxDim, quality);
-        };
-    }
-
-    console.log("✅ تم تحميل إصلاحات الجوال واللاب توب بنجاح");
-})();
-
