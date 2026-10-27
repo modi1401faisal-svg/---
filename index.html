@@ -717,145 +717,24 @@ function exportPerformanceToExcel() {
 </script>
 
 <!-- ========================================================= -->
-<!-- الإصلاح النهائي: إجبار الصفحات على الظهور + تنقل يعمل -->
+<!-- الكود النهائي النظيف: فصل كل قسم في صفحة مستقلة -->
 <!-- ========================================================= -->
 <style>
-.page { display: none !important; }
-.page.active { display: block !important; }
+/* CSS قوي لإخفاء كل الصفحات ما عدا النشطة */
+.page {
+    display: none !important;
+}
+.page.active {
+    display: block !important;
+}
 </style>
+
 <script>
 (function() {
     "use strict";
 
-    /* 1) دالة showPage مستقلة - لا تعتمد على script.js */
-    function myShowPage(pageName) {
-        try {
-            var pages = document.querySelectorAll(".page");
-            for (var i = 0; i < pages.length; i++) {
-                pages[i].classList.remove("active");
-                pages[i].style.display = "none";
-            }
-            var target = document.getElementById(pageName);
-            if (target) {
-                target.classList.add("active");
-                target.style.display = "block";
-                target.style.visibility = "visible";
-                target.style.opacity = "1";
-                target.style.height = "auto";
-                target.style.overflow = "visible";
-                target.style.position = "static";
-            }
-            var navBtns = document.querySelectorAll('.navbar button');
-            for (var j = 0; j < navBtns.length; j++) {
-                navBtns[j].classList.remove("active");
-                var oc = navBtns[j].getAttribute("onclick") || "";
-                if (oc.indexOf(pageName) !== -1) {
-                    navBtns[j].classList.add("active");
-                }
-            }
-            window.scrollTo({top: 0, behavior: "smooth"});
-        } catch(e) { console.error(e); }
-    }
-
-    /* 2) تعريف showPage بشكل لا يمكن تجاوزه */
-    try {
-        Object.defineProperty(window, "showPage", {
-            value: myShowPage,
-            writable: false,
-            configurable: false
-        });
-    } catch(e) {
-        window.showPage = myShowPage;
-    }
-
-    /* 3) إظهار أول صفحة فوراً */
-    function showFirstPage() {
-        try {
-            var pages = document.querySelectorAll(".page");
-            var hasActive = false;
-            for (var i = 0; i < pages.length; i++) {
-                if (pages[i].classList.contains("active")) {
-                    hasActive = true;
-                    break;
-                }
-            }
-            if (!hasActive && pages.length > 0) {
-                pages[0].classList.add("active");
-            }
-        } catch(e) {}
-    }
-
-    /* 4) إجبار الصفحات على الظهور كل 100 ميلي ثانية */
-    function forcePagesVisible() {
-        try {
-            var pages = document.querySelectorAll(".page");
-            for (var i = 0; i < pages.length; i++) {
-                if (pages[i].classList.contains("active")) {
-                    pages[i].style.display = "block";
-                    pages[i].style.visibility = "visible";
-                    pages[i].style.opacity = "1";
-                } else {
-                    pages[i].style.display = "none";
-                }
-            }
-        } catch(e) {}
-    }
-
-    /* 5) اعتراض نقرات أزرار التنقل */
-    document.addEventListener("click", function(e) {
-        try {
-            var btn = e.target.closest ? e.target.closest("button") : null;
-            if (!btn) return;
-            
-            var isInNav = false;
-            var p = btn;
-            while (p) {
-                if (p.classList && p.classList.contains("navbar")) {
-                    isInNav = true;
-                    break;
-                }
-                p = p.parentElement;
-            }
-            if (!isInNav) return;
-            
-            var oc = btn.getAttribute("onclick") || "";
-            var match = oc.match(/showPage\(['"]([^'"]+)['"]\)/);
-            if (match) {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                myShowPage(match[1]);
-            }
-        } catch(err) {}
-    }, true);
-
-    /* تشغيل فوري */
-    showFirstPage();
-    forcePagesVisible();
-
-    /* تشغيل بعد DOMContentLoaded */
-    document.addEventListener("DOMContentLoaded", function() {
-        showFirstPage();
-        forcePagesVisible();
-    });
-
-    /* إجبار مستمر على إظهار الصفحات */
-    setInterval(forcePagesVisible, 100);
-    setInterval(showFirstPage, 500);
-    setTimeout(forcePagesVisible, 1000);
-    setTimeout(forcePagesVisible, 3000);
-
-    console.log("✅ تم تحميل إصلاح إظهار الصفحات");
-})();
-</script>
-<!-- ========================================================= -->
-<!-- إصلاح إظهار صفحة واحدة فقط في كل مرة -->
-<!-- ========================================================= -->
-<script>
-(function() {
-    "use strict";
-
-    /* 1) دالة showPage: تخفي الكل وتُظهر صفحة واحدة فقط */
-    window.showPage = function(pageName) {
+    /* 1) دالة showPage الوحيدة - تخفي كل الصفحات وتُظهر واحدة فقط */
+    function showPageSafe(pageName) {
         try {
             var pages = document.querySelectorAll(".page");
             for (var i = 0; i < pages.length; i++) {
@@ -878,9 +757,20 @@ function exportPerformanceToExcel() {
             }
             window.scrollTo({top: 0, behavior: "smooth"});
         } catch(e) { console.error(e); }
-    };
+    }
 
-    /* 2) عند تحميل الصفحة: إخفاء الكل وإظهار الأول فقط */
+    /* 2) تعريف showPage بشكل لا يمكن تجاوزه */
+    try {
+        Object.defineProperty(window, "showPage", {
+            value: showPageSafe,
+            writable: false,
+            configurable: false
+        });
+    } catch(e) {
+        window.showPage = showPageSafe;
+    }
+
+    /* 3) إظهار أول صفحة فقط عند التحميل */
     function showFirstPageOnly() {
         try {
             var pages = document.querySelectorAll(".page");
@@ -895,7 +785,7 @@ function exportPerformanceToExcel() {
         } catch(e) {}
     }
 
-    /* 3) اعتراض نقرات أزرار التنقل */
+    /* 4) اعتراض نقرات أزرار التنقل في capture phase */
     document.addEventListener("click", function(e) {
         try {
             var btn = e.target.closest ? e.target.closest("button") : null;
@@ -918,20 +808,28 @@ function exportPerformanceToExcel() {
             if (match) {
                 e.preventDefault();
                 e.stopImmediatePropagation();
-                window.showPage(match[1]);
+                showPageSafe(match[1]);
             }
         } catch(err) {}
     }, true);
 
-    /* تشغيل */
+    /* تشغيل فوري */
     showFirstPageOnly();
-    document.addEventListener("DOMContentLoaded", showFirstPageOnly);
-    setTimeout(showFirstPageOnly, 300);
+
+    /* تشغيل بعد DOMContentLoaded */
+    document.addEventListener("DOMContentLoaded", function() {
+        showFirstPageOnly();
+    });
+
+    /* تشغيل متأخر للتأكد */
+    setTimeout(showFirstPageOnly, 100);
+    setTimeout(showFirstPageOnly, 500);
     setTimeout(showFirstPageOnly, 1000);
     setTimeout(showFirstPageOnly, 3000);
 
-    console.log("✅ إصلاح صفحة واحدة فقط");
+    console.log("✅ الكود النهائي محمّل - فصل كل قسم في صفحة مستقلة");
 })();
 </script>
+
 </body>
 </html>
