@@ -49,13 +49,14 @@ body {
 }
 .navbar button:hover { background: #39745d; }
 .navbar button:active { background: #4d866c; }
+.navbar button.active { background: #39745d !important; }
 
 /* الحاوية الرئيسية */
 .container { width: 96%; max-width: 1450px; margin: 25px auto 40px; }
 
-/* الصفحات */
-.page { display: none; }
-.page.active { display: block; }
+/* الصفحات - مع ضمان إظهار الصفحة النشطة */
+.page { display: none !important; }
+.page.active { display: block !important; }
 
 /* عنوان القسم */
 .section-title {
@@ -223,6 +224,7 @@ table img {
     font-size: 13px;
 }
 .note-types button:hover { background: #d7e9df; }
+.note-types button.active { background: #245c49 !important; color: white !important; }
 
 /* حالات الملاحظات */
 .status-done { display: inline-block; background: #dcefe4; color: #24704d; padding: 6px 10px; border-radius: 7px; font-weight: bold; }
@@ -269,23 +271,18 @@ footer { background: #173f32; color: #dcebe3; text-align: center; padding: 18px;
     table { min-width: 900px; }
 }
 /* ========================================== */
-/* إعدادات الطباعة والتحويل إلى PDF (تحسين الجداول والشعارات) */
+/* إعدادات الطباعة والتحويل إلى PDF */
 /* ========================================== */
 @media print {
-    /* إجبار المتصفح على إظهار الألوان والصور */
     * {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
         color-adjust: exact !important;
     }
-    
-    /* إظهار شعار الأمانة في الـ PDF */
     .header-logo-injected {
         display: block !important;
         visibility: visible !important;
     }
-    
-    /* منع تقطيع الجداول وضمان ترتيبها في PDF */
     table { 
         page-break-inside: auto !important; 
     }
@@ -296,13 +293,9 @@ footer { background: #173f32; color: #dcebe3; text-align: center; padding: 18px;
     thead { 
         display: table-header-group !important; 
     }
-    
-    /* إجبار كل قسم (ملاحظات الأمانة، الكهرباء.. الخ) على البدء في صفحة جديدة لتنظيم الـ PDF */
     .card.table-card { 
         page-break-before: always !important; 
     }
-    
-    /* جعل البطاقة الأولى تبدأ في نفس الصفحة لعدم ترك أول صفحة فارغة */
     #notes .card.table-card:first-of-type {
         page-break-before: auto !important;
     }
