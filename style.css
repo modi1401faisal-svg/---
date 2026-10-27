@@ -300,3 +300,36 @@ footer { background: #173f32; color: #dcebe3; text-align: center; padding: 18px;
         page-break-before: auto !important;
     }
 }
+/* ========================================== */
+/* فصل كل صفحة في صفحة مستقلة */
+/* ========================================== */
+
+/* إخفاء كل الصفحات */
+.page {
+    display: none !important;
+}
+
+/* إظهار الصفحة النشطة فقط */
+.page.active {
+    display: block !important;
+}
+
+/* منع التراص - كل صفحة تأخذ المساحة الكاملة */
+.container {
+    display: block !important;
+    position: relative !important;
+}
+
+.page.active {
+    position: relative !important;
+    width: 100% !important;
+}
+
+/* إخفاء أي صفحة غير نشطة تماماً (حتى لو ظهرت بالخطأ) */
+.page:not(.active) {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+}
