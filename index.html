@@ -764,4 +764,343 @@ function exportPerformanceToPDF() {
 </script>
 
 </body>
+    <!-- ========================================================= -->
+<!-- إصلاح نهائي: إظهار الصفحات + تنقل يعمل بدون script.js -->
+<!-- ========================================================= -->
+<script>
+(function() {
+    "use strict";
+
+    /* 1) إظهار أول صفحة فوراً قبل أي شيء */
+    function showFirstPageNow() {
+        try {
+            var pages = document.querySelectorAll(".page");
+            var hasActive = false;
+            for (var i = 0; i < pages.length; i++) {
+                if (pages[i].classList.contains("active")) {
+                    hasActive = true;
+                    break;
+                }
+            }
+            if (!hasActive && pages.length > 0) {
+                pages[0].classList.add("active");
+                pages[0].style.display = "block";
+            }
+            /* ضمان أن كل الصفحات المخفية لها display:none */
+            for (var j = 0; j < pages.length; j++) {
+                if (!pages[j].classList.contains("active")) {
+                    pages[j].style.display = "none";
+                } else {
+                    pages[j].style.display = "block";
+                }
+            }
+        } catch(e) { console.warn(e); }
+    }
+
+    /* 2) تعريف showPage بشكل مستقل */
+    window.showPage = function(pageName) {
+        try {
+            var pages = document.querySelectorAll(".page");
+            for (var i = 0; i < pages.length; i++) {
+                pages[i].classList.remove("active");
+                pages[i].style.display = "none";
+            }
+            var target = document.getElementById(pageName);
+            if (target) {
+                target.classList.add("active");
+                target.style.display = "block";
+            }
+            /* تحديث حالة أزرار التنقل */
+            var navBtns = document.querySelectorAll('.navbar button');
+            for (var j = 0; j < navBtns.length; j++) {
+                navBtns[j].classList.remove("active");
+                var oc = navBtns[j].getAttribute("onclick") || "";
+                if (oc.indexOf("'" + pageName + "'") !== -1 || oc.indexOf('"' + pageName + '"') !== -1) {
+                    navBtns[j].classList.add("active");
+                }
+            }
+        } catch(e) { console.error(e); }
+    };
+
+    /* 3) ربط أزرار التنقل إجبارياً */
+    function bindNavButtons() {
+        try {
+            var navBtns = document.querySelectorAll('.navbar button');
+            for (var i = 0; i < navBtns.length; i++) {
+                if (navBtns[i].dataset.bound === "1") continue;
+                navBtns[i].dataset.bound = "1";
+                navBtns[i].addEventListener("click", function(e) {
+                    var oc = this.getAttribute("onclick") || "";
+                    var match = oc.match(/showPage\(['"]([^'"]+)['"]\)/);
+                    if (match) {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                        window.showPage(match[1]);
+                    }
+                });
+            }
+        } catch(e) {}
+    }
+
+    /* 4) ربط أزرار note-types */
+    function bindNoteTypeButtons() {
+        try {
+            var noteBtns = document.querySelectorAll('.note-types button');
+            for (var i = 0; i < noteBtns.length; i++) {
+                if (noteBtns[i].dataset.bound === "1") continue;
+                noteBtns[i].dataset.bound = "1";
+                noteBtns[i].addEventListener("click", function(e) {
+                    var type = this.textContent.trim();
+                    var noteType = document.getElementById("noteType");
+                    if (noteType) noteType.value = type;
+                    /* تحديث active */
+                    document.querySelectorAll('.note-types button').forEach(function(b) {
+                        b.classList.remove("active");
+                    });
+                    this.classList.add("active");
+                });
+            }
+        } catch(e) {}
+    }
+
+    /* 5) ربط زر البحث */
+    function bindSearchButtons() {
+        try {
+            var searchBtn = document.querySelector('#clearance .search-row button.btn-primary');
+            if (searchBtn && searchBtn.dataset.bound !== "1") {
+                searchBtn.dataset.bound = "1";
+                searchBtn.addEventListener("click", function() {
+                    var q = (document.getElementById("clearanceSearch") || {}).value || "";
+                    q = q.trim().toLowerCase();
+                    if (!q) return;
+                    var tbody = document.getElementById("clearanceTable");
+                    if (!tbody || typeof clearances === "undefined") return;
+                    var html = "";
+                    var count = 0;
+                    clearances.forEach(function(item) {
+                        if (String(item.permit||"").toLowerCase().indexOf(q) !== -1) {
+                            count++;
+                            html += '<tr><td>' + (item.permit||"") + '</td><td>' + (item.contractor||"") + '</td><td>' + (item.owner||"") + '</td><td>' + (item.location||"") + '</td><td>صور</td><td><button class="edit">تعديل</button> <button class="delete">حذف</button></td></tr>';
+                        }
+                    });
+                    if (count === 0) html = '<tr><td colspan="6">لا توجد نتائج</td></tr>';
+                    tbody.innerHTML = html;
+                });
+            }
+        } catch(e) {}
+    }
+
+    /* 6) ربط زر تفريغ البحث */
+    function bindClearSearchButtons() {
+        try {
+            var clearBtn = document.querySelector('#clearance .search-row button.btn-secondary');
+            if (clearBtn && clearBtn.dataset.bound !== "1") {
+                clearBtn.dataset.bound = "1";
+                clearBtn.addEventListener("click", function() {
+                    var inp = document.getElementById("clearanceSearch");
+                    if (inp) inp.value = "";
+                    if (typeof renderClearances === "function") renderClearances();
+                });
+            }
+        } catch(e) {}
+    }
+
+    /* 7) ربط أزرار الحفظ */
+    function bindSaveButtons() {
+        try {
+            var saveBtns = document.querySelectorAll('button.btn-primary');
+            saveBtns.forEach(function(btn) {
+                if (btn.dataset.bound === "1") return;
+                var txt = btn.textContent.trim();
+                if (txt.indexOf("حفظ") !== -1) {
+                    btn.dataset.bound = "1";
+                    btn.addEventListener("click", function(e) {
+                        e.preventDefault();
+                        if (txt.indexOf("رخصة") !== -1 && typeof fastSaveClearance === "function") fastSaveClearance();
+                        else if (txt.indexOf("طوارئ") !== -1 && typeof fastSaveEmergency === "function") fastSaveEmergency();
+                        else if (txt.indexOf("ملاحظة") !== -1 && typeof fastSaveNote === "function") fastSaveNote();
+                    });
+                }
+            });
+        } catch(e) {}
+    }
+
+    /* 8) ربط أزرار التفريغ */
+    function bindClearButtons() {
+        try {
+            var clearBtns = document.querySelectorAll('button.btn-secondary');
+            clearBtns.forEach(function(btn) {
+                if (btn.dataset.bound === "1") return;
+                var txt = btn.textContent.trim();
+                if (txt === "تفريغ") {
+                    btn.dataset.bound = "1";
+                    btn.addEventListener("click", function(e) {
+                        e.preventDefault();
+                        var page = this.closest(".page");
+                        if (!page) return;
+                        var inputs = page.querySelectorAll("input[type='text'], input[type='date'], textarea");
+                        inputs.forEach(function(inp) { inp.value = ""; });
+                    });
+                }
+            });
+        } catch(e) {}
+    }
+
+    /* 9) ربط أزرار تصدير PDF و Excel */
+    function bindExportButtons() {
+        try {
+            var exportBtns = document.querySelectorAll('button.btn-primary');
+            exportBtns.forEach(function(btn) {
+                if (btn.dataset.bound === "1") return;
+                var txt = btn.textContent.trim();
+                if (txt.indexOf("تصدير") !== -1) {
+                    btn.dataset.bound = "1";
+                    btn.addEventListener("click", function(e) {
+                        e.preventDefault();
+                        var page = this.closest(".page");
+                        if (!page) return;
+                        var pageId = page.id;
+                        var isExcel = txt.indexOf("Excel") !== -1;
+                        /* محاولة استدعاء الدالة المناسبة */
+                        var fn = null;
+                        if (pageId === "clearance") fn = isExcel ? "exportClearancesToExcel" : "exportClearancesToPDF";
+                        else if (pageId === "emergency") fn = isExcel ? "exportEmergenciesToExcel" : "exportEmergenciesToPDF";
+                        else if (pageId === "notes") fn = isExcel ? "exportNotesToExcel" : "exportNotesToPDF";
+                        else if (pageId === "performance") fn = isExcel ? "exportPerformanceToExcel" : "exportPerformanceToPDF";
+                        else if (pageId === "analytics") fn = isExcel ? "exportAnalyticsToExcel" : "exportAnalyticsToPDF";
+                        if (fn && typeof window[fn] === "function") {
+                            try { window[fn](); } catch(err) { alert("خطأ: " + err.message); }
+                        } else {
+                            alert("هذه الميزة غير متاحة حالياً");
+                        }
+                    });
+                }
+            });
+        } catch(e) {}
+    }
+
+    /* 10) ربط أزرار الحذف (event delegation) */
+    document.addEventListener("click", function(e) {
+        try {
+            var btn = e.target.closest(".delete");
+            if (!btn) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            if (!confirm("هل أنت متأكد من الحذف؟")) return;
+            
+            var row = btn.closest("tr");
+            var tbody = row ? row.closest("tbody") : null;
+            if (!row || !tbody) return;
+            
+            var permitCell = row.querySelector("td");
+            var permitValue = permitCell ? permitCell.innerText.trim() : "";
+            var tableName = "";
+            if (tbody.id === "clearanceTable") tableName = "clearances";
+            else if (tbody.id === "emergencyTable") tableName = "emergencies";
+            else if (tbody.id === "notesTable") tableName = "notes";
+            else return;
+            
+            if (typeof window[tableName] === "undefined") return;
+            var arr = window[tableName];
+            var idx = -1;
+            for (var i = 0; i < arr.length; i++) {
+                if (String(arr[i].permit || "") === permitValue) {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx !== -1) {
+                var item = arr[idx];
+                arr.splice(idx, 1);
+                try { localStorage.setItem(tableName, JSON.stringify(arr)); } catch(e) {}
+                row.remove();
+                if (typeof updateDashboard === "function") updateDashboard();
+            }
+        } catch(err) { console.error(err); }
+    }, true);
+
+    /* 11) ربط أزرار التعديل */
+    document.addEventListener("click", function(e) {
+        try {
+            var btn = e.target.closest(".edit");
+            if (!btn) return;
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            
+            var row = btn.closest("tr");
+            var tbody = row ? row.closest("tbody") : null;
+            if (!row || !tbody) return;
+            
+            var permitCell = row.querySelector("td");
+            var permitValue = permitCell ? permitCell.innerText.trim() : "";
+            var tableName = "";
+            if (tbody.id === "clearanceTable") tableName = "clearances";
+            else if (tbody.id === "emergencyTable") tableName = "emergencies";
+            else if (tbody.id === "notesTable") tableName = "notes";
+            else return;
+            
+            if (typeof window[tableName] === "undefined") return;
+            var arr = window[tableName];
+            var idx = -1;
+            for (var i = 0; i < arr.length; i++) {
+                if (String(arr[i].permit || "") === permitValue) {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx !== -1) {
+                var item = arr[idx];
+                /* تعبئة النموذج */
+                if (tableName === "clearances") {
+                    if (document.getElementById("clearancePermit")) document.getElementById("clearancePermit").value = item.permit || "";
+                    if (document.getElementById("clearanceContractor")) document.getElementById("clearanceContractor").value = item.contractor || "";
+                    if (document.getElementById("clearanceOwner")) document.getElementById("clearanceOwner").value = item.owner || "";
+                    if (document.getElementById("clearanceLocation")) document.getElementById("clearanceLocation").value = item.location || "";
+                    if (typeof editingClearance !== "undefined") editingClearance = idx;
+                    window.showPage("clearance");
+                }
+                /* يمكنك إضافة emergency و notes بنفس الطريقة */
+            }
+        } catch(err) { console.error(err); }
+    }, true);
+
+    /* تشغيل */
+    showFirstPageNow();
+    bindNavButtons();
+    bindNoteTypeButtons();
+    bindSearchButtons();
+    bindClearSearchButtons();
+    bindSaveButtons();
+    bindClearButtons();
+    bindExportButtons();
+
+    document.addEventListener("DOMContentLoaded", function() {
+        showFirstPageNow();
+        bindNavButtons();
+        bindNoteTypeButtons();
+        bindSearchButtons();
+        bindClearSearchButtons();
+        bindSaveButtons();
+        bindClearButtons();
+        bindExportButtons();
+    });
+
+    /* تشغيل متأخر */
+    setTimeout(function() {
+        showFirstPageNow();
+        bindNavButtons();
+        bindSaveButtons();
+        bindExportButtons();
+    }, 500);
+    setTimeout(function() {
+        bindNavButtons();
+        bindSaveButtons();
+    }, 2000);
+    setTimeout(function() {
+        bindNavButtons();
+    }, 4000);
+
+    console.log("✅ تم تحميل الإصلاح الشامل");
+})();
+</script>
 </html>
