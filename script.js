@@ -3534,3 +3534,75 @@ try {
 } catch(e){}
 
 console.log("✅ تم تحميل الإصلاحات البسيطة");
+/* =========================================================
+   تشغيل أزرار التنقل بين الصفحات
+   يُضاف بعد الإصلاحات السابقة في نهاية الملف
+   ========================================================= */
+(function () {
+    "use strict";
+
+    function setupNavButtons() {
+        try {
+            /* خريطة بين نص الزر واسم الصفحة */
+            var navMap = [
+                { keywords: ["لوحة المتابعة", "الرئيسية", "القيادة", "dashboard"], page: "dashboard" },
+                { keywords: ["تصنيف المقاولين", "المقاولين", "performance", "تصنيف"], page: "performance" },
+                { keywords: ["الإخلاء", "الإخلاءات", "clearance"], page: "clearance" },
+                { keywords: ["الطوارئ", "emergency"], page: "emergency" },
+                { keywords: ["الملاحظات", "notes"], page: "notes" }
+            ];
+
+            document.querySelectorAll("button, a").forEach(function (btn) {
+                /* تخطي الأزرار المرتبطة مسبقاً */
+                if (btn.dataset.navFixed === "1") return;
+
+                var text = (btn.textContent || btn.innerText || "").trim();
+                var onclickAttr = btn.getAttribute("onclick") || "";
+
+                /* إذا الزر يحتوي onclick مع showPage - نتأكد أنه يعمل */
+                if (onclickAttr.indexOf("showPage") !== -1 || onclickAttr.indexOf("goToPerformance") !== -1) {
+                    btn.dataset.navFixed = "1";
+                    /* لا نضيف شيء - الكود الأصلي سيتولى الأمر */
+                    return;
+                }
+
+                /* مطابقة النص مع الخريطة */
+                for (var i = 0; i < navMap.length; i++) {
+                    var map = navMap[i];
+                    for (var j = 0; j < map.keywords.length; j++) {
+                        if (text.indexOf(map.keywords[j]) !== -1) {
+                            /* التحقق من وجود الصفحة */
+                            if (document.getElementById(map.page)) {
+                                btn.dataset.navFixed = "1";
+                                (function (pageName, btnEl) {
+                                    btnEl.addEventListener("click", function (e) {
+                                        e.preventDefault();
+                                        try { showPage(pageName); } catch (err) { console.error(err); }
+                                    });
+                                })(map.page, btn);
+                            }
+                            return;
+                        }
+                    }
+                }
+            });
+
+            /* التأكد من ظهور صفحة افتراضية */
+            if (!document.querySelector(".page.active")) {
+                var first = document.querySelector(".page");
+                if (first) first.classList.add("active");
+            }
+        } catch (e) {
+            console.warn("setupNavButtons error:", e);
+        }
+    }
+
+    /* تشغيل عدة مرات لضمان عمله */
+    setupNavButtons();
+    document.addEventListener("DOMContentLoaded", setupNavButtons);
+    setTimeout(setupNavButtons, 500);
+    setTimeout(setupNavButtons, 2000);
+    setTimeout(setupNavButtons, 5000);
+
+    console.log("✅ تم تشغيل أزرار التنقل");
+})();
