@@ -908,3 +908,169 @@ with open(FILE, 'w', encoding='utf-8') as f:
     f.write(code)
 
 print("\nFinal file size: " + str(len(code)) + " bytes")
+/* =========================================================
+   إصلاح شامل: يحل مشكلة الجدار الناري + إظهار الصفحات + الحفظ السريع
+   يُلصق في نهاية ملف script.js فقط - لا يلمس الكود الأصلي
+   ========================================================= */
+(function () {
+    "use strict";
+
+    /* 1) منع رسالة الجدار الناري: تعطيل html2pdf نهائياً */
+    window.html2pdf = function () {
+        return {
+            set: function () { return this; },
+            from: function () { return this; },
+            save: function () { return Promise.resolve(); }
+        };
+    };
+
+    /* 2) استبدال generatePDFFromHTML بـ window.print - لا يحتاج مكتبة */
+    window.generatePDFFromHTML = function (content, filename, orientation, btn) {
+        if (btn) {
+            btn.disabled = true;
+            btn.setAttribute("data-old-text", btn.innerText);
+            btn.innerText = "جاري الإنشاء...";
+        }
+        try {
+            var printArea = document.getElementById("printArea");
+            if (!printArea) {
+                printArea = document.createElement("div");
+                printArea.id = "printArea";
+                document.body.appendChild(printArea);
+            }
+            printArea.innerHTML = content;
+
+            var style = document.getElementById("printStyle");
+            if (!style) {
+                style = document.createElement("style");
+                style.id = "printStyle";
+                document.head.appendChild(style);
+            }
+            style.innerHTML =
+                "@media print{" +
+                "body *{visibility:hidden !important;}" +
+                "#printArea,#printArea *{visibility:visible !important;}" +
+                "#printArea{position:absolute;left:0;top:0;width:100%;padding:15px;background:#fff;}" +
+                "table{width:100% !important;border-collapse:collapse;}" +
+                "tr{page-break-inside:avoid;}" +
+                "thead{display:table-header-group;}" +
+                "@page{margin:1cm;size:A4 " + (orientation === "landscape" ? "landscape" : "portrait") + ";}" +
+                "}" +
+                "@media screen{#printArea{display:none;}}";
+
+            var imgs = printArea.querySelectorAll("img");
+            var imgPromises = Array.from(imgs).map(function (img) {
+                if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+                return new Promise(function (resolve) {
+                    img.onload = resolve;
+                    img.onerror = resolve;
+                    setTimeout(resolve, 8000);
+                });
+            });
+
+            Promise.all(imgPromises).then(function () {
+                setTimeout(function () {
+                    try { window.print(); } catch (e) { console.error(e); }
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerText = btn.getAttribute("data-old-text");
+                    }
+                }, 300);
+            });
+        } catch (e) {
+            console.error("PDF error:", e);
+            alert("حدث خطأ في PDF: " + (e && e.message ? e.message : e));
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = btn.getAttribute("data-old-text");
+            }
+        }
+    };
+
+    /* 3) منع فحص html2pdf من إيقاف العملية */
+    var origExportClear = window.exportClearancesToPDF;
+    if (origExportClear) {
+        window.exportClearancesToPDF = async function (btn) {
+            try {
+                if (window.clearances && clearances.length === 0) {
+                    alert("لا توجد رخص إخلاء للتصدير");
+                    return;
+                }
+                var data = await resolveExportItems(clearances);
+                var rows = "";
+                data.forEach(function (item, index) {
+                    var imagesHTML = "";
+                    (item.images || []).forEach(function (img) {
+                        if (img) {
+                            imagesHTML += '<img src="' + img + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
+                        }
+                    });
+                    if (!imagesHTML) imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
+                    rows += '<tr><td style="padding:6px 8px;border:1px solid #999;text-align:center;">' + (index + 1) + '</td>' +
+                        '<td style="padding:6px 8px;border:1px solid #999;">' + (item.permit || "") + '</td>' +
+                        '<td style="padding:6px 8px;border:1px solid #999;">' + (item.contractor || "") + '</td>' +
+                        '<td style="padding:6px 8px;border:1px solid #999;">' + (item.owner || "") + '</td>' +
+                        '<td style="padding:6px 8px;border:1px solid #999;">' + (item.location || "") + '</td>' +
+                        '<td style="padding:6px 8px;border:1px solid #999;">' + imagesHTML + '</td></tr>';
+                });
+                var content = '<div dir="rtl" style="font-family:Arial,sans-serif;">' +
+                    '<div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:12px;">' +
+                    '<h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2>' +
+                    '<h3 style="color:#333;margin:8px 0 4px;">تقرير رخص الإخلاء</h3>' +
+                    '<p style="color:#666;margin:0;font-size:12px;">إجمالي الرخص: ' + clearances.length + '</p>' +
+                    '</div><table style="width:100%;border-collapse:collapse;">' +
+                    '<thead><tr>' +
+                    '<th style="padding:8px;border:1px solid #999;background:#173f32;color:#fff;">م</th>' +
+                    '<th style="padding:8px;border:1px solid #999;background:#173f32;color:#fff;">رقم التصريح</th>' +
+                    '<th style="padding:8px;border:1px solid #999;background:#173f32;color:#fff;">اسم المقاول</th>' +
+                    '<th style="padding:8px;border:1px solid #999;background:#173f32;color:#fff;">الجهة المالكة</th>' +
+                    '<th style="padding:8px;border:1px solid #999;background:#173f32;color:#fff;">الموقع</th>' +
+                    '<th style="padding:8px;border:1px solid #999;background:#173f32;color:#fff;">الصور</th>' +
+                    '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+                generatePDFFromHTML(content, "clearances.pdf", "landscape", btn);
+            } catch (e) {
+                console.error("Export PDF error:", e);
+                alert("خطأ في تصدير PDF: " + e.message);
+            }
+        };
+    }
+
+    /* 4) ضمان ظهور الصفحات */
+    function showFirstPage() {
+        try {
+            var active = document.querySelector(".page.active");
+            if (!active) {
+                var first = document.querySelector(".page");
+                if (first) first.classList.add("active");
+            }
+        } catch (e) { }
+    }
+
+    /* تشغيل فوري */
+    showFirstPage();
+
+    /* تشغيل بعد تحميل DOM */
+    document.addEventListener("DOMContentLoaded", showFirstPage);
+
+    /* تشغيل بعد ثانية (احتياط) */
+    setTimeout(showFirstPage, 1000);
+    setTimeout(showFirstPage, 3000);
+
+    /* 5) اعتراض عالمي لمنع submit الافتراضي على الأزرار */
+    document.addEventListener("click", function (e) {
+        try {
+            var target = e.target;
+            while (target && target !== document.body) {
+                if (target.tagName === "BUTTON") {
+                    if (!target.getAttribute("type")) {
+                        target.setAttribute("type", "button");
+                    }
+                    break;
+                }
+                target = target.parentElement;
+            }
+        } catch (err) { }
+    }, true);
+
+    console.log("✅ تم تحميل الإصلاحات بنجاح");
+})();
