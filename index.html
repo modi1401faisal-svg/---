@@ -830,6 +830,106 @@ function exportPerformanceToExcel() {
     console.log("✅ الكود النهائي محمّل - فصل كل قسم في صفحة مستقلة");
 })();
 </script>
+<!-- ========================================================= -->
+<!-- حلول الصور على الجوال -->
+<!-- ========================================================= -->
+<script>
+(function() {
+    "use strict";
+    
+    var isMobile = /Android|webOS|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    
+    if (!isMobile) return; /* فقط على الجوال */
 
+    /* 1) تحسين عرض الصور في الجداول */
+    function optimizeImages() {
+        try {
+            var imgs = document.querySelectorAll('img');
+            imgs.forEach(function(img) {
+                /* تجاهل الصور الصغيرة جداً (الأيقونات) */
+                if (img.width < 50) return;
+                
+                /* تفعيل lazy loading */
+                img.loading = 'lazy';
+                
+                /* تحديد حجم ثابت لتقليل الذاكرة */
+                if (!img.style.width) {
+                    img.style.width = '60px';
+                    img.style.height = '60px';
+                    img.style.objectFit = 'cover';
+                }
+            });
+        } catch(e) {}
+    }
+
+    /* 2) تحسين رفع الصور على الجوال (ضغط أكبر) */
+    if (typeof window.readImage === 'function') {
+        var originalReadImage = window.readImage;
+        window.readImage = async function(file) {
+            if (!file) return "";
+            try {
+                /* على الجوال: ضغط أقوى (400px بدل 500px) */
+                var blob = await compressImageToBlob(file, 400, 0.5);
+                if (!blob) {
+                    return await originalReadImage(file);
+                }
+                var dataUrl = await blobToDataUrl(blob);
+                blob = null;
+                if (!dataUrl) return "";
+                var ref = await storeImageInIdb(dataUrl);
+                dataUrl = null;
+                if (!ref) {
+                    skippedImagesCount++;
+                    return "";
+                }
+                /* رفع خلفي */
+                backgroundUploadImage(ref);
+                return ref;
+            } catch(e) {
+                console.warn("image error:", e);
+                return await originalReadImage(file);
+            }
+        };
+    }
+
+    /* 3) عرض الصور عند فتح صفحة (lazy + تحجيم) */
+    var originalShowPage = window.showPage;
+    window.showPage = function(pageName) {
+        if (originalShowPage) originalShowPage(pageName);
+        /* تأجيل تحسين الصور حتى تظهر الصفحة */
+        setTimeout(optimizeImages, 300);
+    };
+
+    /* 4) تحسين الصور عند تحميل أي صفحة */
+    document.addEventListener("DOMContentLoaded", optimizeImages);
+    setTimeout(optimizeImages, 1000);
+    setInterval(optimizeImages, 5000);
+
+    /* 5) منع فتح صورة كبيرة في نافذة (يستهلك ذاكرة) */
+    window.openImage = function(src) {
+        if (!src) return;
+        /* بدل فتح نافذة جديدة، نعرضها في طبقة منبثقة */
+        try {
+            var overlay = document.getElementById('mobileImageOverlay');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'mobileImageOverlay';
+                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+                overlay.onclick = function() { overlay.style.display = 'none'; };
+                var img = document.createElement('img');
+                img.style.cssText = 'max-width:95%;max-height:90vh;object-fit:contain;border-radius:8px;';
+                overlay.appendChild(img);
+                document.body.appendChild(overlay);
+            }
+            overlay.querySelector('img').src = src;
+            overlay.style.display = 'flex';
+        } catch(e) {
+            window.open(src, '_blank');
+        }
+    };
+
+    console.log("✅ حلول الصور على الجوال مفعّلة");
+})();
+</script>
 </body>
 </html>
