@@ -1050,13 +1050,17 @@ function setSaveBusy(busy) {
 
 function showPage(page) {
 
+    /* إخفاء كل الصفحات أولاً + ضمان display:none */
     document.querySelectorAll(".page").forEach(function (p) {
         p.classList.remove("active");
+        p.style.display = "none";
     });
 
+    /* إظهار الصفحة المطلوبة فقط */
     const selectedPage = document.getElementById(page);
     if (selectedPage) {
         selectedPage.classList.add("active");
+        selectedPage.style.display = "block";
     }
 
     document.querySelectorAll("button").forEach(function (btn) {
@@ -1072,10 +1076,9 @@ function showPage(page) {
         }
     });
 
-    updateDashboard();
-    resolveIdbImages();
+    try { if (typeof updateDashboard === "function") updateDashboard(); } catch(e) {}
+    try { if (typeof resolveIdbImages === "function") resolveIdbImages(); } catch(e) {}
 }
-
 /* =========================================================
    15) رؤوس الجداول من الكود
    ========================================================= */
