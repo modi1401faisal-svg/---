@@ -6,129 +6,105 @@
     <title>نظام مختبر جودة المشاريع</title>
     <link rel="stylesheet" href="style.css">
 
-    <!-- =========================================== -->
-    <!-- إصلاح شامل: الجدار الناري + إظهار الصفحات + أزرار التنقل -->
-    <!-- =========================================== -->
+    <!-- ====== إصلاحات قوية: تنقل يعمل دائماً + لا جدار ناري ====== -->
     <script>
-    (function() {
-        "use strict";
+    /* 1) تعطيل html2pdf - يمنع رسالة الجدار الناري */
+    window.html2pdf = window.html2pdf || function() {
+        return { set: function(){return this;}, from: function(){return this;}, save: function(){return Promise.resolve();} };
+    };
 
-        /* 1) تعطيل html2pdf نهائياً - يمنع رسالة الجدار الناري */
-        window.html2pdf = function() {
-            return {
-                set: function() { return this; },
-                from: function() { return this; },
-                save: function() { return Promise.resolve(); }
-            };
-        };
+    /* 2) CSS احتياطي */
+    document.write('<style>.page{display:none !important;}.page.active{display:block !important;}</style>');
 
-        /* 2) CSS احتياطي لإظهار أول صفحة فوراً */
-        var style = document.createElement("style");
-        style.innerHTML =
-            ".page{display:none !important;}" +
-            ".page.active{display:block !important;}" +
-            ".page:first-of-type{display:block !important;}";
-        document.head.appendChild(style);
+    /* 3) منع أي خطأ من إيقاف التطبيق */
+    window.onerror = function(msg) { console.warn("تجاوز:", msg); return true; };
 
-        /* 3) تشغيل أزرار التنقل إجبارياً */
-        function setupNavButtons() {
-            try {
-                var navMap = [
-                    { keywords: ["الرئيسية", "لوحة المتابعة", "dashboard"], page: "dashboard" },
-                    { keywords: ["لوحة القيادة", "analytics", "المؤشرات"], page: "analytics" },
-                    { keywords: ["تصنيف المقاولين", "performance", "المقاولين"], page: "performance" },
-                    { keywords: ["رخص الإخلاء", "الإخلاء", "clearance"], page: "clearance" },
-                    { keywords: ["رخص الطوارئ", "الطوارئ", "emergency"], page: "emergency" },
-                    { keywords: ["الملاحظات", "notes"], page: "notes" }
-                ];
-
-                document.querySelectorAll("button, a").forEach(function(btn) {
-                    if (btn.dataset.navFixed === "1") return;
-
-                    /* إذا الزر يحتوي onclick مع showPage - نتأكد أنه يعمل */
-                    var onclickAttr = btn.getAttribute("onclick") || "";
-                    if (onclickAttr.indexOf("showPage") !== -1) {
-                        btn.dataset.navFixed = "1";
-                        /* نترك showPage الأصلية تعمل */
-                        return;
-                    }
-
-                    /* مطابقة النص */
-                    var text = (btn.textContent || btn.innerText || "").trim();
-                    for (var i = 0; i < navMap.length; i++) {
-                        var map = navMap[i];
-                        for (var j = 0; j < map.keywords.length; j++) {
-                            if (text.indexOf(map.keywords[j]) !== -1 && document.getElementById(map.page)) {
-                                btn.dataset.navFixed = "1";
-                                (function(pageName, btnEl) {
-                                    btnEl.addEventListener("click", function(e) {
-                                        e.preventDefault();
-                                        try {
-                                            document.querySelectorAll(".page").forEach(function(p) {
-                                                p.classList.remove("active");
-                                            });
-                                            var target = document.getElementById(pageName);
-                                            if (target) target.classList.add("active");
-                                            /* تحديث لوحة القيادة إذا كانت */
-                                            if (pageName === "dashboard" && typeof updateDashboard === "function") {
-                                                try { updateDashboard(); } catch(e) {}
-                                            }
-                                            if (pageName === "analytics" && typeof renderAnalyticsPage === "function") {
-                                                setTimeout(function() { try { renderAnalyticsPage(); } catch(e) {} }, 200);
-                                            }
-                                            if (pageName === "notes" && typeof renderNotes === "function") {
-                                                try { renderNotes(); } catch(e) {}
-                                            }
-                                        } catch(err) { console.error(err); }
-                                    });
-                                })(map.page, btn);
-                                return;
-                            }
-                        }
-                    }
-                });
-
-                /* إظهار أول صفحة (dashboard) افتراضياً */
-                if (!document.querySelector(".page.active")) {
-                    var first = document.querySelector(".page");
-                    if (first) first.classList.add("active");
+    /* 4) دالة التنقل المباشرة - لا تعتمد على أي دالة خارجية */
+    window._goToPage = function(pageName) {
+        try {
+            var pages = document.querySelectorAll(".page");
+            for (var i = 0; i < pages.length; i++) {
+                pages[i].classList.remove("active");
+                pages[i].style.display = "none";
+            }
+            var target = document.getElementById(pageName);
+            if (target) {
+                target.classList.add("active");
+                target.style.display = "block";
+            }
+            /* تحديث حالة الأزرار */
+            var navBtns = document.querySelectorAll('.navbar button');
+            for (var j = 0; j < navBtns.length; j++) {
+                navBtns[j].classList.remove("active");
+                var oc = navBtns[j].getAttribute("onclick") || "";
+                if (oc.indexOf(pageName) !== -1) {
+                    navBtns[j].classList.add("active");
                 }
-            } catch(e) { console.warn("setupNavButtons error:", e); }
-        }
-
-        /* 4) منع أي خطأ من إيقاف التطبيق */
-        window.onerror = function(msg) {
-            console.warn("تم تجاوز خطأ:", msg);
-            return true;
-        };
-
-        /* تشغيل عدة مرات */
-        document.addEventListener("DOMContentLoaded", setupNavButtons);
-        setTimeout(setupNavButtons, 300);
-        setTimeout(setupNavButtons, 1000);
-        setTimeout(setupNavButtons, 3000);
-        setTimeout(setupNavButtons, 5000);
-
-        /* إظهار أول صفحة فوراً */
-        function showFirstPage() {
+            }
+            /* محاولة استدعاء showPage الأصلية إن وُجدت */
             try {
-                if (!document.querySelector(".page.active")) {
-                    var first = document.querySelector(".page");
-                    if (first) first.classList.add("active");
+                if (typeof showPage === "function" && showPage !== window._goToPage) {
+                    showPage(pageName);
                 }
             } catch(e) {}
-        }
-        showFirstPage();
-        document.addEventListener("DOMContentLoaded", showFirstPage);
-        setTimeout(showFirstPage, 500);
-        setTimeout(showFirstPage, 2000);
+        } catch(e) { console.error(e); }
+    };
 
-        console.log("✅ تم تحميل الإصلاحات: لا جدار ناري + أزرار تنقل تعمل");
-    })();
+    /* 5) اعتراض مباشر لكل النقرات على الصفحة (event delegation) */
+    document.addEventListener("click", function(e) {
+        try {
+            /* البحث عن أقرب زر تم النقر عليه */
+            var btn = e.target.closest ? e.target.closest("button") : null;
+            if (!btn) {
+                /* fallback للقديم */
+                var el = e.target;
+                while (el && el.tagName !== "BUTTON" && el.parentElement) {
+                    el = el.parentElement;
+                }
+                btn = (el && el.tagName === "BUTTON") ? el : null;
+            }
+
+            if (!btn) return;
+
+            /* فقط أزرار التنقل في .navbar */
+            var isInNavbar = false;
+            var p = btn;
+            while (p) {
+                if (p.classList && p.classList.contains("navbar")) { isInNavbar = true; break; }
+                p = p.parentElement;
+            }
+            if (!isInNavbar) return;
+
+            /* استخراج اسم الصفحة من onclick */
+            var onclickAttr = btn.getAttribute("onclick") || "";
+            var match = onclickAttr.match(/showPage\(['"]([^'"]+)['"]\)/);
+            if (match) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                window._goToPage(match[1]);
+            }
+        } catch(err) { console.error(err); }
+    }, true); /* مرحلة الالتقاط - قبل أي شيء */
+
+    /* 6) إظهار أول صفحة فوراً */
+    function _showFirstPage() {
+        try {
+            var active = document.querySelector(".page.active");
+            if (!active) {
+                var f = document.querySelector(".page");
+                if (f) { f.classList.add("active"); f.style.display = "block"; }
+            }
+        } catch(e) {}
+    }
+
+    _showFirstPage();
+    document.addEventListener("DOMContentLoaded", _showFirstPage);
+    setTimeout(_showFirstPage, 300);
+    setTimeout(_showFirstPage, 1000);
+    setTimeout(_showFirstPage, 3000);
+
+    console.log("✅ إصلاح التنقل المحمّل");
     </script>
-    <!-- =========================================== -->
-    <!-- نهاية كود الإصلاح -->
-    <!-- =========================================== -->
 
     <style>
         .header-content { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 20px !important; }
