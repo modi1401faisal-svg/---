@@ -16,11 +16,20 @@
     /* 2) CSS احتياطي */
     document.write('<style>.page{display:none !important;}.page.active{display:block !important;}</style>');
 
-    /* 3) منع أي خطأ من إيقاف التطبيق */
-    window.onerror = function(msg) { console.warn("تجاوز:", msg); return true; };
+    /* 3) منع أي خطأ من إيقاف التطبيق - مهم جداً */
+    window.onerror = function(msg, src, line, col, err) {
+        console.warn("تجاوز خطأ:", msg);
+        return true;
+    };
 
-    /* 4) دالة التنقل المباشرة - لا تعتمد على أي دالة خارجية */
-    window._goToPage = function(pageName) {
+    /* التقاط أخطاء الـ promises غير الملتقطة */
+    window.addEventListener('unhandledrejection', function(e) {
+        console.warn("تجاوز وعد:", e.reason);
+        e.preventDefault();
+    });
+
+    /* 4) دالة showPage مستقلة - تتجاوز أي دالة معطلة في script.js */
+    window.showPage = function(pageName) {
         try {
             var pages = document.querySelectorAll(".page");
             for (var i = 0; i < pages.length; i++) {
@@ -32,7 +41,6 @@
                 target.classList.add("active");
                 target.style.display = "block";
             }
-            /* تحديث حالة الأزرار */
             var navBtns = document.querySelectorAll('.navbar button');
             for (var j = 0; j < navBtns.length; j++) {
                 navBtns[j].classList.remove("active");
@@ -41,52 +49,10 @@
                     navBtns[j].classList.add("active");
                 }
             }
-            /* محاولة استدعاء showPage الأصلية إن وُجدت */
-            try {
-                if (typeof showPage === "function" && showPage !== window._goToPage) {
-                    showPage(pageName);
-                }
-            } catch(e) {}
         } catch(e) { console.error(e); }
     };
 
-    /* 5) اعتراض مباشر لكل النقرات على الصفحة (event delegation) */
-    document.addEventListener("click", function(e) {
-        try {
-            /* البحث عن أقرب زر تم النقر عليه */
-            var btn = e.target.closest ? e.target.closest("button") : null;
-            if (!btn) {
-                /* fallback للقديم */
-                var el = e.target;
-                while (el && el.tagName !== "BUTTON" && el.parentElement) {
-                    el = el.parentElement;
-                }
-                btn = (el && el.tagName === "BUTTON") ? el : null;
-            }
-
-            if (!btn) return;
-
-            /* فقط أزرار التنقل في .navbar */
-            var isInNavbar = false;
-            var p = btn;
-            while (p) {
-                if (p.classList && p.classList.contains("navbar")) { isInNavbar = true; break; }
-                p = p.parentElement;
-            }
-            if (!isInNavbar) return;
-
-            /* استخراج اسم الصفحة من onclick */
-            var onclickAttr = btn.getAttribute("onclick") || "";
-            var match = onclickAttr.match(/showPage\(['"]([^'"]+)['"]\)/);
-            if (match) {
-                e.preventDefault();
-                e.stopImmediatePropagation();
-                window._goToPage(match[1]);
-            }
-        } catch(err) { console.error(err); }
-    }, true); /* مرحلة الالتقاط - قبل أي شيء */
-
-    /* 6) إظهار أول صفحة فوراً */
+    /* 5) إظهار أول صفحة فوراً */
     function _showFirstPage() {
         try {
             var active = document.querySelector(".page.active");
