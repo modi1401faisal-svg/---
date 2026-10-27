@@ -1074,3 +1074,382 @@ print("\nFinal file size: " + str(len(code)) + " bytes")
 
     console.log("✅ تم تحميل الإصلاحات بنجاح");
 })();
+
+/* =========================================================
+   إصلاح شامل - يُلصق في نهاية ملف script.js
+   يحل: الجدار الناري + إظهار الصفحات + الحفظ السريع + الحذف السريع
+   + ربط أزرار قسم الإخلاءات (PDF + حذف + إضافة)
+   لا يلمس الكود الأصلي - فقط يضيف فوقه طبقة إصلاح
+   ========================================================= */
+(function () {
+    "use strict";
+
+    /* ===== 1) إصلاح إظهار الصفحات ===== */
+    function ensureFirstPage() {
+        try {
+            var active = document.querySelector(".page.active");
+            if (!active) {
+                var first = document.querySelector(".page");
+                if (first) first.classList.add("active");
+            }
+            document.querySelectorAll(".page").forEach(function (p) {
+                if (p.classList.contains("active")) {
+                    p.style.display = "block";
+                } else {
+                    p.style.display = "none";
+                }
+            });
+        } catch (e) { }
+    }
+
+    ensureFirstPage();
+    document.addEventListener("DOMContentLoaded", ensureFirstPage);
+    setTimeout(ensureFirstPage, 500);
+    setTimeout(ensureFirstPage, 2000);
+
+    try {
+        var css = document.createElement("style");
+        css.innerHTML = ".page{display:none;}.page.active{display:block !important;}";
+        document.head.appendChild(css);
+    } catch (e) { }
+
+    /* ===== 2) منع رسالة الجدار الناري ===== */
+    window.html2pdf = function () {
+        return {
+            set: function () { return this; },
+            from: function () { return this; },
+            save: function () { return Promise.resolve(); }
+        };
+    };
+
+    /* ===== 3) إصلاح PDF باستخدام window.print ===== */
+    window.generatePDFFromHTML = function (content, filename, orientation, btn) {
+        if (btn) {
+            btn.disabled = true;
+            btn.setAttribute("data-old-text", btn.innerText);
+            btn.innerText = "جاري الإنشاء...";
+        }
+        try {
+            var printArea = document.getElementById("printArea");
+            if (!printArea) {
+                printArea = document.createElement("div");
+                printArea.id = "printArea";
+                document.body.appendChild(printArea);
+            }
+            printArea.innerHTML = content;
+
+            var style = document.getElementById("printStyle");
+            if (!style) {
+                style = document.createElement("style");
+                style.id = "printStyle";
+                document.head.appendChild(style);
+            }
+            style.innerHTML =
+                "@media print{" +
+                "body *{visibility:hidden !important;}" +
+                "#printArea,#printArea *{visibility:visible !important;}" +
+                "#printArea{position:absolute;left:0;top:0;width:100%;padding:15px;background:#fff;}" +
+                "table{width:100% !important;border-collapse:collapse;}" +
+                "tr{page-break-inside:avoid;}" +
+                "thead{display:table-header-group;}" +
+                "@page{margin:1cm;size:A4 " + (orientation === "landscape" ? "landscape" : "portrait") + ";}" +
+                "}" +
+                "@media screen{#printArea{display:none;}}";
+
+            var imgs = printArea.querySelectorAll("img");
+            var imgPromises = Array.from(imgs).map(function (img) {
+                if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+                return new Promise(function (resolve) {
+                    img.onload = resolve;
+                    img.onerror = resolve;
+                    setTimeout(resolve, 8000);
+                });
+            });
+
+            Promise.all(imgPromises).then(function () {
+                setTimeout(function () {
+                    try { window.print(); } catch (e) { console.error(e); }
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerText = btn.getAttribute("data-old-text");
+                    }
+                }, 300);
+            });
+        } catch (e) {
+            console.error("PDF error:", e);
+            alert("خطأ في PDF: " + (e && e.message ? e.message : e));
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = btn.getAttribute("data-old-text");
+            }
+        }
+    };
+
+    /* ===== 4) إصلاح الحفظ السريع (saveClearance) ===== */
+    window.saveClearance = async function () {
+        try {
+            var permit = (document.getElementById("clearancePermit") || {}).value || "";
+            permit = permit.trim();
+            var contractor = (document.getElementById("clearanceContractor") || {}).value || "";
+            contractor = contractor.trim();
+            var owner = (document.getElementById("clearanceOwner") || {}).value || "";
+            owner = owner.trim();
+            var location = (document.getElementById("clearanceLocation") || {}).value || "";
+            location = location.trim();
+
+            var missing = [];
+            if (!permit) missing.push("رقم التصريح");
+            if (!contractor) missing.push("اسم المقاول");
+            if (!owner) missing.push("الجهة المالكة");
+            if (!location) missing.push("الموقع");
+
+            if (missing.length > 0) {
+                alert("يرجى تعبئة:\n\n" + missing.join("\n"));
+                return;
+            }
+
+            try { setSaveBusy(true); } catch (e) { }
+
+            var images = [];
+            try {
+                var imagesEl = document.getElementById("clearanceImages");
+                var files = imagesEl ? imagesEl.files : [];
+                images = await readImages(files);
+            } catch (e) { images = []; }
+
+            var data = {
+                permit: permit,
+                contractor: contractor,
+                owner: owner,
+                location: location,
+                images: images
+            };
+
+            var isEdit = (typeof editingClearance !== "undefined") && editingClearance >= 0;
+            var oldId = null;
+
+            if (isEdit) {
+                var old = clearances[editingClearance] || {};
+                if (images.length === 0) data.images = old.images || [];
+                oldId = old.id || null;
+                data.id = oldId;
+                clearances[editingClearance] = data;
+                editingClearance = -1;
+            } else {
+                data.id = "local_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+                clearances.push(data);
+            }
+
+            try { await saveLocalData("clearances", clearances); } catch (e) { }
+            try { clearClearance(); } catch (e) { }
+            try { renderClearances(); } catch (e) { }
+            try { updateDashboard(); } catch (e) { }
+
+            alert("✅ تم حفظ رخصة الإخلاء بنجاح");
+
+            (async function () {
+                try {
+                    if (isEdit && oldId) {
+                        var ok = await dbUpdate("clearances", oldId, clearanceToRow(data));
+                        if (!ok) {
+                            var ins = await dbInsert("clearances", clearanceToRow(data));
+                            if (ins && ins.id) data.id = ins.id;
+                        }
+                    } else {
+                        var ins = await dbInsert("clearances", clearanceToRow(data));
+                        if (ins && ins.id) {
+                            data.id = ins.id;
+                            try { await saveLocalData("clearances", clearances); } catch (e) { }
+                            try { renderClearances(); } catch (e) { }
+                        }
+                    }
+                } catch (e) { console.warn("sync failed:", e); }
+            })();
+
+        } catch (error) {
+            console.error("save error:", error);
+            alert("خطأ في الحفظ: " + (error && error.message ? error.message : error));
+        } finally {
+            try { setSaveBusy(false); } catch (e) { }
+        }
+    };
+
+    /* ===== 5) إصلاح الحذف السريع (deleteClearance) ===== */
+    window.deleteClearance = async function (index, event) {
+        if (event && event.preventDefault) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        if (!confirm("حذف رخصة الإخلاء؟")) return false;
+
+        var item = clearances[index];
+        if (!item) return false;
+
+        var backup = clearances[index];
+        var backupIndex = index;
+        clearances.splice(index, 1);
+
+        try { renderClearances(); } catch (e) { }
+        try { updateDashboard(); } catch (e) { }
+        try { await saveLocalData("clearances", clearances); } catch (e) { }
+
+        if (backup && Array.isArray(backup.images)) {
+            for (var i = 0; i < backup.images.length; i++) {
+                if (isIdbRef(backup.images[i])) {
+                    try { await idbDelete(idbKeyFromRef(backup.images[i])); } catch (e) { }
+                }
+            }
+        }
+
+        if (backup && backup.id) {
+            (async function () {
+                try {
+                    var ok = await dbDelete("clearances", backup.id);
+                    if (!ok) {
+                        clearances.splice(backupIndex, 0, backup);
+                        try { await saveLocalData("clearances", clearances); } catch (e) { }
+                        try { renderClearances(); } catch (e) { }
+                        try { updateDashboard(); } catch (e) { }
+                        alert("تعذر الحذف من السحابة، تمت الاستعادة");
+                    }
+                } catch (e) {
+                    clearances.splice(backupIndex, 0, backup);
+                    try { await saveLocalData("clearances", clearances); } catch (e2) { }
+                    try { renderClearances(); } catch (e3) { }
+                    try { updateDashboard(); } catch (e4) { }
+                }
+            })();
+        }
+        return false;
+    };
+
+    /* ===== 6) اعتراض عالمي لمنع submit الافتراضي ===== */
+    document.addEventListener("click", function (e) {
+        try {
+            var target = e.target;
+            while (target && target !== document.body) {
+                if (target.tagName === "BUTTON") {
+                    if (!target.getAttribute("type")) {
+                        target.setAttribute("type", "button");
+                    }
+                    break;
+                }
+                target = target.parentElement;
+            }
+        } catch (err) { }
+    }, true);
+
+    /* ===== 7) ربط أزرار قسم الإخلاءات بشكل صريح ===== */
+    function setupClearanceButtons() {
+        try {
+            var page = document.getElementById("clearance");
+            if (!page) return;
+
+            var existing = page.querySelector('[data-clearance-actions]');
+            if (!existing) {
+                var bar = document.createElement("div");
+                bar.setAttribute("data-clearance-actions", "1");
+                bar.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;padding:10px;background:#f4f7f5;border-radius:10px;";
+
+                var btnAdd = document.createElement("button");
+                btnAdd.type = "button";
+                btnAdd.innerText = "➕ إضافة رخصة جديدة";
+                btnAdd.style.cssText = "background:#173f32;color:#fff;border:none;padding:10px 18px;border-radius:8px;cursor:pointer;font-size:14px;";
+                btnAdd.onclick = function () {
+                    try { clearClearance(); } catch (e) { }
+                    var p = document.getElementById("clearancePermit");
+                    if (p) p.focus();
+                };
+
+                var btnPDF = document.createElement("button");
+                btnPDF.type = "button";
+                btnPDF.innerText = "📄 تصدير PDF";
+                btnPDF.style.cssText = "background:#173f32;color:#fff;border:none;padding:10px 18px;border-radius:8px;cursor:pointer;font-size:14px;";
+                btnPDF.onclick = function () {
+                    if (!clearances || clearances.length === 0) {
+                        alert("لا توجد رخص إخلاء للتصدير");
+                        return;
+                    }
+                    var rows = "";
+                    clearances.forEach(function (item, index) {
+                        var imagesHTML = "";
+                        (item.images || []).forEach(function (img) {
+                            if (img && !isIdbRef(img)) {
+                                imagesHTML += '<img src="' + img + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
+                            }
+                        });
+                        if (!imagesHTML) imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
+                        rows += '<tr>' +
+                            '<td style="padding:6px 8px;border:1px solid #999;text-align:center;">' + (index + 1) + '</td>' +
+                            '<td style="padding:6px 8px;border:1px solid #999;">' + (item.permit || "") + '</td>' +
+                            '<td style="padding:6px 8px;border:1px solid #999;">' + (item.contractor || "") + '</td>' +
+                            '<td style="padding:6px 8px;border:1px solid #999;">' + (item.owner || "") + '</td>' +
+                            '<td style="padding:6px 8px;border:1px solid #999;">' + (item.location || "") + '</td>' +
+                            '<td style="padding:6px 8px;border:1px solid #999;">' + imagesHTML + '</td>' +
+                            '</tr>';
+                    });
+
+                    var content = '<div dir="rtl" style="font-family:Arial,sans-serif;">' +
+                        '<div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:12px;">' +
+                        '<h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2>' +
+                        '<h3 style="color:#333;margin:8px 0 4px;">تقرير رخص الإخلاء</h3>' +
+                        '<p style="color:#666;margin:0;font-size:12px;">إجمالي الرخص: ' + clearances.length + '</p>' +
+                        '</div>' +
+                        '<table style="width:100%;border-collapse:collapse;">' +
+                        '<thead><tr>' +
+                        '<th style="padding:8px;border:1px solid #999;background:#173f32;color:#fff;">م</th>' +
+                        '<th style="padding:8px;border:1px solid #999;background:#173f32;color:#fff;">رقم التصريح</th>' +
+                        '<th style="padding:8px;border:1px solid #999;background:#173f32;color:#fff;">اسم المقاول</th>' +
+                        '<th style="padding:8px;border:1px solid #999;background:#173f32;color:#fff;">الجهة المالكة</th>' +
+                        '<th style="padding:8px;border:1px solid #999;background:#173f32;color:#fff;">الموقع</th>' +
+                        '<th style="padding:8px;border:1px solid #999;background:#173f32;color:#fff;">الصور</th>' +
+                        '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+
+                    generatePDFFromHTML(content, "clearances.pdf", "landscape", null);
+                };
+
+                var btnExcel = document.createElement("button");
+                btnExcel.type = "button";
+                btnExcel.innerText = "📥 تصدير Excel";
+                btnExcel.style.cssText = "background:#173f32;color:#fff;border:none;padding:10px 18px;border-radius:8px;cursor:pointer;font-size:14px;";
+                btnExcel.onclick = function () {
+                    if (typeof XLSX === "undefined") {
+                        alert("مكتبة Excel لم تُحمّل بعد. حاولي بعد ثانية.");
+                        return;
+                    }
+                    if (!clearances || clearances.length === 0) {
+                        alert("لا توجد رخص للتصدير");
+                        return;
+                    }
+                    var rows = clearances.map(function (item, index) {
+                        return {
+                            "م": index + 1,
+                            "رقم التصريح": item.permit || "",
+                            "اسم المقاول": item.contractor || "",
+                            "الجهة المالكة": item.owner || "",
+                            "الموقع": item.location || "",
+                            "عدد الصور": (item.images || []).length
+                        };
+                    });
+                    var ws = XLSX.utils.json_to_sheet(rows);
+                    var wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, "رخص الإخلاء");
+                    XLSX.writeFile(wb, "رخص_الإخلاء.xlsx");
+                };
+
+                bar.appendChild(btnAdd);
+                bar.appendChild(btnPDF);
+                bar.appendChild(btnExcel);
+                page.insertBefore(bar, page.firstChild);
+            }
+        } catch (e) {
+            console.warn("setupClearanceButtons error:", e);
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", setupClearanceButtons);
+    setTimeout(setupClearanceButtons, 1000);
+    setTimeout(setupClearanceButtons, 3000);
+
+    console.log("✅ تم تحميل الإصلاحات الشاملة بنجاح");
+})();
