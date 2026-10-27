@@ -847,6 +847,91 @@ function exportPerformanceToExcel() {
     console.log("✅ تم تحميل إصلاح إظهار الصفحات");
 })();
 </script>
+<!-- ========================================================= -->
+<!-- إصلاح إظهار صفحة واحدة فقط في كل مرة -->
+<!-- ========================================================= -->
+<script>
+(function() {
+    "use strict";
 
+    /* 1) دالة showPage: تخفي الكل وتُظهر صفحة واحدة فقط */
+    window.showPage = function(pageName) {
+        try {
+            var pages = document.querySelectorAll(".page");
+            for (var i = 0; i < pages.length; i++) {
+                pages[i].classList.remove("active");
+                pages[i].style.display = "none";
+            }
+            var target = document.getElementById(pageName);
+            if (target) {
+                target.classList.add("active");
+                target.style.display = "block";
+            }
+            /* تحديث أزرار التنقل */
+            var navBtns = document.querySelectorAll('.navbar button');
+            for (var j = 0; j < navBtns.length; j++) {
+                navBtns[j].classList.remove("active");
+                var oc = navBtns[j].getAttribute("onclick") || "";
+                if (oc.indexOf(pageName) !== -1) {
+                    navBtns[j].classList.add("active");
+                }
+            }
+            window.scrollTo({top: 0, behavior: "smooth"});
+        } catch(e) { console.error(e); }
+    };
+
+    /* 2) عند تحميل الصفحة: إخفاء الكل وإظهار الأول فقط */
+    function showFirstPageOnly() {
+        try {
+            var pages = document.querySelectorAll(".page");
+            for (var i = 0; i < pages.length; i++) {
+                pages[i].classList.remove("active");
+                pages[i].style.display = "none";
+            }
+            if (pages.length > 0) {
+                pages[0].classList.add("active");
+                pages[0].style.display = "block";
+            }
+        } catch(e) {}
+    }
+
+    /* 3) اعتراض نقرات أزرار التنقل */
+    document.addEventListener("click", function(e) {
+        try {
+            var btn = e.target.closest ? e.target.closest("button") : null;
+            if (!btn) return;
+            
+            /* فقط أزرار navbar */
+            var isInNav = false;
+            var p = btn;
+            while (p) {
+                if (p.classList && p.classList.contains("navbar")) {
+                    isInNav = true;
+                    break;
+                }
+                p = p.parentElement;
+            }
+            if (!isInNav) return;
+            
+            var oc = btn.getAttribute("onclick") || "";
+            var match = oc.match(/showPage\(['"]([^'"]+)['"]\)/);
+            if (match) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                window.showPage(match[1]);
+            }
+        } catch(err) {}
+    }, true);
+
+    /* تشغيل */
+    showFirstPageOnly();
+    document.addEventListener("DOMContentLoaded", showFirstPageOnly);
+    setTimeout(showFirstPageOnly, 300);
+    setTimeout(showFirstPageOnly, 1000);
+    setTimeout(showFirstPageOnly, 3000);
+
+    console.log("✅ إصلاح صفحة واحدة فقط");
+})();
+</script>
 </body>
 </html>
