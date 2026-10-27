@@ -356,9 +356,7 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 
-<!-- ====================================================== -->
-<!-- الحفظ السريع (يحفظ محلياً فوراً، ثم يرفع للسحابة بالخلفية) -->
-<!-- ====================================================== -->
+<!-- الحفظ السريع -->
 <script>
 function safeLS(key, data) { try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) {} }
 
@@ -380,7 +378,6 @@ window.fastSaveClearance = async function() {
         clearClearance(); renderClearances(); updateDashboard();
         alert("تم حفظ الرخصة بنجاح ✅");
 
-        // رفع الصور في الخلفية
         setTimeout(async () => {
             try {
                 const images = await readImages(files);
@@ -479,9 +476,7 @@ window.fastSaveNote = async function() {
 };
 </script>
 
-<!-- ====================================================== -->
-<!-- الحذف السريع (يحذف محلياً فوراً، ثم يحذف من السحابة بالخلفية) -->
-<!-- ====================================================== -->
+<!-- الحذف السريع -->
 <script>
 document.addEventListener('click', function(e) {
     const btn = e.target.closest('.delete');
@@ -511,7 +506,6 @@ document.addEventListener('click', function(e) {
             row.remove();
             updateDashboard();
 
-            // حذف من السحابة في الخلفية
             setTimeout(async () => {
                 try {
                     if (item && item.id && typeof initSupabase === 'function') {
@@ -525,9 +519,7 @@ document.addEventListener('click', function(e) {
 });
 </script>
 
-<!-- ====================================================== -->
 <!-- عرض الملاحظات المصنفة -->
-<!-- ====================================================== -->
 <script>
 window.renderNotes = function() {
     const tbody = document.getElementById('notesTable'); if (!tbody) return;
@@ -562,9 +554,7 @@ window.showPage = function(pageId) {
 document.addEventListener("DOMContentLoaded", renderNotes);
 </script>
 
-<!-- ====================================================== -->
-<!-- تصدير PDF (النسخة المستقرة - تعمل على الجوال واللابتوب) -->
-<!-- ====================================================== -->
+<!-- تصدير PDF -->
 <script>
 function getPDFScale() {
     var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -656,9 +646,7 @@ async function exportNotesToPDF() {
 }
 </script>
 
-<!-- ====================================================== -->
 <!-- لوحة القيادة التنفيذية -->
-<!-- ====================================================== -->
 <script>
 var analyticsCharts = {};
 function renderAnalyticsPage() {
@@ -732,9 +720,7 @@ function exportAnalyticsToPDF() {
 }
 </script>
 
-<!-- ====================================================== -->
 <!-- تصنيف المقاولين -->
-<!-- ====================================================== -->
 <script>
 var perfChartInterval = setInterval(function() {
     if (typeof Chart === 'undefined' || typeof clearances === 'undefined' || typeof notes === 'undefined') return; clearInterval(perfChartInterval);
