@@ -6,70 +6,14 @@
     <title>نظام مختبر جودة المشاريع</title>
     <link rel="stylesheet" href="style.css">
 
-    <!-- ====== إصلاحات قوية: تنقل يعمل دائماً + لا جدار ناري ====== -->
+    <!-- ====== إصلاح مبكر: تعطيل html2pdf + CSS احتياطي ====== -->
     <script>
-    /* 1) تعطيل html2pdf - يمنع رسالة الجدار الناري */
     window.html2pdf = window.html2pdf || function() {
         return { set: function(){return this;}, from: function(){return this;}, save: function(){return Promise.resolve();} };
     };
-
-    /* 2) CSS احتياطي */
     document.write('<style>.page{display:none !important;}.page.active{display:block !important;}</style>');
-
-    /* 3) منع أي خطأ من إيقاف التطبيق - مهم جداً */
-    window.onerror = function(msg, src, line, col, err) {
-        console.warn("تجاوز خطأ:", msg);
-        return true;
-    };
-
-    /* التقاط أخطاء الـ promises غير الملتقطة */
-    window.addEventListener('unhandledrejection', function(e) {
-        console.warn("تجاوز وعد:", e.reason);
-        e.preventDefault();
-    });
-
-    /* 4) دالة showPage مستقلة - تتجاوز أي دالة معطلة في script.js */
-    window.showPage = function(pageName) {
-        try {
-            var pages = document.querySelectorAll(".page");
-            for (var i = 0; i < pages.length; i++) {
-                pages[i].classList.remove("active");
-                pages[i].style.display = "none";
-            }
-            var target = document.getElementById(pageName);
-            if (target) {
-                target.classList.add("active");
-                target.style.display = "block";
-            }
-            var navBtns = document.querySelectorAll('.navbar button');
-            for (var j = 0; j < navBtns.length; j++) {
-                navBtns[j].classList.remove("active");
-                var oc = navBtns[j].getAttribute("onclick") || "";
-                if (oc.indexOf(pageName) !== -1) {
-                    navBtns[j].classList.add("active");
-                }
-            }
-        } catch(e) { console.error(e); }
-    };
-
-    /* 5) إظهار أول صفحة فوراً */
-    function _showFirstPage() {
-        try {
-            var active = document.querySelector(".page.active");
-            if (!active) {
-                var f = document.querySelector(".page");
-                if (f) { f.classList.add("active"); f.style.display = "block"; }
-            }
-        } catch(e) {}
-    }
-
-    _showFirstPage();
-    document.addEventListener("DOMContentLoaded", _showFirstPage);
-    setTimeout(_showFirstPage, 300);
-    setTimeout(_showFirstPage, 1000);
-    setTimeout(_showFirstPage, 3000);
-
-    console.log("✅ إصلاح التنقل المحمّل");
+    window.onerror = function(msg, src, line, col, err) { console.warn("تجاوز خطأ:", msg); return true; };
+    window.addEventListener('unhandledrejection', function(e) { console.warn("تجاوز وعد:", e.reason); e.preventDefault(); });
     </script>
 
     <style>
@@ -328,7 +272,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="script.js?v=100"></script>
+<script src="script.js?v=101"></script>
 
 <!-- إيقاف الأنيميشن لتسريع الجوال -->
 <script>
@@ -516,7 +460,7 @@ document.addEventListener('click', function(e) {
             }, 50);
         }
     } catch (err) { console.error("Delete error:", err); }
-});
+}, true);
 </script>
 
 <!-- عرض الملاحظات المصنفة -->
@@ -545,12 +489,6 @@ window.renderNotes = function() {
     tbody.innerHTML = html;
     if (typeof resolveIdbImages === 'function') resolveIdbImages();
 };
-const originalShowPageNotes = window.showPage;
-window.showPage = function(pageId) {
-    if (originalShowPageNotes) originalShowPageNotes(pageId);
-    if (pageId === 'notes') renderNotes();
-    if (pageId === 'analytics') setTimeout(renderAnalyticsPage, 300);
-};
 document.addEventListener("DOMContentLoaded", renderNotes);
 </script>
 
@@ -577,7 +515,6 @@ async function getImgSrc(ref) {
 }
 
 async function exportClearancesToPDF() {
-    if (typeof html2pdf === 'undefined') { alert("جاري تحميل مكتبة PDF..."); return; }
     if (clearances.length === 0) { alert("لا توجد بيانات"); return; }
     try {
         var rows = "";
@@ -594,55 +531,88 @@ async function exportClearancesToPDF() {
             rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+(i+1)+'</td><td style="border:1px solid #999;padding:6px;">'+(item.permit||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.contractor||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.owner||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.location||"")+'</td><td style="border:1px solid #999;padding:6px;">'+imagesHTML+'</td></tr>';
         }
         var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير رخص الإخلاءات</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة المالكة</th><th style="padding:8px;border:1px solid #999;">الموقع</th><th style="padding:8px;border:1px solid #999;">الصور</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-        html2pdf().set({ margin: 10, filename: 'تقرير_رخص_الإخلاءات.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, windowWidth: 1200, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
+        
+        /* استخدام window.print بدلاً من html2pdf */
+        var printArea = document.getElementById("printArea");
+        if (!printArea) { printArea = document.createElement("div"); printArea.id = "printArea"; document.body.appendChild(printArea); }
+        printArea.innerHTML = content;
+        var style = document.getElementById("printStyle");
+        if (!style) { style = document.createElement("style"); style.id = "printStyle"; document.head.appendChild(style); }
+        style.innerHTML = "@media print{body *{visibility:hidden !important;}#printArea,#printArea *{visibility:visible !important;}#printArea{position:absolute;left:0;top:0;width:100%;padding:15px;background:#fff;}table{width:100% !important;border-collapse:collapse;}th{background:#173f32 !important;color:#fff !important;-webkit-print-color-adjust:exact;}td,th{padding:6px;border:1px solid #999;}}@media screen{#printArea{display:none;}}";
+        setTimeout(function() { window.print(); }, 500);
     } catch(err) { alert("خطأ: " + err.message); }
 }
 
 async function exportEmergenciesToPDF() {
-    if (typeof html2pdf === 'undefined') { alert("جاري تحميل مكتبة PDF..."); return; }
     if (emergencies.length === 0) { alert("لا توجد بيانات"); return; }
     try {
         var rows = "";
         for (var i = 0; i < emergencies.length; i++) {
             var item = emergencies[i];
-            var imagesHTML = "";
-            if (item.images && item.images.length > 0) {
-                for (var j = 0; j < item.images.length; j++) {
-                    var src = await getImgSrc(item.images[j]);
-                    if (src) imagesHTML += '<img src="' + src + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
-                }
-            }
-            if (!imagesHTML) imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
-            rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+(i+1)+'</td><td style="border:1px solid #999;padding:6px;">'+(item.permit||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.contractor||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.owner||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+(item.labReceive||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+(item.start||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+(item.end||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.location||"")+'</td><td style="border:1px solid #999;padding:6px;">'+imagesHTML+'</td></tr>';
+            rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+(i+1)+'</td><td style="border:1px solid #999;padding:6px;">'+(item.permit||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.contractor||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.owner||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+(item.labReceive||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+(item.start||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+(item.end||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.location||"")+'</td></tr>';
         }
-        var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير رخص الطوارئ</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة المالكة</th><th style="padding:8px;border:1px solid #999;">استلام المختبر</th><th style="padding:8px;border:1px solid #999;">بداية العمل</th><th style="padding:8px;border:1px solid #999;">انتهاء العمل</th><th style="padding:8px;border:1px solid #999;">الموقع</th><th style="padding:8px;border:1px solid #999;">الصور</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-        html2pdf().set({ margin: 10, filename: 'تقرير_رخص_الطوارئ.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, windowWidth: 1200, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
+        var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير رخص الطوارئ</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة المالكة</th><th style="padding:8px;border:1px solid #999;">استلام المختبر</th><th style="padding:8px;border:1px solid #999;">بداية العمل</th><th style="padding:8px;border:1px solid #999;">انتهاء العمل</th><th style="padding:8px;border:1px solid #999;">الموقع</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+        
+        var printArea = document.getElementById("printArea");
+        if (!printArea) { printArea = document.createElement("div"); printArea.id = "printArea"; document.body.appendChild(printArea); }
+        printArea.innerHTML = content;
+        var style = document.getElementById("printStyle");
+        if (!style) { style = document.createElement("style"); style.id = "printStyle"; document.head.appendChild(style); }
+        style.innerHTML = "@media print{body *{visibility:hidden !important;}#printArea,#printArea *{visibility:visible !important;}#printArea{position:absolute;left:0;top:0;width:100%;padding:15px;background:#fff;}table{width:100% !important;border-collapse:collapse;}th{background:#173f32 !important;color:#fff !important;-webkit-print-color-adjust:exact;}td,th{padding:6px;border:1px solid #999;}}@media screen{#printArea{display:none;}}";
+        setTimeout(function() { window.print(); }, 500);
     } catch(err) { alert("خطأ: " + err.message); }
 }
 
 async function exportNotesToPDF() {
-    if (typeof html2pdf === 'undefined') { alert("جاري تحميل مكتبة PDF..."); return; }
     if (notes.length === 0) { alert("لا توجد بيانات"); return; }
     try {
         var rows = "";
         for (var i = 0; i < notes.length; i++) {
             var item = notes[i];
-            var imagesHTML = "";
-            if (item.before) {
-                var bSrc = await getImgSrc(item.before);
-                if (bSrc) imagesHTML += '<img src="'+bSrc+'" style="width:50px;height:50px;border-radius:4px;margin:2px;">';
-            }
-            if (item.after) {
-                var aSrc = await getImgSrc(item.after);
-                if (aSrc) imagesHTML += '<img src="'+aSrc+'" style="width:50px;height:50px;border-radius:4px;margin:2px;">';
-            }
-            if (!imagesHTML) imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
             var status = item.completed ? "تم التعديل" : (typeof isLate==='function'&&isLate(item)?"متأخرة":"قيد المتابعة");
-            rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+(i+1)+'</td><td style="border:1px solid #999;padding:6px;">'+(item.type||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.date||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.permit||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.contractor||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.owner||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.reason||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.action||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+status+'</td><td style="border:1px solid #999;padding:6px;">'+imagesHTML+'</td></tr>';
+            rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+(i+1)+'</td><td style="border:1px solid #999;padding:6px;">'+(item.type||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.date||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.permit||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.contractor||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.owner||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.reason||"")+'</td><td style="border:1px solid #999;padding:6px;">'+(item.action||"")+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+status+'</td></tr>';
         }
-        var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير الملاحظات</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">التصنيف</th><th style="padding:8px;border:1px solid #999;">التاريخ</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة المالكة</th><th style="padding:8px;border:1px solid #999;">أسباب الرفض</th><th style="padding:8px;border:1px solid #999;">الإجراء المتخذ</th><th style="padding:8px;border:1px solid #999;">الحالة</th><th style="padding:8px;border:1px solid #999;">الصور</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-        html2pdf().set({ margin: 10, filename: 'تقرير_الملاحظات.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, windowWidth: 1200, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
+        var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير الملاحظات</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">التصنيف</th><th style="padding:8px;border:1px solid #999;">التاريخ</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة المالكة</th><th style="padding:8px;border:1px solid #999;">أسباب الرفض</th><th style="padding:8px;border:1px solid #999;">الإجراء المتخذ</th><th style="padding:8px;border:1px solid #999;">الحالة</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+        
+        var printArea = document.getElementById("printArea");
+        if (!printArea) { printArea = document.createElement("div"); printArea.id = "printArea"; document.body.appendChild(printArea); }
+        printArea.innerHTML = content;
+        var style = document.getElementById("printStyle");
+        if (!style) { style = document.createElement("style"); style.id = "printStyle"; document.head.appendChild(style); }
+        style.innerHTML = "@media print{body *{visibility:hidden !important;}#printArea,#printArea *{visibility:visible !important;}#printArea{position:absolute;left:0;top:0;width:100%;padding:15px;background:#fff;}table{width:100% !important;border-collapse:collapse;}th{background:#173f32 !important;color:#fff !important;-webkit-print-color-adjust:exact;}td,th{padding:6px;border:1px solid #999;}}@media screen{#printArea{display:none;}}";
+        setTimeout(function() { window.print(); }, 500);
     } catch(err) { alert("خطأ: " + err.message); }
+}
+
+function exportAnalyticsToPDF() {
+    var data = getAnalyticsData(); if (!data) return alert("لا توجد بيانات");
+    var chartImg = ""; var ctx1 = document.getElementById('complianceGaugeChart'); if (ctx1) chartImg = '<div style="text-align:center; margin-bottom:15px;"><img src="' + ctx1.toDataURL('image/png') + '" style="max-width:300px; height:auto;"></div>';
+    var rows = ""; if (data.lateNotes.length === 0) rows = '<tr><td colspan="7" style="text-align:center; padding:10px;">لا توجد ملاحظات طارئة حالياً ✅</td></tr>';
+    else data.lateNotes.forEach(function(n, i) { var days = (typeof daysPassed === 'function') ? daysPassed(n.date) : 0; rows += '<tr><td style="text-align:center; border:1px solid #999; padding:6px;">' + (i + 1) + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + (n.date || "") + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + (n.permit || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (n.contractor || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (n.type || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (n.reason || "") + '</td><td style="text-align:center; border:1px solid #999; padding:6px; color:#b3402a; font-weight:bold;">' + days + ' يوم</td></tr>'; });
+    var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">لوحة المؤشرات والإحصائيات</h3></div><div style="display:flex;justify-content:space-around;margin-bottom:20px;"><div style="text-align:center;background:#f4f7f5;padding:15px;border-radius:8px;border:1px solid #ccc;"><h4>رخص الإخلاء</h4><h2 style="color:#245c49;margin:0;">'+data.totals["رخص الإخلاء"]+'</h2></div><div style="text-align:center;background:#f4f7f5;padding:15px;border-radius:8px;border:1px solid #ccc;"><h4>رخص الطوارئ</h4><h2 style="color:#245c49;margin:0;">'+data.totals["رخص الطوارئ"]+'</h2></div><div style="text-align:center;background:#f4f7f5;padding:15px;border-radius:8px;border:1px solid #ccc;"><h4>إجمالي الملاحظات</h4><h2 style="color:#245c49;margin:0;">'+data.totals["إجمالي الملاحظات"]+'</h2></div><div style="text-align:center;background:#fff0f0;padding:15px;border-radius:8px;border:1px solid #b3402a;"><h4>ملاحظات طارئة</h4><h2 style="color:#b3402a;margin:0;">'+data.totals["ملاحظات طارئة"]+'</h2></div></div>'+chartImg+'<h3 style="color:#b3402a;border-bottom:2px solid #b3402a;padding-bottom:5px;">🚨 ملاحظات طارئة تتطلب تدخلاً فورياً</h3><table style="width:100%;border-collapse:collapse;margin-top:10px;"><thead><tr style="background:#b3402a;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">التاريخ</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة</th><th style="padding:8px;border:1px solid #999;">سبب الرفض</th><th style="padding:8px;border:1px solid #999;">مضى</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    
+    var printArea = document.getElementById("printArea");
+    if (!printArea) { printArea = document.createElement("div"); printArea.id = "printArea"; document.body.appendChild(printArea); }
+    printArea.innerHTML = content;
+    var style = document.getElementById("printStyle");
+    if (!style) { style = document.createElement("style"); style.id = "printStyle"; document.head.appendChild(style); }
+    style.innerHTML = "@media print{body *{visibility:hidden !important;}#printArea,#printArea *{visibility:visible !important;}#printArea{position:absolute;left:0;top:0;width:100%;padding:15px;background:#fff;}table{width:100% !important;border-collapse:collapse;}th{background:#173f32 !important;color:#fff !important;-webkit-print-color-adjust:exact;}td,th{padding:6px;border:1px solid #999;}}@media screen{#printArea{display:none;}}";
+    setTimeout(function() { window.print(); }, 500);
+}
+
+function exportPerformanceToPDF() {
+    var data = getPerformanceDataArray(); if (data.length === 0) { alert("لا توجد بيانات للتصدير"); return; }
+    var rows = "";
+    data.forEach(function(item) { var color = item["التصنيف"].includes("A") ? "#24704d" : item["التصنيف"].includes("B") ? "#5d7066" : item["التصنيف"].includes("C") ? "#8a6d3b" : "#a33f3f"; rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["م"]+'</td><td style="border:1px solid #999;padding:6px;">'+item["اسم المقاول"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["إجمالي التصاريح"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["إجمالي الملاحظات"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["نسبة الأخطاء (%)"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;color:'+color+';font-weight:bold;">'+item["التصنيف"]+'</td></tr>'; });
+    var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير تصنيف أداء المقاولين</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">التصاريح</th><th style="padding:8px;border:1px solid #999;">الملاحظات</th><th style="padding:8px;border:1px solid #999;">نسبة الأخطاء</th><th style="padding:8px;border:1px solid #999;">التصنيف</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    
+    var printArea = document.getElementById("printArea");
+    if (!printArea) { printArea = document.createElement("div"); printArea.id = "printArea"; document.body.appendChild(printArea); }
+    printArea.innerHTML = content;
+    var style = document.getElementById("printStyle");
+    if (!style) { style = document.createElement("style"); style.id = "printStyle"; document.head.appendChild(style); }
+    style.innerHTML = "@media print{body *{visibility:hidden !important;}#printArea,#printArea *{visibility:visible !important;}#printArea{position:absolute;left:0;top:0;width:100%;padding:15px;background:#fff;}table{width:100% !important;border-collapse:collapse;}th{background:#173f32 !important;color:#fff !important;-webkit-print-color-adjust:exact;}td,th{padding:6px;border:1px solid #999;}}@media screen{#printArea{display:none;}}";
+    setTimeout(function() { window.print(); }, 500);
 }
 </script>
 
@@ -693,7 +663,7 @@ function renderAnalyticsPage() {
     notes.forEach(function(n) { var q = getQuarter(n.date); if (q !== -1) { totalAnnual.notes++; if (q === 1) q1.notes++; else if (q === 2) q2.notes++; else if (q === 3) q3.notes++; else q4.notes++; } });
     var annualTable = document.getElementById('annualStatsTable');
     if (annualTable) {
-        annualTable.innerHTML = '<tr style="background: #f8fbga;"><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold;">رخص الإخلاء</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q1.clearance+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q2.clearance+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q3.clearance+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q4.clearance+'</td><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold; color: #245c49;">'+totalAnnual.clearance+'</td></tr><tr style="background: #fff;"><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold;">رخص الطوارئ</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q1.emergency+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q2.emergency+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q3.emergency+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q4.emergency+'</td><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold; color: #245c49;">'+totalAnnual.emergency+'</td></tr><tr style="background: #f8fbga;"><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold;">الملاحظات</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q1.notes+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q2.notes+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q3.notes+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q4.notes+'</td><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold; color: #245c49;">'+totalAnnual.notes+'</td></tr>';
+        annualTable.innerHTML = '<tr><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold;">رخص الإخلاء</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q1.clearance+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q2.clearance+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q3.clearance+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q4.clearance+'</td><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold; color: #245c49;">'+totalAnnual.clearance+'</td></tr><tr style="background: #fff;"><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold;">رخص الطوارئ</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q1.emergency+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q2.emergency+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q3.emergency+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q4.emergency+'</td><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold; color: #245c49;">'+totalAnnual.emergency+'</td></tr><tr><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold;">الملاحظات</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q1.notes+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q2.notes+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q3.notes+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q4.notes+'</td><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold; color: #245c49;">'+totalAnnual.notes+'</td></tr>';
     }
 }
 setTimeout(renderAnalyticsPage, 1500);
@@ -709,14 +679,6 @@ function exportAnalyticsToExcel() {
     var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws1, "المؤشرات الإجمالية");
     if (data.lateNotes.length > 0) { var notesData = data.lateNotes.map(function(n, i) { return { "م": i + 1, "التاريخ": n.date || "", "رقم التصريح": n.permit || "", "المقاول": n.contractor || "", "الجهة": n.type || "", "سبب الرفض": n.reason || "", "مضى (أيام)": (typeof daysPassed === 'function') ? daysPassed(n.date) : 0 }; }); var ws2 = XLSX.utils.json_to_sheet(notesData); ws2["!cols"] = [{ wch: 5 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 30 }, { wch: 10 }]; XLSX.utils.book_append_sheet(wb, ws2, "الملاحظات الطارئة"); }
     if (!wb.Workbook) wb.Workbook = {}; if (!wb.Workbook.Views) wb.Workbook.Views = []; wb.Workbook.Views.push({ RTL: true }); XLSX.writeFile(wb, "تقرير_المؤشرات_والإحصائيات.xlsx");
-}
-function exportAnalyticsToPDF() {
-    if (typeof html2pdf === 'undefined') return alert("جاري تحميل مكتبة PDF..."); var data = getAnalyticsData(); if (!data) return alert("لا توجد بيانات");
-    var chartImg = ""; var ctx1 = document.getElementById('complianceGaugeChart'); if (ctx1) chartImg = '<div style="text-align:center; margin-bottom:15px;"><img src="' + ctx1.toDataURL('image/png') + '" style="max-width:300px; height:auto;"></div>';
-    var rows = ""; if (data.lateNotes.length === 0) rows = '<tr><td colspan="7" style="text-align:center; padding:10px;">لا توجد ملاحظات طارئة حالياً ✅</td></tr>';
-    else data.lateNotes.forEach(function(n, i) { var days = (typeof daysPassed === 'function') ? daysPassed(n.date) : 0; rows += '<tr><td style="text-align:center; border:1px solid #999; padding:6px;">' + (i + 1) + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + (n.date || "") + '</td><td style="text-align:center; border:1px solid #999; padding:6px;">' + (n.permit || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (n.contractor || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (n.type || "") + '</td><td style="border:1px solid #999; padding:6px;">' + (n.reason || "") + '</td><td style="text-align:center; border:1px solid #999; padding:6px; color:#b3402a; font-weight:bold;">' + days + ' يوم</td></tr>'; });
-    var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">لوحة المؤشرات والإحصائيات</h3></div><div style="display:flex;justify-content:space-around;margin-bottom:20px;"><div style="text-align:center;background:#f4f7f5;padding:15px;border-radius:8px;border:1px solid #ccc;"><h4>رخص الإخلاء</h4><h2 style="color:#245c49;margin:0;">'+data.totals["رخص الإخلاء"]+'</h2></div><div style="text-align:center;background:#f4f7f5;padding:15px;border-radius:8px;border:1px solid #ccc;"><h4>رخص الطوارئ</h4><h2 style="color:#245c49;margin:0;">'+data.totals["رخص الطوارئ"]+'</h2></div><div style="text-align:center;background:#f4f7f5;padding:15px;border-radius:8px;border:1px solid #ccc;"><h4>إجمالي الملاحظات</h4><h2 style="color:#245c49;margin:0;">'+data.totals["إجمالي الملاحظات"]+'</h2></div><div style="text-align:center;background:#fff0f0;padding:15px;border-radius:8px;border:1px solid #b3402a;"><h4>ملاحظات طارئة</h4><h2 style="color:#b3402a;margin:0;">'+data.totals["ملاحظات طارئة"]+'</h2></div></div>'+chartImg+'<h3 style="color:#b3402a;border-bottom:2px solid #b3402a;padding-bottom:5px;">🚨 ملاحظات طارئة تتطلب تدخلاً فورياً</h3><table style="width:100%;border-collapse:collapse;margin-top:10px;"><thead><tr style="background:#b3402a;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">التاريخ</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة</th><th style="padding:8px;border:1px solid #999;">سبب الرفض</th><th style="padding:8px;border:1px solid #999;">مضى</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-    html2pdf().set({ margin: 10, filename: 'تقرير_المؤشرات_والإحصائيات.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, windowWidth: 1200, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
 }
 </script>
 
@@ -752,27 +714,62 @@ function exportPerformanceToExcel() {
     var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "تصنيف المقاولين");
     if (!wb.Workbook) wb.Workbook = {}; if (!wb.Workbook.Views) wb.Workbook.Views = []; wb.Workbook.Views.push({ RTL: true }); XLSX.writeFile(wb, "تقرير_تصنيف_المقاولين.xlsx");
 }
-function exportPerformanceToPDF() {
-    if (typeof html2pdf === 'undefined') return alert("جاري تحميل مكتبة PDF..."); var data = getPerformanceDataArray(); if (data.length === 0) { alert("لا توجد بيانات للتصدير"); return; }
-    var barChartImg = ""; var barCanvas = document.getElementById('contractorBarChart'); if (barCanvas) barChartImg = '<div style="text-align:center; margin-bottom:15px;"><h3 style="color:#1d4d3d;">مقارنة التصاريح بالملاحظات</h3><img src="' + barCanvas.toDataURL('image/png') + '" style="max-width:100%; height:auto;"></div>';
-    var pieChartImg = ""; var pieCanvas = document.getElementById('classificationPieChart'); if (pieCanvas) pieChartImg = '<div style="text-align:center; margin-bottom:15px;"><h3 style="color:#1d4d3d;">توزيع تصنيف المقاولين</h3><img src="' + pieCanvas.toDataURL('image/png') + '" style="max-width:300px; height:auto;"></div>';
-    var rows = "";
-    data.forEach(function(item) { var color = item["التصنيف"].includes("A") ? "#24704d" : item["التصنيف"].includes("B") ? "#5d7066" : item["التصنيف"].includes("C") ? "#8a6d3b" : "#a33f3f"; rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["م"]+'</td><td style="border:1px solid #999;padding:6px;">'+item["اسم المقاول"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["إجمالي التصاريح"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["إجمالي الملاحظات"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["نسبة الأخطاء (%)"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;color:'+color+';font-weight:bold;">'+item["التصنيف"]+'</td></tr>'; });
-    var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير تصنيف أداء المقاولين</h3></div><div style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:10px;margin-bottom:20px;"><div style="flex:2;min-width:300px;">'+barChartImg+'</div><div style="flex:1;min-width:200px;">'+pieChartImg+'</div></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">التصاريح</th><th style="padding:8px;border:1px solid #999;">الملاحظات</th><th style="padding:8px;border:1px solid #999;">نسبة الأخطاء</th><th style="padding:8px;border:1px solid #999;">التصنيف</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
-    html2pdf().set({ margin: 10, filename: 'تقرير_تصنيف_المقاولين.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, windowWidth: 1200, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
-}
 </script>
 
-</body>
-    <!-- ========================================================= -->
-<!-- إصلاح نهائي: إظهار الصفحات + تنقل يعمل بدون script.js -->
 <!-- ========================================================= -->
+<!-- الإصلاح النهائي: إجبار الصفحات على الظهور + تنقل يعمل -->
+<!-- ========================================================= -->
+<style>
+.page { display: none !important; }
+.page.active { display: block !important; }
+</style>
 <script>
 (function() {
     "use strict";
 
-    /* 1) إظهار أول صفحة فوراً قبل أي شيء */
-    function showFirstPageNow() {
+    /* 1) دالة showPage مستقلة - لا تعتمد على script.js */
+    function myShowPage(pageName) {
+        try {
+            var pages = document.querySelectorAll(".page");
+            for (var i = 0; i < pages.length; i++) {
+                pages[i].classList.remove("active");
+                pages[i].style.display = "none";
+            }
+            var target = document.getElementById(pageName);
+            if (target) {
+                target.classList.add("active");
+                target.style.display = "block";
+                target.style.visibility = "visible";
+                target.style.opacity = "1";
+                target.style.height = "auto";
+                target.style.overflow = "visible";
+                target.style.position = "static";
+            }
+            var navBtns = document.querySelectorAll('.navbar button');
+            for (var j = 0; j < navBtns.length; j++) {
+                navBtns[j].classList.remove("active");
+                var oc = navBtns[j].getAttribute("onclick") || "";
+                if (oc.indexOf(pageName) !== -1) {
+                    navBtns[j].classList.add("active");
+                }
+            }
+            window.scrollTo({top: 0, behavior: "smooth"});
+        } catch(e) { console.error(e); }
+    }
+
+    /* 2) تعريف showPage بشكل لا يمكن تجاوزه */
+    try {
+        Object.defineProperty(window, "showPage", {
+            value: myShowPage,
+            writable: false,
+            configurable: false
+        });
+    } catch(e) {
+        window.showPage = myShowPage;
+    }
+
+    /* 3) إظهار أول صفحة فوراً */
+    function showFirstPage() {
         try {
             var pages = document.querySelectorAll(".page");
             var hasActive = false;
@@ -784,323 +781,72 @@ function exportPerformanceToPDF() {
             }
             if (!hasActive && pages.length > 0) {
                 pages[0].classList.add("active");
-                pages[0].style.display = "block";
             }
-            /* ضمان أن كل الصفحات المخفية لها display:none */
-            for (var j = 0; j < pages.length; j++) {
-                if (!pages[j].classList.contains("active")) {
-                    pages[j].style.display = "none";
-                } else {
-                    pages[j].style.display = "block";
-                }
-            }
-        } catch(e) { console.warn(e); }
+        } catch(e) {}
     }
 
-    /* 2) تعريف showPage بشكل مستقل */
-    window.showPage = function(pageName) {
+    /* 4) إجبار الصفحات على الظهور كل 100 ميلي ثانية */
+    function forcePagesVisible() {
         try {
             var pages = document.querySelectorAll(".page");
             for (var i = 0; i < pages.length; i++) {
-                pages[i].classList.remove("active");
-                pages[i].style.display = "none";
-            }
-            var target = document.getElementById(pageName);
-            if (target) {
-                target.classList.add("active");
-                target.style.display = "block";
-            }
-            /* تحديث حالة أزرار التنقل */
-            var navBtns = document.querySelectorAll('.navbar button');
-            for (var j = 0; j < navBtns.length; j++) {
-                navBtns[j].classList.remove("active");
-                var oc = navBtns[j].getAttribute("onclick") || "";
-                if (oc.indexOf("'" + pageName + "'") !== -1 || oc.indexOf('"' + pageName + '"') !== -1) {
-                    navBtns[j].classList.add("active");
+                if (pages[i].classList.contains("active")) {
+                    pages[i].style.display = "block";
+                    pages[i].style.visibility = "visible";
+                    pages[i].style.opacity = "1";
+                } else {
+                    pages[i].style.display = "none";
                 }
             }
-        } catch(e) { console.error(e); }
-    };
-
-    /* 3) ربط أزرار التنقل إجبارياً */
-    function bindNavButtons() {
-        try {
-            var navBtns = document.querySelectorAll('.navbar button');
-            for (var i = 0; i < navBtns.length; i++) {
-                if (navBtns[i].dataset.bound === "1") continue;
-                navBtns[i].dataset.bound = "1";
-                navBtns[i].addEventListener("click", function(e) {
-                    var oc = this.getAttribute("onclick") || "";
-                    var match = oc.match(/showPage\(['"]([^'"]+)['"]\)/);
-                    if (match) {
-                        e.preventDefault();
-                        e.stopImmediatePropagation();
-                        window.showPage(match[1]);
-                    }
-                });
-            }
         } catch(e) {}
     }
 
-    /* 4) ربط أزرار note-types */
-    function bindNoteTypeButtons() {
-        try {
-            var noteBtns = document.querySelectorAll('.note-types button');
-            for (var i = 0; i < noteBtns.length; i++) {
-                if (noteBtns[i].dataset.bound === "1") continue;
-                noteBtns[i].dataset.bound = "1";
-                noteBtns[i].addEventListener("click", function(e) {
-                    var type = this.textContent.trim();
-                    var noteType = document.getElementById("noteType");
-                    if (noteType) noteType.value = type;
-                    /* تحديث active */
-                    document.querySelectorAll('.note-types button').forEach(function(b) {
-                        b.classList.remove("active");
-                    });
-                    this.classList.add("active");
-                });
-            }
-        } catch(e) {}
-    }
-
-    /* 5) ربط زر البحث */
-    function bindSearchButtons() {
-        try {
-            var searchBtn = document.querySelector('#clearance .search-row button.btn-primary');
-            if (searchBtn && searchBtn.dataset.bound !== "1") {
-                searchBtn.dataset.bound = "1";
-                searchBtn.addEventListener("click", function() {
-                    var q = (document.getElementById("clearanceSearch") || {}).value || "";
-                    q = q.trim().toLowerCase();
-                    if (!q) return;
-                    var tbody = document.getElementById("clearanceTable");
-                    if (!tbody || typeof clearances === "undefined") return;
-                    var html = "";
-                    var count = 0;
-                    clearances.forEach(function(item) {
-                        if (String(item.permit||"").toLowerCase().indexOf(q) !== -1) {
-                            count++;
-                            html += '<tr><td>' + (item.permit||"") + '</td><td>' + (item.contractor||"") + '</td><td>' + (item.owner||"") + '</td><td>' + (item.location||"") + '</td><td>صور</td><td><button class="edit">تعديل</button> <button class="delete">حذف</button></td></tr>';
-                        }
-                    });
-                    if (count === 0) html = '<tr><td colspan="6">لا توجد نتائج</td></tr>';
-                    tbody.innerHTML = html;
-                });
-            }
-        } catch(e) {}
-    }
-
-    /* 6) ربط زر تفريغ البحث */
-    function bindClearSearchButtons() {
-        try {
-            var clearBtn = document.querySelector('#clearance .search-row button.btn-secondary');
-            if (clearBtn && clearBtn.dataset.bound !== "1") {
-                clearBtn.dataset.bound = "1";
-                clearBtn.addEventListener("click", function() {
-                    var inp = document.getElementById("clearanceSearch");
-                    if (inp) inp.value = "";
-                    if (typeof renderClearances === "function") renderClearances();
-                });
-            }
-        } catch(e) {}
-    }
-
-    /* 7) ربط أزرار الحفظ */
-    function bindSaveButtons() {
-        try {
-            var saveBtns = document.querySelectorAll('button.btn-primary');
-            saveBtns.forEach(function(btn) {
-                if (btn.dataset.bound === "1") return;
-                var txt = btn.textContent.trim();
-                if (txt.indexOf("حفظ") !== -1) {
-                    btn.dataset.bound = "1";
-                    btn.addEventListener("click", function(e) {
-                        e.preventDefault();
-                        if (txt.indexOf("رخصة") !== -1 && typeof fastSaveClearance === "function") fastSaveClearance();
-                        else if (txt.indexOf("طوارئ") !== -1 && typeof fastSaveEmergency === "function") fastSaveEmergency();
-                        else if (txt.indexOf("ملاحظة") !== -1 && typeof fastSaveNote === "function") fastSaveNote();
-                    });
-                }
-            });
-        } catch(e) {}
-    }
-
-    /* 8) ربط أزرار التفريغ */
-    function bindClearButtons() {
-        try {
-            var clearBtns = document.querySelectorAll('button.btn-secondary');
-            clearBtns.forEach(function(btn) {
-                if (btn.dataset.bound === "1") return;
-                var txt = btn.textContent.trim();
-                if (txt === "تفريغ") {
-                    btn.dataset.bound = "1";
-                    btn.addEventListener("click", function(e) {
-                        e.preventDefault();
-                        var page = this.closest(".page");
-                        if (!page) return;
-                        var inputs = page.querySelectorAll("input[type='text'], input[type='date'], textarea");
-                        inputs.forEach(function(inp) { inp.value = ""; });
-                    });
-                }
-            });
-        } catch(e) {}
-    }
-
-    /* 9) ربط أزرار تصدير PDF و Excel */
-    function bindExportButtons() {
-        try {
-            var exportBtns = document.querySelectorAll('button.btn-primary');
-            exportBtns.forEach(function(btn) {
-                if (btn.dataset.bound === "1") return;
-                var txt = btn.textContent.trim();
-                if (txt.indexOf("تصدير") !== -1) {
-                    btn.dataset.bound = "1";
-                    btn.addEventListener("click", function(e) {
-                        e.preventDefault();
-                        var page = this.closest(".page");
-                        if (!page) return;
-                        var pageId = page.id;
-                        var isExcel = txt.indexOf("Excel") !== -1;
-                        /* محاولة استدعاء الدالة المناسبة */
-                        var fn = null;
-                        if (pageId === "clearance") fn = isExcel ? "exportClearancesToExcel" : "exportClearancesToPDF";
-                        else if (pageId === "emergency") fn = isExcel ? "exportEmergenciesToExcel" : "exportEmergenciesToPDF";
-                        else if (pageId === "notes") fn = isExcel ? "exportNotesToExcel" : "exportNotesToPDF";
-                        else if (pageId === "performance") fn = isExcel ? "exportPerformanceToExcel" : "exportPerformanceToPDF";
-                        else if (pageId === "analytics") fn = isExcel ? "exportAnalyticsToExcel" : "exportAnalyticsToPDF";
-                        if (fn && typeof window[fn] === "function") {
-                            try { window[fn](); } catch(err) { alert("خطأ: " + err.message); }
-                        } else {
-                            alert("هذه الميزة غير متاحة حالياً");
-                        }
-                    });
-                }
-            });
-        } catch(e) {}
-    }
-
-    /* 10) ربط أزرار الحذف (event delegation) */
+    /* 5) اعتراض نقرات أزرار التنقل */
     document.addEventListener("click", function(e) {
         try {
-            var btn = e.target.closest(".delete");
+            var btn = e.target.closest ? e.target.closest("button") : null;
             if (!btn) return;
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            if (!confirm("هل أنت متأكد من الحذف؟")) return;
             
-            var row = btn.closest("tr");
-            var tbody = row ? row.closest("tbody") : null;
-            if (!row || !tbody) return;
-            
-            var permitCell = row.querySelector("td");
-            var permitValue = permitCell ? permitCell.innerText.trim() : "";
-            var tableName = "";
-            if (tbody.id === "clearanceTable") tableName = "clearances";
-            else if (tbody.id === "emergencyTable") tableName = "emergencies";
-            else if (tbody.id === "notesTable") tableName = "notes";
-            else return;
-            
-            if (typeof window[tableName] === "undefined") return;
-            var arr = window[tableName];
-            var idx = -1;
-            for (var i = 0; i < arr.length; i++) {
-                if (String(arr[i].permit || "") === permitValue) {
-                    idx = i;
+            var isInNav = false;
+            var p = btn;
+            while (p) {
+                if (p.classList && p.classList.contains("navbar")) {
+                    isInNav = true;
                     break;
                 }
+                p = p.parentElement;
             }
-            if (idx !== -1) {
-                var item = arr[idx];
-                arr.splice(idx, 1);
-                try { localStorage.setItem(tableName, JSON.stringify(arr)); } catch(e) {}
-                row.remove();
-                if (typeof updateDashboard === "function") updateDashboard();
+            if (!isInNav) return;
+            
+            var oc = btn.getAttribute("onclick") || "";
+            var match = oc.match(/showPage\(['"]([^'"]+)['"]\)/);
+            if (match) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                myShowPage(match[1]);
             }
-        } catch(err) { console.error(err); }
+        } catch(err) {}
     }, true);
 
-    /* 11) ربط أزرار التعديل */
-    document.addEventListener("click", function(e) {
-        try {
-            var btn = e.target.closest(".edit");
-            if (!btn) return;
-            e.preventDefault();
-            e.stopImmediatePropagation();
-            
-            var row = btn.closest("tr");
-            var tbody = row ? row.closest("tbody") : null;
-            if (!row || !tbody) return;
-            
-            var permitCell = row.querySelector("td");
-            var permitValue = permitCell ? permitCell.innerText.trim() : "";
-            var tableName = "";
-            if (tbody.id === "clearanceTable") tableName = "clearances";
-            else if (tbody.id === "emergencyTable") tableName = "emergencies";
-            else if (tbody.id === "notesTable") tableName = "notes";
-            else return;
-            
-            if (typeof window[tableName] === "undefined") return;
-            var arr = window[tableName];
-            var idx = -1;
-            for (var i = 0; i < arr.length; i++) {
-                if (String(arr[i].permit || "") === permitValue) {
-                    idx = i;
-                    break;
-                }
-            }
-            if (idx !== -1) {
-                var item = arr[idx];
-                /* تعبئة النموذج */
-                if (tableName === "clearances") {
-                    if (document.getElementById("clearancePermit")) document.getElementById("clearancePermit").value = item.permit || "";
-                    if (document.getElementById("clearanceContractor")) document.getElementById("clearanceContractor").value = item.contractor || "";
-                    if (document.getElementById("clearanceOwner")) document.getElementById("clearanceOwner").value = item.owner || "";
-                    if (document.getElementById("clearanceLocation")) document.getElementById("clearanceLocation").value = item.location || "";
-                    if (typeof editingClearance !== "undefined") editingClearance = idx;
-                    window.showPage("clearance");
-                }
-                /* يمكنك إضافة emergency و notes بنفس الطريقة */
-            }
-        } catch(err) { console.error(err); }
-    }, true);
+    /* تشغيل فوري */
+    showFirstPage();
+    forcePagesVisible();
 
-    /* تشغيل */
-    showFirstPageNow();
-    bindNavButtons();
-    bindNoteTypeButtons();
-    bindSearchButtons();
-    bindClearSearchButtons();
-    bindSaveButtons();
-    bindClearButtons();
-    bindExportButtons();
-
+    /* تشغيل بعد DOMContentLoaded */
     document.addEventListener("DOMContentLoaded", function() {
-        showFirstPageNow();
-        bindNavButtons();
-        bindNoteTypeButtons();
-        bindSearchButtons();
-        bindClearSearchButtons();
-        bindSaveButtons();
-        bindClearButtons();
-        bindExportButtons();
+        showFirstPage();
+        forcePagesVisible();
     });
 
-    /* تشغيل متأخر */
-    setTimeout(function() {
-        showFirstPageNow();
-        bindNavButtons();
-        bindSaveButtons();
-        bindExportButtons();
-    }, 500);
-    setTimeout(function() {
-        bindNavButtons();
-        bindSaveButtons();
-    }, 2000);
-    setTimeout(function() {
-        bindNavButtons();
-    }, 4000);
+    /* إجبار مستمر على إظهار الصفحات */
+    setInterval(forcePagesVisible, 100);
+    setInterval(showFirstPage, 500);
+    setTimeout(forcePagesVisible, 1000);
+    setTimeout(forcePagesVisible, 3000);
 
-    console.log("✅ تم تحميل الإصلاح الشامل");
+    console.log("✅ تم تحميل إصلاح إظهار الصفحات");
 })();
 </script>
+
+</body>
 </html>
