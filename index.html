@@ -268,53 +268,64 @@
 
 <footer>نظام مختبر جودة المشاريع</footer>
 
-<!-- المكتبات الخارجية -->
-<!-- تحميل ذكي: مكتبات كاملة على الكمبيوتر، خفيفة على الجوال -->
+<!-- المكتبات الخارجية - تحميل ذكي مع بدائل متعددة لمنع جدار الحماية -->
 <script>
 (function() {
     var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent);
     
-    /* على الجوال: نحمّل Supabase فقط (لا Chart.js ولا XLSX) */
-    var libs = isMobile ? [
-        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js'
-    ] : [
-        'https://cdn.jsdelivr.net/npm/chart.js',
-        'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
-        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js'
-    ];
-    
-    /* تحميل المكتبات */
-    libs.forEach(function(src) {
+    function loadWithFallback(sources, name) {
+        if (sources.length === 0) { console.warn(name + " فشل تحميله من كل المصادر"); return; }
         var s = document.createElement('script');
-        s.src = src;
+        s.src = sources[0];
         s.async = true;
-        document.head.appendChild(s);
-    });
-    
-    /* على الجوال: توفير بدائل آمنة للمكتبات المفقودة */
-    if (isMobile) {
-        /* بدائل وهمية لمنع الأخطاء */
-        window.html2pdf = function() { return {set:function(){return this;},from:function(){return this;},save:function(){return Promise.resolve();}}; };
-        window.Chart = undefined; /* لا تحميل Chart.js */
-        /* XLSX سيُحمّل عند الحاجة فقط */
-        window._loadXLSX = function(callback) {
-            if (typeof XLSX !== 'undefined') { callback(); return; }
-            var s = document.createElement('script');
-            s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-            s.onload = callback;
-            s.onerror = function() { alert("تعذر تحميل مكتبة Excel"); };
-            document.head.appendChild(s);
+        s.onload = function() { console.log("✅ تم تحميل " + name + " من: " + sources[0]); };
+        s.onerror = function() {
+            console.warn("❌ فشل: " + sources[0] + " - تجربة بديل...");
+            loadWithFallback(sources.slice(1), name);
         };
+        document.head.appendChild(s);
     }
     
-    /* التقاط كل الأخطاء */
+    var chartSources = [
+        'https://cdn.jsdelivr.net/npm/chart.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js',
+        'https://unpkg.com/chart.js@4.4.0/dist/chart.umd.min.js'
+    ];
+    var xlsxSources = [
+        'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+        'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js'
+    ];
+    var supabaseSources = [
+        'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/supabase-js/2.39.0/supabase.min.js',
+        'https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js'
+    ];
+    
+    if (isMobile) {
+        loadWithFallback(supabaseSources, "Supabase");
+        window.html2pdf = function() { return {set:function(){return this;},from:function(){return this;},save:function(){return Promise.resolve();}}; };
+        window.Chart = undefined;
+        window._loadXLSX = function(callback) {
+            if (typeof XLSX !== 'undefined') { callback(); return; }
+            loadWithFallback(xlsxSources, "XLSX");
+            var check = setInterval(function() {
+                if (typeof XLSX !== 'undefined') { clearInterval(check); callback(); }
+            }, 200);
+        };
+    } else {
+        loadWithFallback(chartSources, "Chart.js");
+        loadWithFallback(xlsxSources, "XLSX");
+        loadWithFallback(supabaseSources, "Supabase");
+    }
+    
     window.onerror = function(msg) { console.warn("تجاوز:", msg); return true; };
     window.addEventListener('unhandledrejection', function(e) { e.preventDefault(); });
     
-    console.log(isMobile ? "📱 وضع الجوال" : "💻 وضع الكمبيوتر");
+    console.log(isMobile ? "📱 وضع الجوال" : "💻 وضع الكمبيوتر مع بدائل");
 })();
 </script>
-<script src="script.js?v=201"></script>
+<script src="script.js?v=202"></script>
 
 <!-- إيقاف الأنيميشن لتسريع الجوال -->
 <script>
@@ -342,9 +353,26 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 
-<!-- الحفظ السريع -->
+<!-- الحفظ السريع - تم تسريع حفظ رخص الإخلاءات -->
 <script>
 function safeLS(key, data) { try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) {} }
+
+/* دالة إظهار رسالة سريعة (بدون alert الذي يوقف التطبيق) */
+function showSaveToast(msg) {
+    try {
+        var toast = document.getElementById('saveToast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'saveToast';
+            toast.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#24704d;color:white;padding:14px 28px;border-radius:10px;z-index:99999;font-size:15px;font-family:Tahoma,Arial;box-shadow:0 4px 15px rgba(0,0,0,0.3);opacity:0;transition:opacity 0.3s ease;pointer-events:none;max-width:90%;text-align:center;';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = msg;
+        toast.style.opacity = '1';
+        clearTimeout(toast._timer);
+        toast._timer = setTimeout(function() { toast.style.opacity = '0'; }, 2500);
+    } catch(e) { console.log(msg); }
+}
 
 window.fastSaveClearance = async function() {
     try {
@@ -352,35 +380,67 @@ window.fastSaveClearance = async function() {
         const contractor = document.getElementById("clearanceContractor").value.trim();
         const owner = document.getElementById("clearanceOwner").value.trim();
         const location = document.getElementById("clearanceLocation").value.trim();
-        if (!permit || !contractor || !owner || !location) { alert("يرجى تعبئة جميع الحقول المطلوبة"); return; }
+        if (!permit || !contractor || !owner || !location) { 
+            showSaveToast("⚠️ يرجى تعبئة جميع الحقول المطلوبة");
+            return; 
+        }
 
         const files = document.getElementById("clearanceImages").files;
-        const data = { permit, contractor, owner, location, images: [] };
+        const data = { 
+            id: Date.now(),
+            permit, contractor, owner, location, 
+            images: [] 
+        };
 
-        if (editingClearance >= 0) { clearances[editingClearance] = data; editingClearance = -1; }
-        else { clearances.push(data); }
+        if (editingClearance >= 0) {
+            data.id = (clearances[editingClearance] && clearances[editingClearance].id) || data.id;
+            clearances[editingClearance] = data;
+            editingClearance = -1;
+        } else {
+            clearances.push(data);
+        }
 
         safeLS("clearances", clearances);
-        clearClearance(); renderClearances(); updateDashboard();
-        alert("تم حفظ الرخصة بنجاح ✅");
+        clearClearance();
+        renderClearances();
+        updateDashboard();
+        
+        showSaveToast("✅ تم حفظ رخصة الإخلاء بنجاح");
 
-        setTimeout(async () => {
+        (async function() {
             try {
-                const images = await readImages(files);
-                if (images && images.length > 0) { data.images = images; safeLS("clearances", clearances); renderClearances(); }
+                if (files && files.length > 0) {
+                    const images = await readImages(files);
+                    if (images && images.length > 0) {
+                        data.images = images;
+                        safeLS("clearances", clearances);
+                        renderClearances();
+                    }
+                }
                 if (typeof initSupabase === 'function') {
                     const client = await initSupabase();
                     if (client) {
-                        if (data.id) await dbUpdate("clearances", data.id, clearanceToRow(data));
-                        else {
+                        var existingIdx = clearances.findIndex(function(c) { return c === data; });
+                        if (existingIdx >= 0 && data.id && !String(data.id).startsWith("local_") && !isNaN(data.id)) {
+                            await dbUpdate("clearances", data.id, clearanceToRow(data));
+                        } else {
                             const inserted = await dbInsert("clearances", clearanceToRow(data));
-                            if (inserted && inserted.id) { data.id = inserted.id; safeLS("clearances", clearances); }
+                            if (inserted && inserted.id) {
+                                data.id = inserted.id;
+                                safeLS("clearances", clearances);
+                            }
                         }
                     }
                 }
-            } catch (e) { console.error("BG upload:", e); }
-        }, 100);
-    } catch (err) { alert("خطأ: " + err.message); }
+            } catch (e) {
+                console.error("خطأ خلفي:", e);
+                showSaveToast("⚠️ حفظ محلي ناجح، المزامنة ستتم لاحقاً");
+            }
+        })();
+    } catch (err) {
+        console.error(err);
+        showSaveToast("❌ خطأ: " + err.message);
+    }
 };
 
 window.fastSaveEmergency = async function() {
@@ -574,7 +634,6 @@ async function exportClearancesToPDF() {
         }
         var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير رخص الإخلاءات</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة المالكة</th><th style="padding:8px;border:1px solid #999;">الموقع</th><th style="padding:8px;border:1px solid #999;">الصور</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
         
-        /* استخدام window.print بدلاً من html2pdf */
         var printArea = document.getElementById("printArea");
         if (!printArea) { printArea = document.createElement("div"); printArea.id = "printArea"; document.body.appendChild(printArea); }
         printArea.innerHTML = content;
@@ -762,7 +821,6 @@ function exportPerformanceToExcel() {
 <!-- الكود النهائي النظيف: فصل كل قسم في صفحة مستقلة -->
 <!-- ========================================================= -->
 <style>
-/* CSS قوي لإخفاء كل الصفحات ما عدا النشطة */
 .page {
     display: none !important;
 }
@@ -775,7 +833,6 @@ function exportPerformanceToExcel() {
 (function() {
     "use strict";
 
-    /* 1) دالة showPage الوحيدة - تخفي كل الصفحات وتُظهر واحدة فقط */
     function showPageSafe(pageName) {
         try {
             var pages = document.querySelectorAll(".page");
@@ -788,7 +845,6 @@ function exportPerformanceToExcel() {
                 target.classList.add("active");
                 target.style.display = "block";
             }
-            /* تحديث أزرار التنقل */
             var navBtns = document.querySelectorAll('.navbar button');
             for (var j = 0; j < navBtns.length; j++) {
                 navBtns[j].classList.remove("active");
@@ -801,7 +857,6 @@ function exportPerformanceToExcel() {
         } catch(e) { console.error(e); }
     }
 
-    /* 2) تعريف showPage بشكل لا يمكن تجاوزه */
     try {
         Object.defineProperty(window, "showPage", {
             value: showPageSafe,
@@ -812,7 +867,6 @@ function exportPerformanceToExcel() {
         window.showPage = showPageSafe;
     }
 
-    /* 3) إظهار أول صفحة فقط عند التحميل */
     function showFirstPageOnly() {
         try {
             var pages = document.querySelectorAll(".page");
@@ -827,13 +881,11 @@ function exportPerformanceToExcel() {
         } catch(e) {}
     }
 
-    /* 4) اعتراض نقرات أزرار التنقل في capture phase */
     document.addEventListener("click", function(e) {
         try {
             var btn = e.target.closest ? e.target.closest("button") : null;
             if (!btn) return;
             
-            /* فقط أزرار navbar */
             var isInNav = false;
             var p = btn;
             while (p) {
@@ -855,15 +907,12 @@ function exportPerformanceToExcel() {
         } catch(err) {}
     }, true);
 
-    /* تشغيل فوري */
     showFirstPageOnly();
 
-    /* تشغيل بعد DOMContentLoaded */
     document.addEventListener("DOMContentLoaded", function() {
         showFirstPageOnly();
     });
 
-    /* تشغيل متأخر للتأكد */
     setTimeout(showFirstPageOnly, 100);
     setTimeout(showFirstPageOnly, 500);
     setTimeout(showFirstPageOnly, 1000);
@@ -872,8 +921,9 @@ function exportPerformanceToExcel() {
     console.log("✅ الكود النهائي محمّل - فصل كل قسم في صفحة مستقلة");
 })();
 </script>
+
 <!-- ========================================================= -->
-<!-- حلول الصور على الجوال -->
+<!-- حلول الصور على الجوال (لم تُلمس - تعمل كما هي) -->
 <!-- ========================================================= -->
 <script>
 (function() {
@@ -881,20 +931,14 @@ function exportPerformanceToExcel() {
     
     var isMobile = /Android|webOS|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
     
-    if (!isMobile) return; /* فقط على الجوال */
+    if (!isMobile) return;
 
-    /* 1) تحسين عرض الصور في الجداول */
     function optimizeImages() {
         try {
             var imgs = document.querySelectorAll('img');
             imgs.forEach(function(img) {
-                /* تجاهل الصور الصغيرة جداً (الأيقونات) */
                 if (img.width < 50) return;
-                
-                /* تفعيل lazy loading */
                 img.loading = 'lazy';
-                
-                /* تحديد حجم ثابت لتقليل الذاكرة */
                 if (!img.style.width) {
                     img.style.width = '60px';
                     img.style.height = '60px';
@@ -904,13 +948,11 @@ function exportPerformanceToExcel() {
         } catch(e) {}
     }
 
-    /* 2) تحسين رفع الصور على الجوال (ضغط أكبر) */
     if (typeof window.readImage === 'function') {
         var originalReadImage = window.readImage;
         window.readImage = async function(file) {
             if (!file) return "";
             try {
-                /* على الجوال: ضغط أقوى (400px بدل 500px) */
                 var blob = await compressImageToBlob(file, 400, 0.5);
                 if (!blob) {
                     return await originalReadImage(file);
@@ -924,7 +966,6 @@ function exportPerformanceToExcel() {
                     skippedImagesCount++;
                     return "";
                 }
-                /* رفع خلفي */
                 backgroundUploadImage(ref);
                 return ref;
             } catch(e) {
@@ -934,23 +975,18 @@ function exportPerformanceToExcel() {
         };
     }
 
-    /* 3) عرض الصور عند فتح صفحة (lazy + تحجيم) */
     var originalShowPage = window.showPage;
     window.showPage = function(pageName) {
         if (originalShowPage) originalShowPage(pageName);
-        /* تأجيل تحسين الصور حتى تظهر الصفحة */
         setTimeout(optimizeImages, 300);
     };
 
-    /* 4) تحسين الصور عند تحميل أي صفحة */
     document.addEventListener("DOMContentLoaded", optimizeImages);
     setTimeout(optimizeImages, 1000);
     setInterval(optimizeImages, 5000);
 
-    /* 5) منع فتح صورة كبيرة في نافذة (يستهلك ذاكرة) */
     window.openImage = function(src) {
         if (!src) return;
-        /* بدل فتح نافذة جديدة، نعرضها في طبقة منبثقة */
         try {
             var overlay = document.getElementById('mobileImageOverlay');
             if (!overlay) {
