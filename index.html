@@ -6,10 +6,15 @@
     <title>نظام مختبر جودة المشاريع</title>
     <link rel="stylesheet" href="style.css">
 
-    <style>
-        .page { display: none !important; }
-        .page.active { display: block !important; }
-    </style>
+    <!-- ====== إصلاح مبكر: تعطيل html2pdf + CSS احتياطي ====== -->
+    <script>
+    window.html2pdf = window.html2pdf || function() {
+        return { set: function(){return this;}, from: function(){return this;}, save: function(){return Promise.resolve();} };
+    };
+    document.write('<style>.page{display:none !important;}.page.active{display:block !important;}</style>');
+    window.onerror = function(msg, src, line, col, err) { console.warn("تجاوز خطأ:", msg); return true; };
+    window.addEventListener('unhandledrejection', function(e) { console.warn("تجاوز وعد:", e.reason); e.preventDefault(); });
+    </script>
 
     <style>
         .header-content { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 20px !important; }
@@ -263,106 +268,20 @@
 
 <footer>نظام مختبر جودة المشاريع</footer>
 
-<!-- ========================================================= -->
-<!-- حل جذري: حذف نهائي لكل روابط المكتبات الخارجية (CDN) -->
-<!-- التطبيق الآن يعمل 100% بأكواد داخلية مدمجة -->
-<!-- ========================================================= -->
+<!-- المكتبات الخارجية -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="script.js?v=102"></script>
+
+<!-- إيقاف الأنيميشن لتسريع الجوال -->
 <script>
-// 1. تعطيل html2pdf
-window.html2pdf = function(){ return {set:function(){return this;},from:function(){return this;},save:function(){return Promise.resolve();}}; };
-
-// 2. بديل Supabase باستخدام fetch الأصلي (يتصل مباشرة بدون مكتبة خارجية)
-const SB_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co";
-const SB_KEY = "sb_publishable_HM4vP8LsEZJaZC9Cyug5fg_fhQ050qL";
-window.supabase = {
-    createClient: function(url, key) {
-        const restUrl = url + '/rest/v1/';
-        const headers = { 'apikey': key, 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' };
-        return {
-            from: function(table) {
-                return {
-                    select: function(cols) {
-                        const selUrl = restUrl + table + '?select=' + (cols || '*');
-                        const promise = fetch(selUrl, { headers }).then(res => res.json()).then(data => ({ data: data, error: null })).catch(error => ({ data: null, error: error }));
-                        return {
-                            order: function(col, opts) {
-                                const orderUrl = selUrl + '&order=' + col + '.' + (opts.ascending ? 'asc' : 'desc');
-                                return fetch(orderUrl, { headers }).then(res => res.json()).then(data => ({ data: data, error: null })).catch(error => ({ data: null, error: error }));
-                            },
-                            then: function(resolve, reject) { return promise.then(resolve, reject); }
-                        };
-                    },
-                    insert: function(row) {
-                        const promise = fetch(restUrl + table, { method: 'POST', headers: { ...headers, 'Prefer': 'return=representation' }, body: JSON.stringify(row) }).then(res => res.json()).then(data => ({ data: Array.isArray(data) ? data[0] : data, error: null }));
-                        return { select: function() { return { single: function() { return promise; } }; } };
-                    },
-                    update: function(changes) {
-                        return { eq: function(col, val) { return fetch(restUrl + table + '?' + col + '=eq.' + val, { method: 'PATCH', headers: { ...headers, 'Prefer': 'return=representation' }, body: JSON.stringify(changes) }).then(res => res.json()).then(data => ({ data: null, error: null })); } };
-                    },
-                    delete: function() {
-                        return { eq: function(col, val) { return fetch(restUrl + table + '?' + col + '=eq.' + val, { method: 'DELETE', headers: headers }).then(res => res.json()).then(data => ({ data: null, error: null })); } };
-                    }
-                };
-            },
-            storage: {
-                from: function(bucket) {
-                    return {
-                        upload: async function(path, file, opts) {
-                            const storageUrl = url + '/storage/v1/object/' + bucket + '/' + path;
-                            const storageHeaders = { 'apikey': key, 'Authorization': 'Bearer ' + key, 'Content-Type': (opts && opts.contentType) || (file && file.type) || 'application/octet-stream' };
-                            try { const res = await fetch(storageUrl, { method: 'POST', headers: storageHeaders, body: file }); const data = await res.json(); return { data: data, error: data.error ? data.error : null }; } catch(e) { return { data: null, error: e }; }
-                        },
-                        getPublicUrl: function(path) { return { data: { publicUrl: url + '/storage/v1/object/public/' + bucket + '/' + path } }; }
-                    };
-                }
-            }
-        };
-    }
-};
-
-// 3. بديل Chart.js (يرسم رسالة بسيطة بدل الرسم البياني)
-window.Chart = function(ctx, config) {
-    try {
-        var c = ctx.getContext ? ctx.getContext('2d') : ctx;
-        if (c && ctx.canvas) {
-            c.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
-            c.fillStyle = '#173f32'; c.font = 'bold 14px Tahoma'; c.textAlign = 'center';
-            c.fillText('📊 الرسوم البيانية', ctx.canvas.width/2, ctx.canvas.height/2);
-        }
-    } catch(e) {}
-    return { destroy:function(){}, update:function(){}, toDataURL:function(){return '';} };
-};
-window.Chart.defaults = { global: { animation: false } };
-
-// 4. بديل XLSX (تصدير CSV يفتح ببرنامج Excel)
-window.XLSX = {
-    utils: {
-        json_to_sheet: function(d) { return d || []; },
-        book_new: function() { return {Sheets:{}, SheetNames:[], _data:[]}; },
-        book_append_sheet: function(wb, ws, n) { wb.Sheets[n]=ws; wb.SheetNames.push(n); wb._data=ws; }
-    },
-    writeFile: function(wb, fn) {
-        var csv = '\uFEFF';
-        if (wb._data && wb._data.length) {
-            var keys = Object.keys(wb._data[0]);
-            csv += keys.join(',') + '\n';
-            wb._data.forEach(function(r) { csv += keys.map(function(k) { return '"' + String(r[k]||'').replace(/"/g,'""') + '"'; }).join(',') + '\n'; });
-        }
-        var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-        var url = URL.createObjectURL(blob); var a = document.createElement('a'); a.href = url; a.download = fn.replace('.xlsx','.csv');
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    }
-};
-</script>
-
-<script src="script.js?v=400"></script>
-
-<script>
-if (typeof Chart !== 'undefined' && Chart.defaults) {
+if (typeof Chart !== 'undefined') {
     Chart.defaults.global.animation = false;
 }
 </script>
 
+<!-- الشعارات -->
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     const amanahLogoUrl = "https://z-cdn-media.chatglm.cn/files/14388a2b-5b5d-42d4-8e2f-ac93f8ede780.jpeg?auth_key=1887326183-5ce98f505449411fb3298ff8de264250-0-b067337c641d6b6447fcb70ea49bc8c3";
@@ -385,85 +304,41 @@ document.addEventListener("DOMContentLoaded", function() {
 <script>
 function safeLS(key, data) { try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) {} }
 
-function showSaveToast(msg) {
-    try {
-        var toast = document.getElementById('saveToast');
-        if (!toast) {
-            toast = document.createElement('div');
-            toast.id = 'saveToast';
-            toast.style.cssText = 'position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:#24704d;color:white;padding:14px 28px;border-radius:10px;z-index:99999;font-size:15px;font-family:Tahoma,Arial;box-shadow:0 4px 15px rgba(0,0,0,0.3);opacity:0;transition:opacity 0.3s ease;pointer-events:none;max-width:90%;text-align:center;';
-            document.body.appendChild(toast);
-        }
-        toast.textContent = msg;
-        toast.style.opacity = '1';
-        clearTimeout(toast._timer);
-        toast._timer = setTimeout(function() { toast.style.opacity = '0'; }, 2500);
-    } catch(e) { console.log(msg); }
-}
-
 window.fastSaveClearance = async function() {
     try {
         const permit = document.getElementById("clearancePermit").value.trim();
         const contractor = document.getElementById("clearanceContractor").value.trim();
         const owner = document.getElementById("clearanceOwner").value.trim();
         const location = document.getElementById("clearanceLocation").value.trim();
-        if (!permit || !contractor || !owner || !location) { 
-            showSaveToast("⚠️ يرجى تعبئة جميع الحقول المطلوبة");
-            return; 
-        }
+        if (!permit || !contractor || !owner || !location) { alert("يرجى تعبئة جميع الحقول المطلوبة"); return; }
 
         const files = document.getElementById("clearanceImages").files;
-        const data = { id: Date.now(), permit, contractor, owner, location, images: [] };
+        const data = { permit, contractor, owner, location, images: [] };
 
-        if (editingClearance >= 0) {
-            data.id = (clearances[editingClearance] && clearances[editingClearance].id) || data.id;
-            clearances[editingClearance] = data;
-            editingClearance = -1;
-        } else {
-            clearances.push(data);
-        }
+        if (editingClearance >= 0) { clearances[editingClearance] = data; editingClearance = -1; }
+        else { clearances.push(data); }
 
         safeLS("clearances", clearances);
-        clearClearance();
-        renderClearances();
-        updateDashboard();
-        
-        showSaveToast("✅ تم حفظ رخصة الإخلاء بنجاح");
+        clearClearance(); renderClearances(); updateDashboard();
+        alert("تم حفظ الرخصة بنجاح ✅");
 
-        (async function() {
+        setTimeout(async () => {
             try {
-                if (files && files.length > 0) {
-                    const images = await readImages(files);
-                    if (images && images.length > 0) {
-                        data.images = images;
-                        safeLS("clearances", clearances);
-                        renderClearances();
-                    }
-                }
+                const images = await readImages(files);
+                if (images && images.length > 0) { data.images = images; safeLS("clearances", clearances); renderClearances(); }
                 if (typeof initSupabase === 'function') {
                     const client = await initSupabase();
                     if (client) {
-                        var existingIdx = clearances.findIndex(function(c) { return c === data; });
-                        if (existingIdx >= 0 && data.id && !String(data.id).startsWith("local_") && !isNaN(data.id)) {
-                            await dbUpdate("clearances", data.id, clearanceToRow(data));
-                        } else {
+                        if (data.id) await dbUpdate("clearances", data.id, clearanceToRow(data));
+                        else {
                             const inserted = await dbInsert("clearances", clearanceToRow(data));
-                            if (inserted && inserted.id) {
-                                data.id = inserted.id;
-                                safeLS("clearances", clearances);
-                            }
+                            if (inserted && inserted.id) { data.id = inserted.id; safeLS("clearances", clearances); }
                         }
                     }
                 }
-            } catch (e) {
-                console.error("خطأ خلفي:", e);
-                showSaveToast("⚠️ حفظ محلي ناجح، المزامنة ستتم لاحقاً");
-            }
-        })();
-    } catch (err) {
-        console.error(err);
-        showSaveToast("❌ خطأ: " + err.message);
-    }
+            } catch (e) { console.error("BG upload:", e); }
+        }, 100);
+    } catch (err) { alert("خطأ: " + err.message); }
 };
 
 window.fastSaveEmergency = async function() {
@@ -545,6 +420,7 @@ window.fastSaveNote = async function() {
 };
 </script>
 
+<!-- الحذف السريع -->
 <script>
 document.addEventListener('click', function(e) {
     const btn = e.target.closest('.delete');
@@ -587,6 +463,7 @@ document.addEventListener('click', function(e) {
 }, true);
 </script>
 
+<!-- عرض الملاحظات المصنفة -->
 <script>
 window.renderNotes = function() {
     const tbody = document.getElementById('notesTable'); if (!tbody) return;
@@ -615,6 +492,7 @@ window.renderNotes = function() {
 document.addEventListener("DOMContentLoaded", renderNotes);
 </script>
 
+<!-- تصدير PDF -->
 <script>
 function getPDFScale() {
     var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -654,6 +532,7 @@ async function exportClearancesToPDF() {
         }
         var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير رخص الإخلاءات</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">رقم التصريح</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">الجهة المالكة</th><th style="padding:8px;border:1px solid #999;">الموقع</th><th style="padding:8px;border:1px solid #999;">الصور</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
         
+        /* استخدام window.print بدلاً من html2pdf */
         var printArea = document.getElementById("printArea");
         if (!printArea) { printArea = document.createElement("div"); printArea.id = "printArea"; document.body.appendChild(printArea); }
         printArea.innerHTML = content;
@@ -737,6 +616,7 @@ function exportPerformanceToPDF() {
 }
 </script>
 
+<!-- لوحة القيادة التنفيذية -->
 <script>
 var analyticsCharts = {};
 function renderAnalyticsPage() {
@@ -802,6 +682,7 @@ function exportAnalyticsToExcel() {
 }
 </script>
 
+<!-- تصنيف المقاولين -->
 <script>
 var perfChartInterval = setInterval(function() {
     if (typeof Chart === 'undefined' || typeof clearances === 'undefined' || typeof notes === 'undefined') return; clearInterval(perfChartInterval);
@@ -835,11 +716,24 @@ function exportPerformanceToExcel() {
 }
 </script>
 
-<!-- ضمان عمل أزرار التنقل وفصل الصفحات -->
+<!-- ========================================================= -->
+<!-- الكود النهائي النظيف: فصل كل قسم في صفحة مستقلة -->
+<!-- ========================================================= -->
+<style>
+/* CSS قوي لإخفاء كل الصفحات ما عدا النشطة */
+.page {
+    display: none !important;
+}
+.page.active {
+    display: block !important;
+}
+</style>
+
 <script>
 (function() {
     "use strict";
 
+    /* 1) دالة showPage الوحيدة - تخفي كل الصفحات وتُظهر واحدة فقط */
     function showPageSafe(pageName) {
         try {
             var pages = document.querySelectorAll(".page");
@@ -852,97 +746,89 @@ function exportPerformanceToExcel() {
                 target.classList.add("active");
                 target.style.display = "block";
             }
+            /* تحديث أزرار التنقل */
             var navBtns = document.querySelectorAll('.navbar button');
             for (var j = 0; j < navBtns.length; j++) {
                 navBtns[j].classList.remove("active");
                 var oc = navBtns[j].getAttribute("onclick") || "";
-                if (oc.indexOf(pageName) !== -1) navBtns[j].classList.add("active");
+                if (oc.indexOf(pageName) !== -1) {
+                    navBtns[j].classList.add("active");
+                }
             }
             window.scrollTo({top: 0, behavior: "smooth"});
-        } catch(e) {}
+        } catch(e) { console.error(e); }
     }
 
-    try { Object.defineProperty(window, "showPage", { value: showPageSafe, writable: false, configurable: false }); } catch(e) { window.showPage = showPageSafe; }
+    /* 2) تعريف showPage بشكل لا يمكن تجاوزه */
+    try {
+        Object.defineProperty(window, "showPage", {
+            value: showPageSafe,
+            writable: false,
+            configurable: false
+        });
+    } catch(e) {
+        window.showPage = showPageSafe;
+    }
 
+    /* 3) إظهار أول صفحة فقط عند التحميل */
     function showFirstPageOnly() {
         try {
             var pages = document.querySelectorAll(".page");
-            for (var i = 0; i < pages.length; i++) { pages[i].classList.remove("active"); pages[i].style.display = "none"; }
-            if (pages.length > 0) { pages[0].classList.add("active"); pages[0].style.display = "block"; }
+            for (var i = 0; i < pages.length; i++) {
+                pages[i].classList.remove("active");
+                pages[i].style.display = "none";
+            }
+            if (pages.length > 0) {
+                pages[0].classList.add("active");
+                pages[0].style.display = "block";
+            }
         } catch(e) {}
     }
 
+    /* 4) اعتراض نقرات أزرار التنقل في capture phase */
     document.addEventListener("click", function(e) {
         try {
             var btn = e.target.closest ? e.target.closest("button") : null;
             if (!btn) return;
-            var isInNav = false; var p = btn;
-            while (p) { if (p.classList && p.classList.contains("navbar")) { isInNav = true; break; } p = p.parentElement; }
+            
+            /* فقط أزرار navbar */
+            var isInNav = false;
+            var p = btn;
+            while (p) {
+                if (p.classList && p.classList.contains("navbar")) {
+                    isInNav = true;
+                    break;
+                }
+                p = p.parentElement;
+            }
             if (!isInNav) return;
+            
             var oc = btn.getAttribute("onclick") || "";
             var match = oc.match(/showPage\(['"]([^'"]+)['"]\)/);
-            if (match) { e.preventDefault(); e.stopImmediatePropagation(); showPageSafe(match[1]); }
+            if (match) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                showPageSafe(match[1]);
+            }
         } catch(err) {}
     }, true);
 
+    /* تشغيل فوري */
     showFirstPageOnly();
-    document.addEventListener("DOMContentLoaded", showFirstPageOnly);
-    setTimeout(showFirstPageOnly, 100); setTimeout(showFirstPageOnly, 500); setTimeout(showFirstPageOnly, 1000); setTimeout(showFirstPageOnly, 3000);
+
+    /* تشغيل بعد DOMContentLoaded */
+    document.addEventListener("DOMContentLoaded", function() {
+        showFirstPageOnly();
+    });
+
+    /* تشغيل متأخر للتأكد */
+    setTimeout(showFirstPageOnly, 100);
+    setTimeout(showFirstPageOnly, 500);
+    setTimeout(showFirstPageOnly, 1000);
+    setTimeout(showFirstPageOnly, 3000);
+
+    console.log("✅ الكود النهائي محمّل - فصل كل قسم في صفحة مستقلة");
 })();
-</script>
-
-<!-- المزامنة التلقائية لجلب البيانات من السحابة -->
-<script>
-async function pullFromCloud() {
-    try {
-        if (typeof initSupabase !== 'function') return;
-        const client = await initSupabase();
-        if (!client) return;
-
-        const { data: clearData, error: clearError } = await client.from('clearances').select('*');
-        if (!clearError && clearData) {
-            clearances.length = 0;
-            clearData.forEach(row => {
-                if (typeof rowToClearance === 'function') clearances.push(rowToClearance(row));
-                else clearances.push(row);
-            });
-            safeLS("clearances", clearances);
-            if (typeof renderClearances === 'function') renderClearances();
-        }
-
-        const { data: emgData, error: emgError } = await client.from('emergencies').select('*');
-        if (!emgError && emgData) {
-            emergencies.length = 0;
-            emgData.forEach(row => {
-                if (typeof rowToEmergency === 'function') emergencies.push(rowToEmergency(row));
-                else emergencies.push(row);
-            });
-            safeLS("emergencies", emergencies);
-            if (typeof renderEmergencies === 'function') renderEmergencies();
-        }
-
-        const { data: notesData, error: notesError } = await client.from('notes').select('*');
-        if (!notesError && notesData) {
-            notes.length = 0;
-            notesData.forEach(row => {
-                if (typeof rowToNote === 'function') notes.push(rowToNote(row));
-                else notes.push(row);
-            });
-            safeLS("notes", notes);
-            if (typeof renderNotes === 'function') renderNotes();
-        }
-
-        if (typeof updateDashboard === 'function') updateDashboard();
-        console.log("✅ تمت مزامنة البيانات من السحابة بنجاح");
-    } catch (e) {
-        console.error("Sync error:", e);
-    }
-}
-
-document.addEventListener("DOMContentLoaded", function() {
-    setTimeout(pullFromCloud, 2000);
-    setInterval(pullFromCloud, 30000);
-});
 </script>
 
 </body>
