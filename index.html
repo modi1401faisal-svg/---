@@ -6,20 +6,18 @@
     <title>نظام مختبر جودة المشاريع</title>
     <link rel="stylesheet" href="style.css">
 
-    <script>
-    window.html2pdf = window.html2pdf || function() {
-        return { set: function(){return this;}, from: function(){return this;}, save: function(){return Promise.resolve();} };
-    };
-    document.write('<style>.page{display:none !important;}.page.active{display:block !important;}</style>');
-    window.onerror = function(msg, src, line, col, err) { console.warn("تجاوز خطأ:", msg); return true; };
-    window.addEventListener('unhandledrejection', function(e) { console.warn("تجاوز وعد:", e.reason); e.preventDefault(); });
-    </script>
+    <!-- CSS لضمان فصل الصفحات -->
+    <style>
+        .page { display: none !important; }
+        .page.active { display: block !important; }
+    </style>
 
     <style>
         .header-content { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 20px !important; }
         .header-text { text-align: center !important; flex: 1 !important; }
         .header-logo-injected { height: 80px !important; width: auto !important; object-fit: contain !important; background: white !important; padding: 5px !important; border-radius: 10px !important; }
         .lab-logo-injected { display: block !important; margin: 0 auto 20px auto !important; max-width: 60% !important; height: auto !important; max-height: 120px !important; object-fit: contain !important; border-radius: 8px !important; }
+
         .premium-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 25px; }
         .premium-card { border-radius: 12px; padding: 15px; color: white; box-shadow: 0 2px 8px rgba(0,0,0,0.05); display: flex; align-items: center; gap: 12px; }
         .premium-card .icon-box { width: 45px; height: 45px; background: rgba(255,255,255,0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
@@ -33,16 +31,18 @@
         .bg-darkred { background: linear-gradient(135deg, #5e0d0d 0%, #9b1c1c 100%); }
         .bg-purple { background: linear-gradient(135deg, #4a235a 0%, #8e44ad 100%); }
         .bg-gray { background: linear-gradient(135deg, #435f6e 0%, #6b8a99 100%); }
+
         .chart-container { background: #fff; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.03); border: 1px solid #e0ebe5; overflow: hidden; margin-bottom: 20px; }
         .chart-header { background: #f8fbfa; padding: 12px 18px; border-bottom: 1px solid #e0ebe5; font-weight: bold; color: #173f32; }
         .chart-body { padding: 15px; position: relative; height: 320px; }
         .gauge-center-text { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
         .gauge-center-text .val { font-size: 36px; font-weight: 800; color: #173f32; display: block; }
         .gauge-center-text .lbl { font-size: 12px; color: #666; }
+
         @media (max-width: 900px) { .header-content { flex-direction: column !important; text-align: center !important; } }
         @media print {
             body * { visibility: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
-            .header-logo-injected, .lab-logo-injected { display: block !important; visibility: visible !important; }
+            .header-logo-injected, .lab-logo-injected { display: block !important; visibility: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
             .main-header, .header-content, .card-header, .navbar { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; visibility: visible !important; }
             .card.table-card { page-break-before: always !important; }
             #notes .card.table-card:first-of-type { page-break-before: auto !important; }
@@ -70,6 +70,7 @@
 </nav>
 
 <main class="container">
+
     <section id="analytics" class="page">
         <div class="section-title">
             <h2>لوحة المؤشرات والإحصائيات الذكية <span id="analyticsCurrentYear" style="font-size: 18px; color: #666;"></span></h2>
@@ -263,101 +264,20 @@
 
 <footer>نظام مختبر جودة المشاريع</footer>
 
-<!-- ========================================================= -->
-<!-- المكتبات: لا أي CDN على الكمبيوتر - حل جذري لجدار الحماية -->
-<!-- ========================================================= -->
-<script>
-(function() {
-    var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent);
-    
-    /* تعطيل html2pdf على كل الأجهزة */
-    window.html2pdf = function() {
-        return { set: function(){return this;}, from: function(){return this;}, save: function(){return Promise.resolve();} };
-    };
-    
-    if (isMobile) {
-        /* الجوال: نحمّل Supabase فقط (كما كان يعمل) */
-        var s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
-        s.async = true;
-        document.head.appendChild(s);
-        window.Chart = undefined;
-        window._loadXLSX = function(cb) {
-            if (typeof XLSX !== 'undefined') { cb(); return; }
-            var x = document.createElement('script');
-            x.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-            x.onload = cb;
-            document.head.appendChild(x);
-        };
-    } else {
-        /* الكمبيوتر: لا أي CDN إطلاقاً - بدائل محلية فقط لمنع جدار الحماية */
-        
-        /* Chart.js بديل محلي */
-        window.Chart = function(ctx) {
-            try {
-                var c = ctx.getContext ? ctx.getContext('2d') : ctx;
-                if (c && ctx.canvas) {
-                    c.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
-                    c.fillStyle = '#173f32';
-                    c.font = 'bold 14px Tahoma';
-                    c.textAlign = 'center';
-                    c.fillText('📊 تُعرض على الأجهزة المتصلة', ctx.canvas.width/2, ctx.canvas.height/2);
-                }
-            } catch(e) {}
-            return { destroy:function(){}, update:function(){}, toDataURL:function(){return '';} };
-        };
-        window.Chart.defaults = { global: { animation: false } };
-        
-        /* XLSX بديل محلي (تصدير CSV) */
-        window.XLSX = {
-            utils: {
-                json_to_sheet: function(d) { return d || []; },
-                book_new: function() { return {Sheets:{}, SheetNames:[], _data:[]}; },
-                book_append_sheet: function(wb, ws, n) { wb.Sheets[n]=ws; wb.SheetNames.push(n); wb._data=ws; }
-            },
-            writeFile: function(wb, fn) {
-                var csv = '\uFEFF';
-                if (wb._data && wb._data.length) {
-                    var keys = Object.keys(wb._data[0]);
-                    csv += keys.join(',') + '\n';
-                    wb._data.forEach(function(r) {
-                        csv += keys.map(function(k) { return '"' + String(r[k]||'').replace(/"/g,'""') + '"'; }).join(',') + '\n';
-                    });
-                }
-                var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-                var url = URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = url;
-                a.download = fn.replace('.xlsx','.csv');
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            }
-        };
-        
-        /* Supabase: محاولة واحدة صامتة جداً (إذا فشلت لا يظهر خطأ) */
-        var supa = document.createElement('script');
-        supa.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
-        supa.async = true;
-        supa.onerror = function() { console.log("Supabase غير متاح - وضع محلي"); };
-        document.head.appendChild(supa);
-    }
-    
-    /* التقاط كل الأخطاء بصمت */
-    window.onerror = function(m) { return true; };
-    window.addEventListener('unhandledrejection', function(e) { e.preventDefault(); });
-})();
-</script>
-<script src="script.js?v=206"></script>
+<!-- المكتبات الأصلية مع تغيير المصدر لتفادي جدار الحماية -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- تعطيل html2pdf نهائياً لمنع رسالة الجدار الناري -->
+<script>window.html2pdf = function(){ return {set:function(){return this;},from:function(){return this;},save:function(){return Promise.resolve();}}; };</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="script.js?v=100"></script>
 
-<!-- إيقاف الأنيميشن -->
 <script>
-if (typeof Chart !== 'undefined' && Chart.defaults) {
+if (typeof Chart !== 'undefined') {
     Chart.defaults.global.animation = false;
 }
 </script>
 
-<!-- الشعارات -->
 <script>
 document.addEventListener("DOMContentLoaded", function() {
     const amanahLogoUrl = "https://z-cdn-media.chatglm.cn/files/14388a2b-5b5d-42d4-8e2f-ac93f8ede780.jpeg?auth_key=1887326183-5ce98f505449411fb3298ff8de264250-0-b067337c641d6b6447fcb70ea49bc8c3";
@@ -422,6 +342,7 @@ window.fastSaveClearance = async function() {
         clearClearance();
         renderClearances();
         updateDashboard();
+        
         showSaveToast("✅ تم حفظ رخصة الإخلاء بنجاح");
 
         (async function() {
@@ -449,9 +370,15 @@ window.fastSaveClearance = async function() {
                         }
                     }
                 }
-            } catch (e) { console.error("خطأ خلفي:", e); }
+            } catch (e) {
+                console.error("خطأ خلفي:", e);
+                showSaveToast("⚠️ حفظ محلي ناجح، المزامنة ستتم لاحقاً");
+            }
         })();
-    } catch (err) { showSaveToast("❌ خطأ: " + err.message); }
+    } catch (err) {
+        console.error(err);
+        showSaveToast("❌ خطأ: " + err.message);
+    }
 };
 
 window.fastSaveEmergency = async function() {
@@ -533,7 +460,6 @@ window.fastSaveNote = async function() {
 };
 </script>
 
-<!-- الحذف السريع -->
 <script>
 document.addEventListener('click', function(e) {
     const btn = e.target.closest('.delete');
@@ -576,7 +502,6 @@ document.addEventListener('click', function(e) {
 }, true);
 </script>
 
-<!-- عرض الملاحظات المصنفة -->
 <script>
 window.renderNotes = function() {
     const tbody = document.getElementById('notesTable'); if (!tbody) return;
@@ -605,7 +530,6 @@ window.renderNotes = function() {
 document.addEventListener("DOMContentLoaded", renderNotes);
 </script>
 
-<!-- تصدير PDF -->
 <script>
 function getPDFScale() {
     var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -728,7 +652,6 @@ function exportPerformanceToPDF() {
 }
 </script>
 
-<!-- لوحة القيادة التنفيذية -->
 <script>
 var analyticsCharts = {};
 function renderAnalyticsPage() {
@@ -794,7 +717,6 @@ function exportAnalyticsToExcel() {
 }
 </script>
 
-<!-- تصنيف المقاولين -->
 <script>
 var perfChartInterval = setInterval(function() {
     if (typeof Chart === 'undefined' || typeof clearances === 'undefined' || typeof notes === 'undefined') return; clearInterval(perfChartInterval);
@@ -828,14 +750,11 @@ function exportPerformanceToExcel() {
 }
 </script>
 
-<!-- فصل الصفحات -->
-<style>
-.page { display: none !important; }
-.page.active { display: block !important; }
-</style>
+<!-- ضمان عمل أزرار التنقل وفصل الصفحات -->
 <script>
 (function() {
     "use strict";
+
     function showPageSafe(pageName) {
         try {
             var pages = document.querySelectorAll(".page");
@@ -857,7 +776,9 @@ function exportPerformanceToExcel() {
             window.scrollTo({top: 0, behavior: "smooth"});
         } catch(e) {}
     }
+
     try { Object.defineProperty(window, "showPage", { value: showPageSafe, writable: false, configurable: false }); } catch(e) { window.showPage = showPageSafe; }
+
     function showFirstPageOnly() {
         try {
             var pages = document.querySelectorAll(".page");
@@ -865,6 +786,7 @@ function exportPerformanceToExcel() {
             if (pages.length > 0) { pages[0].classList.add("active"); pages[0].style.display = "block"; }
         } catch(e) {}
     }
+
     document.addEventListener("click", function(e) {
         try {
             var btn = e.target.closest ? e.target.closest("button") : null;
@@ -877,63 +799,12 @@ function exportPerformanceToExcel() {
             if (match) { e.preventDefault(); e.stopImmediatePropagation(); showPageSafe(match[1]); }
         } catch(err) {}
     }, true);
+
     showFirstPageOnly();
     document.addEventListener("DOMContentLoaded", showFirstPageOnly);
     setTimeout(showFirstPageOnly, 100); setTimeout(showFirstPageOnly, 500); setTimeout(showFirstPageOnly, 1000); setTimeout(showFirstPageOnly, 3000);
 })();
 </script>
 
-<!-- حلول الجوال -->
-<script>
-(function() {
-    "use strict";
-    var isMobile = /Android|webOS|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
-    if (!isMobile) return;
-    function optimizeImages() {
-        try {
-            var imgs = document.querySelectorAll('img');
-            imgs.forEach(function(img) { if (img.width < 50) return; img.loading = 'lazy'; if (!img.style.width) { img.style.width = '60px'; img.style.height = '60px'; img.style.objectFit = 'cover'; } });
-        } catch(e) {}
-    }
-    if (typeof window.readImage === 'function') {
-        var originalReadImage = window.readImage;
-        window.readImage = async function(file) {
-            if (!file) return "";
-            try {
-                var blob = await compressImageToBlob(file, 400, 0.5);
-                if (!blob) return await originalReadImage(file);
-                var dataUrl = await blobToDataUrl(blob); blob = null;
-                if (!dataUrl) return "";
-                var ref = await storeImageInIdb(dataUrl); dataUrl = null;
-                if (!ref) { skippedImagesCount++; return ""; }
-                backgroundUploadImage(ref);
-                return ref;
-            } catch(e) { return await originalReadImage(file); }
-        };
-    }
-    var originalShowPage = window.showPage;
-    window.showPage = function(pageName) { if (originalShowPage) originalShowPage(pageName); setTimeout(optimizeImages, 300); };
-    document.addEventListener("DOMContentLoaded", optimizeImages);
-    setTimeout(optimizeImages, 1000); setInterval(optimizeImages, 5000);
-    window.openImage = function(src) {
-        if (!src) return;
-        try {
-            var overlay = document.getElementById('mobileImageOverlay');
-            if (!overlay) {
-                overlay = document.createElement('div');
-                overlay.id = 'mobileImageOverlay';
-                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
-                overlay.onclick = function() { overlay.style.display = 'none'; };
-                var img = document.createElement('img');
-                img.style.cssText = 'max-width:95%;max-height:90vh;object-fit:contain;border-radius:8px;';
-                overlay.appendChild(img);
-                document.body.appendChild(overlay);
-            }
-            overlay.querySelector('img').src = src;
-            overlay.style.display = 'flex';
-        } catch(e) { window.open(src, '_blank'); }
-    };
-})();
-</script>
 </body>
 </html>
