@@ -6,7 +6,6 @@
     <title>نظام مختبر جودة المشاريع</title>
     <link rel="stylesheet" href="style.css">
 
-    <!-- CSS لضمان فصل الصفحات -->
     <style>
         .page { display: none !important; }
         .page.active { display: block !important; }
@@ -265,85 +264,43 @@
 <footer>نظام مختبر جودة المشاريع</footer>
 
 <!-- ========================================================= -->
-<!-- الحل الجذري: بديل Supabase بـ fetch الأصلي (يعمل على الأمانة) -->
+<!-- حل جذري: حذف نهائي لكل روابط المكتبات الخارجية (CDN) -->
+<!-- التطبيق الآن يعمل 100% بأكواد داخلية مدمجة -->
 <!-- ========================================================= -->
 <script>
-const SB_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co";
-const SB_KEY = "sb_publishable_HM4vP8LsEZJaZC9Cyug5fg_fhQ050qL";
-
-// تعطيل html2pdf
+// 1. تعطيل html2pdf
 window.html2pdf = function(){ return {set:function(){return this;},from:function(){return this;},save:function(){return Promise.resolve();}}; };
 
-// 1. بديل Supabase باستخدام fetch (يعمل بدون مكتبة خارجية)
+// 2. بديل Supabase باستخدام fetch الأصلي (يتصل مباشرة بدون مكتبة خارجية)
+const SB_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co";
+const SB_KEY = "sb_publishable_HM4vP8LsEZJaZC9Cyug5fg_fhQ050qL";
 window.supabase = {
     createClient: function(url, key) {
         const restUrl = url + '/rest/v1/';
-        const headers = {
-            'apikey': key,
-            'Authorization': 'Bearer ' + key,
-            'Content-Type': 'application/json'
-        };
-        
+        const headers = { 'apikey': key, 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' };
         return {
             from: function(table) {
                 return {
                     select: function(cols) {
                         const selUrl = restUrl + table + '?select=' + (cols || '*');
-                        const promise = fetch(selUrl, { headers })
-                            .then(res => res.json())
-                            .then(data => ({ data: data, error: null }))
-                            .catch(error => ({ data: null, error: error }));
-                        
+                        const promise = fetch(selUrl, { headers }).then(res => res.json()).then(data => ({ data: data, error: null })).catch(error => ({ data: null, error: error }));
                         return {
                             order: function(col, opts) {
                                 const orderUrl = selUrl + '&order=' + col + '.' + (opts.ascending ? 'asc' : 'desc');
-                                return fetch(orderUrl, { headers })
-                                    .then(res => res.json())
-                                    .then(data => ({ data: data, error: null }))
-                                    .catch(error => ({ data: null, error: error }));
+                                return fetch(orderUrl, { headers }).then(res => res.json()).then(data => ({ data: data, error: null })).catch(error => ({ data: null, error: error }));
                             },
-                            then: function(resolve, reject) {
-                                return promise.then(resolve, reject);
-                            }
+                            then: function(resolve, reject) { return promise.then(resolve, reject); }
                         };
                     },
                     insert: function(row) {
-                        const promise = fetch(restUrl + table, {
-                            method: 'POST',
-                            headers: { ...headers, 'Prefer': 'return=representation' },
-                            body: JSON.stringify(row)
-                        }).then(res => res.json()).then(data => ({ data: Array.isArray(data) ? data[0] : data, error: null }));
-
-                        return {
-                            select: function() {
-                                return {
-                                    single: function() {
-                                        return promise;
-                                    }
-                                };
-                            }
-                        };
+                        const promise = fetch(restUrl + table, { method: 'POST', headers: { ...headers, 'Prefer': 'return=representation' }, body: JSON.stringify(row) }).then(res => res.json()).then(data => ({ data: Array.isArray(data) ? data[0] : data, error: null }));
+                        return { select: function() { return { single: function() { return promise; } }; } };
                     },
                     update: function(changes) {
-                        return {
-                            eq: function(col, val) {
-                                return fetch(restUrl + table + '?' + col + '=eq.' + val, {
-                                    method: 'PATCH',
-                                    headers: { ...headers, 'Prefer': 'return=representation' },
-                                    body: JSON.stringify(changes)
-                                }).then(res => res.json()).then(data => ({ data: null, error: null }));
-                            }
-                        };
+                        return { eq: function(col, val) { return fetch(restUrl + table + '?' + col + '=eq.' + val, { method: 'PATCH', headers: { ...headers, 'Prefer': 'return=representation' }, body: JSON.stringify(changes) }).then(res => res.json()).then(data => ({ data: null, error: null })); } };
                     },
                     delete: function() {
-                        return {
-                            eq: function(col, val) {
-                                return fetch(restUrl + table + '?' + col + '=eq.' + val, {
-                                    method: 'DELETE',
-                                    headers: headers
-                                }).then(res => res.json()).then(data => ({ data: null, error: null }));
-                            }
-                        };
+                        return { eq: function(col, val) { return fetch(restUrl + table + '?' + col + '=eq.' + val, { method: 'DELETE', headers: headers }).then(res => res.json()).then(data => ({ data: null, error: null })); } };
                     }
                 };
             },
@@ -352,26 +309,10 @@ window.supabase = {
                     return {
                         upload: async function(path, file, opts) {
                             const storageUrl = url + '/storage/v1/object/' + bucket + '/' + path;
-                            const storageHeaders = {
-                                'apikey': key,
-                                'Authorization': 'Bearer ' + key,
-                                'Content-Type': (opts && opts.contentType) || (file && file.type) || 'application/octet-stream'
-                            };
-                            try {
-                                const res = await fetch(storageUrl, {
-                                    method: 'POST',
-                                    headers: storageHeaders,
-                                    body: file
-                                });
-                                const data = await res.json();
-                                return { data: data, error: data.error ? data.error : null };
-                            } catch(e) {
-                                return { data: null, error: e };
-                            }
+                            const storageHeaders = { 'apikey': key, 'Authorization': 'Bearer ' + key, 'Content-Type': (opts && opts.contentType) || (file && file.type) || 'application/octet-stream' };
+                            try { const res = await fetch(storageUrl, { method: 'POST', headers: storageHeaders, body: file }); const data = await res.json(); return { data: data, error: data.error ? data.error : null }; } catch(e) { return { data: null, error: e }; }
                         },
-                        getPublicUrl: function(path) {
-                            return { data: { publicUrl: url + '/storage/v1/object/public/' + bucket + '/' + path } };
-                        }
+                        getPublicUrl: function(path) { return { data: { publicUrl: url + '/storage/v1/object/public/' + bucket + '/' + path } }; }
                     };
                 }
             }
@@ -379,15 +320,13 @@ window.supabase = {
     }
 };
 
-// 2. بديل Chart.js (إذا فشل تحميلها من CDN)
-window.Chart = window.Chart || function(ctx, config) {
+// 3. بديل Chart.js (يرسم رسالة بسيطة بدل الرسم البياني)
+window.Chart = function(ctx, config) {
     try {
         var c = ctx.getContext ? ctx.getContext('2d') : ctx;
         if (c && ctx.canvas) {
             c.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
-            c.fillStyle = '#173f32';
-            c.font = 'bold 14px Tahoma';
-            c.textAlign = 'center';
+            c.fillStyle = '#173f32'; c.font = 'bold 14px Tahoma'; c.textAlign = 'center';
             c.fillText('📊 الرسوم البيانية', ctx.canvas.width/2, ctx.canvas.height/2);
         }
     } catch(e) {}
@@ -395,8 +334,8 @@ window.Chart = window.Chart || function(ctx, config) {
 };
 window.Chart.defaults = { global: { animation: false } };
 
-// 3. بديل XLSX (تصدير CSV إذا فشل تحميلها من CDN)
-window.XLSX = window.XLSX || {
+// 4. بديل XLSX (تصدير CSV يفتح ببرنامج Excel)
+window.XLSX = {
     utils: {
         json_to_sheet: function(d) { return d || []; },
         book_new: function() { return {Sheets:{}, SheetNames:[], _data:[]}; },
@@ -407,28 +346,16 @@ window.XLSX = window.XLSX || {
         if (wb._data && wb._data.length) {
             var keys = Object.keys(wb._data[0]);
             csv += keys.join(',') + '\n';
-            wb._data.forEach(function(r) {
-                csv += keys.map(function(k) { return '"' + String(r[k]||'').replace(/"/g,'""') + '"'; }).join(',') + '\n';
-            });
+            wb._data.forEach(function(r) { csv += keys.map(function(k) { return '"' + String(r[k]||'').replace(/"/g,'""') + '"'; }).join(',') + '\n'; });
         }
         var blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = fn.replace('.xlsx','.csv');
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        var url = URL.createObjectURL(blob); var a = document.createElement('a'); a.href = url; a.download = fn.replace('.xlsx','.csv');
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
     }
 };
 </script>
 
-<!-- محاولة تحميل المكتبات الحقيقية (ستحل محل البدائل إذا نجحت) -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js" onerror="window.Chart=window.Chart;"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" onerror="window.XLSX=window.XLSX;"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js" onerror="window.supabase=window.supabase;"></script>
-
-<script src="script.js?v=300"></script>
+<script src="script.js?v=400"></script>
 
 <script>
 if (typeof Chart !== 'undefined' && Chart.defaults) {
@@ -798,7 +725,7 @@ function exportPerformanceToPDF() {
     var data = getPerformanceDataArray(); if (data.length === 0) { alert("لا توجد بيانات للتصدير"); return; }
     var rows = "";
     data.forEach(function(item) { var color = item["التصنيف"].includes("A") ? "#24704d" : item["التصنيف"].includes("B") ? "#5d7066" : item["التصنيف"].includes("C") ? "#8a6d3b" : "#a33f3f"; rows += '<tr><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["م"]+'</td><td style="border:1px solid #999;padding:6px;">'+item["اسم المقاول"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["إجمالي التصاريح"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["إجمالي الملاحظات"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;">'+item["نسبة الأخطاء (%)"]+'</td><td style="text-align:center;border:1px solid #999;padding:6px;color:'+color+';font-weight:bold;">'+item["التصنيف"]+'</td></tr>'; });
-    var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير تصنيف أداء المقاولين</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border=1px solid #999;">التصاريح</th><th style="padding:8px;border:1px solid #999;">الملاحظات</th><th style="padding:8px;border:1px solid #999;">نسبة الأخطاء</th><th style="padding:8px;border:1px solid #999;">التصنيف</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير تصنيف أداء المقاولين</h3></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">التصاريح</th><th style="padding:8px;border:1px solid #999;">الملاحظات</th><th style="padding:8px;border:1px solid #999;">نسبة الأخطاء</th><th style="padding:8px;border:1px solid #999;">التصنيف</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
     
     var printArea = document.getElementById("printArea");
     if (!printArea) { printArea = document.createElement("div"); printArea.id = "printArea"; document.body.appendChild(printArea); }
