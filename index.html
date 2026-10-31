@@ -498,68 +498,22 @@ function exportPerformanceToExcel() {
 </style>
 
 <script>
+/* إظهار أول صفحة فقط عند التحميل (بدون استبدال showPage من script.js) */
 (function() {
     "use strict";
-
-    /* 1) دالة showPage الوحيدة - تخفي كل الصفحات وتُظهر واحدة فقط */
-    function showPageSafe(pageName) {
-        try {
-            var pages = document.querySelectorAll(".page");
-            for (var i = 0; i < pages.length; i++) {
-                pages[i].classList.remove("active");
-                pages[i].style.display = "none";
-            }
-            var target = document.getElementById(pageName);
-            if (target) {
-                target.classList.add("active");
-                target.style.display = "block";
-            }
-            /* تحديث أزرار التنقل */
-            var navBtns = document.querySelectorAll('.navbar button');
-            for (var j = 0; j < navBtns.length; j++) {
-                navBtns[j].classList.remove("active");
-                var oc = navBtns[j].getAttribute("onclick") || "";
-                if (oc.indexOf(pageName) !== -1) {
-                    navBtns[j].classList.add("active");
-                }
-            }
-            window.scrollTo({top: 0, behavior: "smooth"});
-        } catch(e) { console.error(e); }
-    }
-
-    /* 2) تعريف showPage - يمكن تجاوزه بـ script.js */
-    window.showPage = showPageSafe;
-
-    /* 3) إظهار أول صفحة فقط عند التحميل */
     function showFirstPageOnly() {
         try {
             var pages = document.querySelectorAll(".page");
-            for (var i = 0; i < pages.length; i++) {
-                pages[i].classList.remove("active");
-                pages[i].style.display = "none";
-            }
-            if (pages.length > 0) {
+            if (pages.length > 0 && !document.querySelector('.page.active')) {
                 pages[0].classList.add("active");
                 pages[0].style.display = "block";
             }
         } catch(e) {}
     }
-
-    /* تشغيل فوري */
     showFirstPageOnly();
-
-    /* تشغيل بعد DOMContentLoaded */
-    document.addEventListener("DOMContentLoaded", function() {
-        showFirstPageOnly();
-    });
-
-    /* تشغيل متأخر للتأكد */
-    setTimeout(showFirstPageOnly, 100);
+    document.addEventListener("DOMContentLoaded", showFirstPageOnly);
     setTimeout(showFirstPageOnly, 500);
-    setTimeout(showFirstPageOnly, 1000);
-    setTimeout(showFirstPageOnly, 3000);
-
-    console.log("✅ الكود النهائي محمّل - فصل كل قسم في صفحة مستقلة");
+    console.log("✅ تم تحميل الصفحات");
 })();
 </script>
 
