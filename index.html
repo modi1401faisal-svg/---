@@ -879,7 +879,10 @@ function exportPerformanceToPDF() {
         } catch (error) { console.error("❌ خطأ:", error); showToastFix("خطأ: " + (error.message || error), "error"); }
         finally { window._savingEmergency = false; }
     };
-
+<!-- قبل: -->
+<button onclick="fastSaveClearance()">حفظ الرخصة</button>
+<!-- بعد: -->
+<button onclick="saveClearance()">حفظ الرخصة</button>
     console.log("✅ تم تثبيت كود الحفظ المباشر على السحابة");
 })();
 </script>
