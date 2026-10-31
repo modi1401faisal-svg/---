@@ -3473,3 +3473,359 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
 });
+/* =========================================================
+   كود إضافي: إصلاح حفظ الإخلاءات على السحابة
+   يُضاف في نهاية ملف script.js
+   يعيد تعريف saveClearance لترفع البيانات للسحابة فوراً
+   ========================================================= */
+(function () {
+    "use strict";
+
+    /* إعدادات Supabase */
+    var SUPABASE_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co";
+    var SUPABASE_KEY = "sb_publishable_HM4vP8LsEZJaZC9Cyug5fg_fhQ050qL";
+    var REST_URL = SUPABASE_URL + "/rest/v1/";
+    var HEADERS = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": "Bearer " + SUPABASE_KEY,
+        "Content-Type": "application/json"
+    };
+
+    /* دالة insert مباشرة للسحابة */
+    async function insertToCloud(tableName, row) {
+        try {
+            var res = await fetch(REST_URL + tableName, {
+                method: "POST",
+                headers: Object.assign({}, HEADERS, { "Prefer": "return=representation" }),
+                body: JSON.stringify(row)
+            });
+            if (!res.ok) {
+                var txt = await res.text();
+                console.error("❌ خطأ حفظ السحابة:", res.status, txt.substring(0, 200));
+                return null;
+            }
+            var data = await res.json();
+            var result = Array.isArray(data) ? data[0] : data;
+            console.log("✅ تم الحفظ على السحابة - id:", result && result.id);
+            return result;
+        } catch (e) {
+            console.error("❌ استثناء:", e);
+            return null;
+        }
+    }
+
+    /* دالة update مباشرة للسحابة */
+    async function updateToCloud(tableName, id, changes) {
+        if (!id) return false;
+        try {
+            var res = await fetch(REST_URL + tableName + "?id=eq." + id, {
+                method: "PATCH",
+                headers: Object.assign({}, HEADERS, { "Prefer": "return=representation" }),
+                body: JSON.stringify(changes)
+            });
+            if (!res.ok) {
+                console.error("❌ خطأ تعديل السحابة:", res.status);
+                return false;
+            }
+            console.log("✅ تم التعديل على السحابة - id:", id);
+            return true;
+        } catch (e) {
+            console.error("❌ استثناء:", e);
+            return false;
+        }
+    }
+
+    /* عرض رسالة Toast */
+    function showToast(msg, type) {
+        type = type || "success";
+        var toast = document.getElementById("appToast");
+        if (!toast) {
+            toast = document.createElement("div");
+            toast.id = "appToast";
+            toast.style.cssText =
+                "position:fixed;top:15px;right:15px;left:15px;z-index:99999;color:#fff;padding:14px 18px;" +
+                "border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-family:inherit;font-size:14px;" +
+                "max-width:500px;margin:0 auto;text-align:center;white-space:pre-line;" +
+                "opacity:0;transform:translateY(-15px);transition:opacity .25s ease, transform .25s ease;";
+            document.body.appendChild(toast);
+        }
+        toast.textContent = msg;
+        toast.style.background = type === "error" ? "#b00020" : type === "warn" ? "#a86400" : "#245c49";
+        toast.style.opacity = "1";
+        toast.style.transform = "translateY(0)";
+        clearTimeout(toast._timer);
+        toast._timer = setTimeout(function () {
+            toast.style.opacity = "0";
+            toast.style.transform = "translateY(-15px)";
+        }, 3500);
+    }
+
+    /* إعادة تعريف saveClearance لترفع للسحابة فوراً */
+    window.saveClearance = async function () {
+        if (window._savingClearance) return;
+        window._savingClearance = true;
+
+        try {
+            var permit = document.getElementById("clearancePermit");
+            var contractor = document.getElementById("clearanceContractor");
+            var owner = document.getElementById("clearanceOwner");
+            var location = document.getElementById("clearanceLocation");
+
+            permit = permit ? permit.value.trim() : "";
+            contractor = contractor ? contractor.value.trim() : "";
+            owner = owner ? owner.value.trim() : "";
+            location = location ? location.value.trim() : "";
+
+            var missing = [];
+            if (!permit) missing.push("رقم التصريح");
+            if (!contractor) missing.push("اسم المقاول");
+            if (!owner) missing.push("الجهة المالكة");
+            if (!location) missing.push("الموقع");
+
+            if (missing.length > 0) {
+                alert("يرجى تعبئة:\n" + missing.join("\n"));
+                return;
+            }
+
+            /* عرض "جاري الحفظ" */
+            showToast("جارٍ الحفظ على السحابة... ⏳", "success");
+
+            /* تجهيز البيانات */
+            var data = {
+                permit: permit,
+                contractor: contractor,
+                owner: owner,
+                location: location,
+                images: []
+            };
+
+            /* هل هو تعديل أم جديد؟ */
+            var oldId = null;
+            if (typeof editingClearance !== "undefined" && editingClearance >= 0) {
+                var old = (typeof clearances !== "undefined" && clearances[editingClearance]) || {};
+                oldId = old.id || null;
+                if (old.images) data.images = old.images.filter(function (img) {
+                    return typeof img === "string" && img.indexOf("idb://") !== 0;
+                });
+                data.id = oldId;
+                clearances[editingClearance] = data;
+                editingClearance = -1;
+            } else {
+                clearances.push(data);
+            }
+
+            /* حفظ محلي فوري */
+            try { localStorage.setItem("clearances", JSON.stringify(clearances)); } catch (e) {}
+
+            /* تحديث الجدول فوراً */
+            if (typeof clearClearance === "function") clearClearance();
+            if (typeof renderClearances === "function") renderClearances();
+            if (typeof updateDashboard === "function") updateDashboard();
+
+            /* تجهيز البيانات للسحابة (إزالة idb:// references) */
+            var cloudRow = {
+                permit: permit,
+                contractor: contractor,
+                owner: owner,
+                location: location,
+                images: data.images.filter(function (img) {
+                    return typeof img === "string" && img.indexOf("idb://") !== 0;
+                })
+            };
+
+            /* رفع للسحابة الآن */
+            var cloudOk = false;
+
+            if (oldId) {
+                /* تعديل */
+                var ok = await updateToCloud("clearances", oldId, cloudRow);
+                if (ok) {
+                    cloudOk = true;
+                } else {
+                    /* لو فشل التعديل، أضف جديد */
+                    var ins = await insertToCloud("clearances", cloudRow);
+                    if (ins && ins.id) {
+                        data.id = ins.id;
+                        cloudOk = true;
+                    }
+                }
+            } else {
+                /* جديد */
+                var ins = await insertToCloud("clearances", cloudRow);
+                if (ins && ins.id) {
+                    data.id = ins.id;
+                    cloudOk = true;
+                }
+            }
+
+            /* تحديث الحفظ المحلي بالـ id الجديد */
+            try { localStorage.setItem("clearances", JSON.stringify(clearances)); } catch (e) {}
+            if (typeof renderClearances === "function") renderClearances();
+
+            /* رسالة النتيجة */
+            if (cloudOk) {
+                showToast("تم الحفظ على السحابة بنجاح ☁️✅", "success");
+                console.log("✅✅✅ تم حفظ الرخصة على السحابة! id:", data.id);
+            } else {
+                showToast("تم الحفظ محلياً ⚠️\nتحقق من الاتصال بالسحابة", "warn");
+                console.warn("⚠️ فشل الحفظ على السحابة، تم الحفظ محلياً فقط");
+            }
+
+        } catch (error) {
+            console.error("❌ خطأ في حفظ الإخلاء:", error);
+            showToast("خطأ: " + (error.message || error), "error");
+        } finally {
+            window._savingClearance = false;
+        }
+    };
+
+    console.log("✅ تم تثبيت كود حفظ الإخلاءات على السحابة");
+})();
+/* =========================================================
+   كود إضافي: إصلاح حفظ الطوارئ على السحابة
+   يُضاف بعد كود حفظ الإخلاءات في نهاية script.js
+   ========================================================= */
+(function () {
+    "use strict";
+
+    var SUPABASE_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co";
+    var SUPABASE_KEY = "sb_publishable_HM4vP8LsEZJaZC9Cyug5fg_fhQ050qL";
+    var REST_URL = SUPABASE_URL + "/rest/v1/";
+    var HEADERS = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": "Bearer " + SUPABASE_KEY,
+        "Content-Type": "application/json"
+    };
+
+    async function insertToCloud(tableName, row) {
+        try {
+            var res = await fetch(REST_URL + tableName, {
+                method: "POST",
+                headers: Object.assign({}, HEADERS, { "Prefer": "return=representation" }),
+                body: JSON.stringify(row)
+            });
+            if (!res.ok) { var t = await res.text(); console.error("❌ خطأ:", res.status, t.substring(0, 200)); return null; }
+            var data = await res.json();
+            var result = Array.isArray(data) ? data[0] : data;
+            console.log("✅ تم الحفظ على السحابة - id:", result && result.id);
+            return result;
+        } catch (e) { console.error("❌ استثناء:", e); return null; }
+    }
+
+    async function updateToCloud(tableName, id, changes) {
+        if (!id) return false;
+        try {
+            var res = await fetch(REST_URL + tableName + "?id=eq." + id, {
+                method: "PATCH",
+                headers: Object.assign({}, HEADERS, { "Prefer": "return=representation" }),
+                body: JSON.stringify(changes)
+            });
+            if (!res.ok) { console.error("❌ خطأ تعديل:", res.status); return false; }
+            console.log("✅ تم التعديل على السحابة - id:", id);
+            return true;
+        } catch (e) { console.error("❌ استثناء:", e); return false; }
+    }
+
+    function showToast(msg, type) {
+        type = type || "success";
+        var toast = document.getElementById("appToast");
+        if (!toast) {
+            toast = document.createElement("div");
+            toast.id = "appToast";
+            toast.style.cssText = "position:fixed;top:15px;right:15px;left:15px;z-index:99999;color:#fff;padding:14px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-family:inherit;font-size:14px;max-width:500px;margin:0 auto;text-align:center;white-space:pre-line;opacity:0;transform:translateY(-15px);transition:opacity .25s ease, transform .25s ease;";
+            document.body.appendChild(toast);
+        }
+        toast.textContent = msg;
+        toast.style.background = type === "error" ? "#b00020" : type === "warn" ? "#a86400" : "#245c49";
+        toast.style.opacity = "1"; toast.style.transform = "translateY(0)";
+        clearTimeout(toast._timer);
+        toast._timer = setTimeout(function () { toast.style.opacity = "0"; toast.style.transform = "translateY(-15px)"; }, 3500);
+    }
+
+    /* إعادة تعريف saveEmergency */
+    window.saveEmergency = async function () {
+        if (window._savingEmergency) return;
+        window._savingEmergency = true;
+
+        try {
+            var permit = document.getElementById("emergencyPermit");
+            var contractor = document.getElementById("emergencyContractor");
+            var owner = document.getElementById("emergencyOwner");
+            var labReceive = document.getElementById("labReceiveDate");
+            var start = document.getElementById("workStartDate");
+            var end = document.getElementById("workEndDate");
+            var location = document.getElementById("emergencyLocation");
+
+            permit = permit ? permit.value.trim() : "";
+            contractor = contractor ? contractor.value.trim() : "";
+            owner = owner ? owner.value.trim() : "";
+            labReceive = labReceive ? labReceive.value : "";
+            start = start ? start.value : "";
+            end = end ? end.value : "";
+            location = location ? location.value.trim() : "";
+
+            var missing = [];
+            if (!permit) missing.push("رقم التصريح");
+            if (!contractor) missing.push("اسم المقاول");
+            if (!owner) missing.push("الجهة المالكة");
+            if (missing.length > 0) { alert("يرجى تعبئة:\n" + missing.join("\n")); return; }
+
+            showToast("جارٍ الحفظ على السحابة... ⏳", "success");
+
+            var data = {
+                permit: permit, contractor: contractor, owner: owner,
+                labReceive: labReceive, start: start, end: end, location: location, images: []
+            };
+
+            var oldId = null;
+            if (typeof editingEmergency !== "undefined" && editingEmergency >= 0) {
+                var old = (typeof emergencies !== "undefined" && emergencies[editingEmergency]) || {};
+                oldId = old.id || null;
+                if (old.images) data.images = old.images.filter(function (img) {
+                    return typeof img === "string" && img.indexOf("idb://") !== 0;
+                });
+                data.id = oldId;
+                emergencies[editingEmergency] = data;
+                editingEmergency = -1;
+            } else {
+                emergencies.push(data);
+            }
+
+            try { localStorage.setItem("emergencies", JSON.stringify(emergencies)); } catch (e) {}
+            if (typeof clearEmergency === "function") clearEmergency();
+            if (typeof renderEmergencies === "function") renderEmergencies();
+            if (typeof updateDashboard === "function") updateDashboard();
+
+            /* تجهيز البيانات للسحابة */
+            var cloudRow = {
+                permit: permit, contractor: contractor, owner: owner,
+                lab_receive: labReceive, work_start: start, work_end: end, location: location,
+                images: data.images.filter(function (img) { return typeof img === "string" && img.indexOf("idb://") !== 0; })
+            };
+
+            var cloudOk = false;
+            if (oldId) {
+                var ok = await updateToCloud("emergencies", oldId, cloudRow);
+                if (ok) cloudOk = true;
+                else { var ins = await insertToCloud("emergencies", cloudRow); if (ins && ins.id) { data.id = ins.id; cloudOk = true; } }
+            } else {
+                var ins = await insertToCloud("emergencies", cloudRow);
+                if (ins && ins.id) { data.id = ins.id; cloudOk = true; }
+            }
+
+            try { localStorage.setItem("emergencies", JSON.stringify(emergencies)); } catch (e) {}
+            if (typeof renderEmergencies === "function") renderEmergencies();
+
+            if (cloudOk) showToast("تم الحفظ على السحابة بنجاح ☁️✅", "success");
+            else showToast("تم الحفظ محلياً ⚠️\nتحقق من الاتصال", "warn");
+
+        } catch (error) {
+            console.error("❌ خطأ:", error);
+            showToast("خطأ: " + (error.message || error), "error");
+        } finally {
+            window._savingEmergency = false;
+        }
+    };
+
+    console.log("✅ تم تثبيت كود حفظ الطوارئ على السحابة");
+})();
