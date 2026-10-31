@@ -1,3831 +1,597 @@
-/* =========================================================
-   نظام مختبر جودة المشاريع
-   النسخة النهائية: IndexedDB للصور + سحابة Supabase
-   لا حذف لأي صورة — نقل فقط
-   ========================================================= */
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#173f32">
+    <title>نظام مختبر جودة المشاريع</title>
+    <link rel="stylesheet" href="style.css">
 
-/* =========================================================
-   1) الإعدادات
-   ========================================================= */
-
-const LAB_SUPABASE_KEY = "sb_publishable_HM4vP8LsEZJaZC9Cyug5fg_fhQ050qL";
-const LAB_SUPABASE_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co"
-const DEFAULT_ACTION_TEXT = "تم رفض الطلب وإبلاغ المقاول بالملاحظات";
-
-/* =========================================================
-   2) البيانات
-   ========================================================= */
-
-let clearances = JSON.parse(localStorage.getItem("clearances")) || [];
-let emergencies = JSON.parse(localStorage.getItem("emergencies")) || [];
-let notes = JSON.parse(localStorage.getItem("notes")) || [];
-
-let editingClearance = -1;
-let editingEmergency = -1;
-let editingNote = -1;
-
-let skippedImagesCount = 0;
-
-/* =========================================================
-   3) أدوات مساعدة
-   ========================================================= */
-
-function val(id) {
-    const el = document.getElementById(id);
-    return el ? el.value : "";
-}
-
-function setVal(id, value) {
-    const el = document.getElementById(id);
-    if (el) {
-        el.value = value || "";
-    }
-}
-
-function withTimeout(promise, ms) {
-    return Promise.race([
-        promise,
-        new Promise(function (_, reject) {
-            setTimeout(function () {
-                reject(new Error("انتهت المهلة"));
-            }, ms);
-        })
-    ]);
-}
-
-function blobToDataUrl(blob) {
-    return new Promise(function (resolve) {
-        const reader = new FileReader();
-        reader.onload = function () {
-            resolve(reader.result);
-        };
-        reader.onerror = function () {
-            resolve("");
-        };
-        reader.readAsDataURL(blob);
-    });
-}
-
-/* =========================================================
-   4) مخزن الصور IndexedDB (المساحة الكبيرة)
-   ========================================================= */
-
-let idbPromise = null;
-
-function openImageDB() {
-    if (idbPromise) {
-        return idbPromise;
-    }
-    idbPromise = new Promise(function (resolve) {
-        try {
-            const req = indexedDB.open("labImagesDB", 1);
-            req.onupgradeneeded = function (e) {
-                const db = e.target.result;
-                if (!db.objectStoreNames.contains("images")) {
-                    db.createObjectStore("images");
-                }
-            };
-            req.onsuccess = function (e) {
-                resolve(e.target.result);
-            };
-            req.onerror = function () {
-                resolve(null);
-            };
-        } catch (e) {
-            resolve(null);
-        }
-    });
-    return idbPromise;
-}
-
-async function idbPut(key, dataUrl) {
-    const db = await openImageDB();
-    if (!db) {
-        return false;
-    }
-    return new Promise(function (resolve) {
-        try {
-            const tx = db.transaction("images", "readwrite");
-            tx.objectStore("images").put(dataUrl, key);
-            tx.oncomplete = function () {
-                resolve(true);
-            };
-            tx.onerror = function () {
-                resolve(false);
-            };
-        } catch (e) {
-            resolve(false);
-        }
-    });
-}
-
-async function idbGet(key) {
-    const db = await openImageDB();
-    if (!db) {
-        return null;
-    }
-    return new Promise(function (resolve) {
-        try {
-            const tx = db.transaction("images", "readonly");
-            const req = tx.objectStore("images").get(key);
-            req.onsuccess = function () {
-                resolve(req.result || null);
-            };
-            req.onerror = function () {
-                resolve(null);
-            };
-        } catch (e) {
-            resolve(null);
-        }
-    });
-}
-
-async function idbDelete(key) {
-    const db = await openImageDB();
-    if (!db) {
-        return;
-    }
-    return new Promise(function (resolve) {
-        try {
-            const tx = db.transaction("images", "readwrite");
-            tx.objectStore("images").delete(key);
-            tx.oncomplete = function () {
-                resolve(true);
-            };
-            tx.onerror = function () {
-                resolve(false);
-            };
-        } catch (e) {
-            resolve(false);
-        }
-    });
-}
-
-/* إنشاء مفتاح جديد وصيغة مرجع idb:// */
-function newImageRef() {
-    return "idb://img_" + Date.now() + "_" +
-        Math.random().toString(36).substring(2, 10);
-}
-
-function isIdbRef(value) {
-    return typeof value === "string" && value.indexOf("idb://") === 0;
-}
-
-function idbKeyFromRef(ref) {
-    return ref.substring(6);
-}
-
-/* تخزين صورة (dataUrl) في IndexedDB وإرجاع المرجع */
-async function storeImageInIdb(dataUrl) {
-    const ref = newImageRef();
-    const ok = await idbPut(idbKeyFromRef(ref), dataUrl);
-    return ok ? ref : "";
-}
-
-/* =========================================================
-   5) تهيئة Supabase (النسخة المضمونة)
-   ========================================================= */
-
-let sbClient = null;
-let sbLoadPromise = null;
-
-function createSbClient() {
-    try {
-        if (typeof supabase !== "undefined" && supabase && typeof supabase.createClient === "function") {
-            return supabase.createClient(LAB_SUPABASE_URL, LAB_SUPABASE_KEY);
-        }
-        if (typeof createClient === "function") {
-            return createClient(LAB_SUPABASE_URL, LAB_SUPABASE_KEY);
-        }
-    } catch (e) {
-        console.error("خطأ في إنشاء عميل Supabase:", e);
-    }
-    return null;
-}
-
-/* شارة حالة الاتصال — تظهر أسفل يسار الشاشة */
-function showCloudStatus(state, message) {
-    try {
-        if (!document.body) return;
-        let badge = document.getElementById("cloudStatusBadge");
-        if (!badge) {
-            badge = document.createElement("div");
-            badge.id = "cloudStatusBadge";
-            badge.style.cssText =
-                "position:fixed;bottom:10px;left:10px;z-index:99999;padding:6px 12px;" +
-                "border-radius:20px;font-size:12px;font-family:inherit;color:#fff;" +
-                "box-shadow:0 2px 8px rgba(0,0,0,.3);direction:rtl;";
-            document.body.appendChild(badge);
-        }
-        badge.innerText = message;
-        badge.style.background = state === "ok" ? "#1a7f4b" : "#b3402a";
-    } catch (e) { }
-}
-
-/* فحص فوري بعد الاتصال: هل الجداول تستجيب؟ */
-function checkCloudHealth(client) {
-    try {
-        client.from("clearances").select("id").limit(1).then(function (res) {
-            if (res.error) {
-                showCloudStatus("bad", "❌ سحابة متصلة — لكن الجداول ترفض: " + res.error.message);
-                console.log("خطأ الجداول:", res.error.message);
-            } else {
-                showCloudStatus("ok", "☁️ متصل بالسحابة ✅");
-                console.log("فحص الجداول: سليم ✅");
-            }
-        });
-    } catch (e) { }
-}
-
-function initSupabase() {
-
-    if (sbClient) {
-        return Promise.resolve(sbClient);
-    }
-
-    /* إنشاء العميل فورًا إذا كانت المكتبة محملة */
-    const immediate = createSbClient();
-    if (immediate) {
-        sbClient = immediate;
-        console.log("تم تهيئة Supabase بنجاح ✅");
-        checkCloudHealth(sbClient);
-        return Promise.resolve(sbClient);
-    }
-
-    if (sbLoadPromise) {
-        return sbLoadPromise;
-    }
-
-    sbLoadPromise = new Promise(function (resolve) {
-
-        const script = document.createElement("script");
-        script.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js";
-
-        script.onload = function () {
-            sbClient = createSbClient();
-            if (sbClient) {
-                console.log("تم تهيئة Supabase بنجاح ✅");
-                checkCloudHealth(sbClient);
-            } else {
-                showCloudStatus("bad", "❌ المكتبة حُمّلت لكن إنشاء العميل فشل");
-            }
-            resolve(sbClient);
-        };
-
-        script.onerror = function () {
-            /* المصدر البديل */
-            const alt = document.createElement("script");
-            alt.src = "https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js";
-            alt.onload = function () {
-                sbClient = createSbClient();
-                if (sbClient) {
-                    console.log("تم تهيئة Supabase عبر unpkg ✅");
-                    checkCloudHealth(sbClient);
-                } else {
-                    showCloudStatus("bad", "❌ تعذر إنشاء العميل");
-                }
-                resolve(sbClient);
-            };
-            alt.onerror = function () {
-                console.warn("تعذر تحميل مكتبة Supabase من كل المصادر");
-                showCloudStatus("bad", "❌ تعذر تحميل مكتبة Supabase");
-                resolve(null);
-            };
-            document.head.appendChild(alt);
-        };
-
-        document.head.appendChild(script);
-    });
-
-    return sbLoadPromise;
-}
-/* =========================================================
-   6) طبقة قاعدة البيانات (الجداول)
-   ========================================================= */
-
-async function dbInsert(tableName, row) {
-    const client = await initSupabase();
-    if (!client) {
-        return null;
-    }
-    try {
-        const { data, error } = await client
-            .from(tableName)
-            .insert(row)
-            .select()
-            .single();
-        if (error) {
-            console.warn("خطأ إضافة في " + tableName + ": " + error.message);
-            return null;
-        }
-        return data;
-    } catch (e) {
-        return null;
-    }
-}
-
-async function dbUpdate(tableName, id, changes) {
-    const client = await initSupabase();
-    if (!client || !id) {
-        return false;
-    }
-    try {
-        const { error } = await client
-            .from(tableName)
-            .update(changes)
-            .eq("id", id);
-        if (error) {
-            console.warn("خطأ تعديل في " + tableName + ": " + error.message);
-            return false;
-        }
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
-
-async function dbDelete(tableName, id) {
-    const client = await initSupabase();
-    if (!client || !id) {
-        return false;
-    }
-    try {
-        const { error } = await client
-            .from(tableName)
-            .delete()
-            .eq("id", id);
-        if (error) {
-            console.warn("خطأ حذف في " + tableName + ": " + error.message);
-            return false;
-        }
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
-
-async function dbFetchAll(tableName) {
-    const client = await initSupabase();
-    if (!client) {
-        return null;
-    }
-    try {
-        const { data, error } = await client
-            .from(tableName)
-            .select("*")
-            .order("id", { ascending: true });
-        if (error) {
-            console.warn("خطأ قراءة " + tableName + ": " + error.message);
-            return null;
-        }
-        return data || [];
-    } catch (e) {
-        return null;
-    }
-}
-
-/* =========================================================
-   7) محولات البيانات
-   ========================================================= */
-
-function clearanceToRow(item) {
-    return {
-        permit: item.permit || "",
-        contractor: item.contractor || "",
-        owner: item.owner || "",
-        location: item.location || "",
-        images: (item.images || []).map(stripIdbForDb)
+    <!-- ====== إصلاح مبكر: CSS احتياطي (بدون document.write الذي يكسر الجوال) ====== -->
+    <style>
+        /* إخفاء كل الصفحات وإظهار النشطة فقط - مهم للجوال */
+        .page { display: none !important; }
+        .page.active { display: block !important; }
+    </style>
+    <script>
+    /* تعطيل html2pdf بأمان بدون document.write */
+    window.html2pdf = window.html2pdf || function() {
+        return { set: function(){return this;}, from: function(){return this;}, save: function(){return Promise.resolve();} };
     };
-}
+    /* عرض الأخطاء بدل إخفائها - مهم لتشخيص المشاكل على الجوال */
+    window.addEventListener('unhandledrejection', function(e) { console.warn("وعد مرفوض:", e.reason); e.preventDefault(); });
+    </script>
 
-function stripIdbForDb(img) {
-    /* idb:// لا يفهمه الخادم — نرسل سلسلة فارغة مؤقتاً
-       وسيُستبدل بالرابط السحابي بعد الرفع في الخلفية */
-    return isIdbRef(img) ? "" : img;
-}
+    <style>
+        .header-content { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 20px !important; }
+        .header-text { text-align: center !important; flex: 1 !important; }
+        .header-logo-injected { height: 80px !important; width: auto !important; object-fit: contain !important; background: white !important; padding: 5px !important; border-radius: 10px !important; }
+        .lab-logo-injected { display: block !important; margin: 0 auto 20px auto !important; max-width: 60% !important; height: auto !important; max-height: 120px !important; object-fit: contain !important; border-radius: 8px !important; }
 
-function rowToClearance(row) {
-    return {
-        id: row.id,
-        permit: row.permit || "",
-        contractor: row.contractor || "",
-        owner: row.owner || "",
-        location: row.location || "",
-        images: Array.isArray(row.images) ? row.images : []
-    };
-}
+        .premium-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 25px; }
+        .premium-card { border-radius: 12px; padding: 15px; color: white; box-shadow: 0 2px 8px rgba(0,0,0,0.05); display: flex; align-items: center; gap: 12px; }
+        .premium-card .icon-box { width: 45px; height: 45px; background: rgba(255,255,255,0.2); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+        .premium-card .data-box span { font-size: 13px; opacity: 0.9; display: block; margin-bottom: 2px; }
+        .premium-card .data-box strong { font-size: 24px; font-weight: 800; }
+        .bg-green { background: linear-gradient(135deg, #173f32 0%, #2d6a52 100%); }
+        .bg-teal { background: linear-gradient(135deg, #0f4c47 0%, #39745d 100%); }
+        .bg-blue { background: linear-gradient(135deg, #1e3a5f 0%, #2980b9 100%); }
+        .bg-orange { background: linear-gradient(135deg, #b35900 0%, #e67e22 100%); }
+        .bg-red { background: linear-gradient(135deg, #8a3e3e 0%, #c0392b 100%); }
+        .bg-darkred { background: linear-gradient(135deg, #5e0d0d 0%, #9b1c1c 100%); }
+        .bg-purple { background: linear-gradient(135deg, #4a235a 0%, #8e44ad 100%); }
+        .bg-gray { background: linear-gradient(135deg, #435f6e 0%, #6b8a99 100%); }
 
-function emergencyToRow(item) {
-    return {
-        permit: item.permit || "",
-        contractor: item.contractor || "",
-        owner: item.owner || "",
-        lab_receive: item.labReceive || "",
-        work_start: item.start || "",
-        work_end: item.end || "",
-        location: item.location || "",
-        images: (item.images || []).map(stripIdbForDb)
-    };
-}
+        .chart-container { background: #fff; border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.03); border: 1px solid #e0ebe5; overflow: hidden; margin-bottom: 20px; }
+        .chart-header { background: #f8fbfa; padding: 12px 18px; border-bottom: 1px solid #e0ebe5; font-weight: bold; color: #173f32; }
+        .chart-body { padding: 15px; position: relative; height: 320px; }
+        .gauge-center-text { position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
+        .gauge-center-text .val { font-size: 36px; font-weight: 800; color: #173f32; display: block; }
+        .gauge-center-text .lbl { font-size: 12px; color: #666; }
 
-function rowToEmergency(row) {
-    return {
-        id: row.id,
-        permit: row.permit || "",
-        contractor: row.contractor || "",
-        owner: row.owner || "",
-        labReceive: row.lab_receive || "",
-        start: row.work_start || "",
-        end: row.work_end || "",
-        location: row.location || "",
-        images: Array.isArray(row.images) ? row.images : []
-    };
-}
+        @media (max-width: 900px) { .header-content { flex-direction: column !important; text-align: center !important; } }
 
-function noteToRow(item) {
-    return {
-        type: item.type || "مشاريع الأمانة",
-        note_date: item.date || "",
-        permit: item.permit || "",
-        contractor: item.contractor || "",
-        owner: item.owner || "",
-        reason: item.reason || "",
-        action: item.action || "",
-        before_image: isIdbRef(item.before) ? "" : (item.before || ""),
-        after_image: isIdbRef(item.after) ? "" : (item.after || ""),
-        completed: !!item.completed
-    };
-}
+        /* ====== تجاوب الجوال ====== */
+        @media (max-width: 768px) {
+            .main-header { padding: 15px 12px !important; }
+            .main-header h1 { font-size: 18px !important; margin-bottom: 4px !important; }
+            .main-header p { font-size: 12px !important; }
+            .header-logo-injected { height: 50px !important; }
 
-function rowToNote(row) {
-    return {
-        id: row.id,
-        type: row.type || "مشاريع الأمانة",
-        date: row.note_date || "",
-        permit: row.permit || "",
-        contractor: row.contractor || "",
-        owner: row.owner || "",
-        reason: row.reason || "",
-        action: row.action || "",
-        before: row.before_image || "",
-        after: row.after_image || "",
-        completed: !!row.completed
-    };
-}
+            .navbar { padding: 6px 4px !important; gap: 3px !important; flex-wrap: wrap !important; justify-content: center !important; }
+            .navbar button { padding: 8px 10px !important; font-size: 12px !important; min-height: 40px; min-width: 70px; }
 
-/* =========================================================
-   8) حفظ محلي آمن — ينقل الصور للمخزن الكبير بدل الحذف
-   ========================================================= */
+            .container { width: 100% !important; margin: 12px auto 25px !important; padding: 0 8px !important; }
 
-/* نقل كل صور Base64 داخل السجلات إلى IndexedDB
-   وإرجاع عدد ما تم نقله */
-async function moveBase64ToIdb(arr) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
+            .stat-card { padding: 12px !important; }
+            .stat-icon { width: 40px !important; height: 40px !important; font-size: 18px !important; }
+            .stat-card strong { font-size: 20px !important; }
+            .stat-card span { font-size: 11px !important; }
 
-    let moved = 0;
+            .premium-kpi-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 8px !important; }
+            .premium-card { padding: 10px !important; }
+            .premium-card .icon-box { width: 35px !important; height: 35px !important; font-size: 16px !important; }
+            .premium-card .data-box strong { font-size: 18px !important; }
+            .premium-card .data-box span { font-size: 11px !important; }
 
-    for (const item of arr) {
-
-        if (Array.isArray(item.images)) {
-            for (let i = 0; i < item.images.length; i++) {
-                const img = item.images[i];
-                if (typeof img === "string" && img.indexOf("data:") === 0) {
-                    const ref = await storeImageInIdb(img);
-                    if (ref) {
-                        item.images[i] = ref;
-                        moved++;
-                    }
-                }
-            }
-        }
-
-        if (typeof item.before === "string" && item.before.indexOf("data:") === 0) {
-            const ref = await storeImageInIdb(item.before);
-            if (ref) {
-                item.before = ref;
-                moved++;
-            }
-        }
-
-        if (typeof item.after === "string" && item.after.indexOf("data:") === 0) {
-            const ref = await storeImageInIdb(item.after);
-            if (ref) {
-                item.after = ref;
-                moved++;
-            }
-        }
-    }
-
-    return moved;
-}
-
-/* حفظ آمن: عند امتلاء المساحة ينقل الصور تلقائياً
-   إلى IndexedDB ثم يعيد المحاولة — بدون حذف أي صورة */
-async function saveLocalData(key, arr) {
-
-    try {
-        localStorage.setItem(key, JSON.stringify(arr));
-        return true;
-    } catch (e) {
-
-        console.warn("مساحة localStorage ممتلئة — نقل الصور إلى المخزن الكبير...");
-
-        const moved = await moveBase64ToIdb(arr);
-
-        try {
-            localStorage.setItem(key, JSON.stringify(arr));
-            if (moved > 0) {
-                console.log("تم نقل " + moved + " صورة إلى المخزن الكبير وتحرير المساحة ✅");
-            }
-            return true;
-        } catch (e2) {
-            alert(
-                "تعذر الحفظ المحلي رغم نقل الصور.\n" +
-                "تأكد من وجود اتصال بالإنترنت حتى تُحفظ البيانات في السحابة."
-            );
-            return false;
-        }
-    }
-}
-
-/* نقل أولي عند التشغيل: يحرر مساحة localStorage فوراً
-   من الصور القديمة بدون فقدان أي صورة */
-async function initialImageMigration() {
-
-    const tasks = [
-        { arr: clearances, key: "clearances" },
-        { arr: emergencies, key: "emergencies" },
-        { arr: notes, key: "notes" }
-    ];
-
-    let totalMoved = 0;
-
-    for (const task of tasks) {
-        const moved = await moveBase64ToIdb(task.arr);
-        if (moved > 0) {
-            totalMoved += moved;
-            try {
-                localStorage.setItem(task.key, JSON.stringify(task.arr));
-            } catch (e) {
-                /* تجاهل — سنحاول لاحقاً */
-            }
-        }
-    }
-
-    if (totalMoved > 0) {
-        console.log("تم نقل " + totalMoved + " صورة موجودة إلى المخزن الكبير — لم تُحذف أي صورة ✅");
-        renderClearances();
-        renderEmergencies();
-        renderNotes();
-        updateDashboard();
-    }
-
-    reportStorageUsage();
-}
-
-function reportStorageUsage() {
-    try {
-        let total = 0;
-        ["clearances", "emergencies", "notes"].forEach(function (k) {
-            total += (localStorage.getItem(k) || "").length;
-        });
-        console.log("مساحة localStorage المستخدمة: " + Math.round(total / 1024) + " KB (الصور منفصلة في المخزن الكبير)");
-    } catch (e) {
-        /* تجاهل */
-    }
-}
-
-/* =========================================================
-   9) رفع صور idb:// إلى السحابة في الخلفية
-   ثم استبدال المراجع بروابط سحابية
-   ========================================================= */
-
-async function uploadDataUrlToCloud(dataUrl) {
-    try {
-        const res = await fetch(dataUrl);
-        const blob = await res.blob();
-        return await uploadToSupabase(blob, "image/jpeg");
-    } catch (e) {
-        return "";
-    }
-}
-
-async function migrateIdbImagesToCloud() {
-
-    const client = await initSupabase();
-    if (!client) {
-        return;
-    }
-
-    const tasks = [
-        { arr: clearances, table: "clearances", key: "clearances", toRow: clearanceToRow },
-        { arr: emergencies, table: "emergencies", key: "emergencies", toRow: emergencyToRow },
-        { arr: notes, table: "notes", key: "notes", toRow: noteToRow }
-    ];
-
-    let migrated = 0;
-
-    for (const task of tasks) {
-
-        for (const item of task.arr) {
-
-            let changed = false;
-
-            if (Array.isArray(item.images)) {
-                for (let i = 0; i < item.images.length; i++) {
-                    if (isIdbRef(item.images[i])) {
-                        const data = await idbGet(idbKeyFromRef(item.images[i]));
-                        if (data) {
-                            const url = await uploadDataUrlToCloud(data);
-                            if (url) {
-                                item.images[i] = url;
-                                changed = true;
-                                migrated++;
-                            }
-                        }
-                    }
-                }
+            .form-grid { grid-template-columns: 1fr !important; gap: 12px !important; padding: 12px !important; }
+            .form-group label { font-size: 13px !important; }
+            .form-group input,
+            .form-group textarea,
+            .search-row input {
+                padding: 14px 12px !important;
+                font-size: 16px !important;
+                min-height: 44px;
             }
 
-            const fields = ["before", "after"];
-            for (let f = 0; f < fields.length; f++) {
-                const fieldName = fields[f];
-                if (isIdbRef(item[fieldName])) {
-                    const data = await idbGet(idbKeyFromRef(item[fieldName]));
-                    if (data) {
-                        const url = await uploadDataUrlToCloud(data);
-                        if (url) {
-                            item[fieldName] = url;
-                            changed = true;
-                            migrated++;
-                        }
-                    }
-                }
-            }
+            .card-header { padding: 10px 12px !important; }
+            .card-header h3 { font-size: 14px !important; }
 
-            if (changed) {
-                if (item.id) {
-                    await dbUpdate(task.table, item.id, task.toRow(item));
-                } else {
-                    const inserted = await dbInsert(task.table, task.toRow(item));
-                    if (inserted && inserted.id) {
-                        item.id = inserted.id;
-                    }
-                }
-                try {
-                    localStorage.setItem(task.key, JSON.stringify(task.arr));
-                } catch (e) {
-                    /* تجاهل */
-                }
-            }
-        }
-    }
+            .section-title { padding: 12px 14px !important; margin-bottom: 12px !important; }
+            .section-title h2 { font-size: 17px !important; }
+            .section-title p { font-size: 12px !important; }
 
-    if (migrated > 0) {
-        console.log("تم رفع " + migrated + " صورة إلى السحابة ✅");
-        renderClearances();
-        renderEmergencies();
-        renderNotes();
-        updateDashboard();
-    }
-}
+            table { font-size: 12px !important; width: 100% !important; display: block; overflow-x: auto; white-space: nowrap; }
+            th, td { padding: 8px 6px !important; }
 
-/* =========================================================
-   10) المزامنة مع السحابة
-   ========================================================= */
+            button { min-height: 44px; min-width: 60px; font-size: 13px !important; }
+            .edit, .delete { padding: 6px 10px !important; font-size: 11px !important; }
 
-async function syncFromCloud() {
+            img[data-idb], img[onclick] { width: 50px !important; height: 50px !important; }
 
-    const tasks = [
-        { table: "clearances", array: clearances, toRow: clearanceToRow, fromRow: rowToClearance, key: "clearances", render: renderClearances },
-        { table: "emergencies", array: emergencies, toRow: emergencyToRow, fromRow: rowToEmergency, key: "emergencies", render: renderEmergencies },
-        { table: "notes", array: notes, toRow: noteToRow, fromRow: rowToNote, key: "notes", render: renderNotes }
-    ];
+            .chart-body { height: 220px !important; padding: 8px !important; }
+            .gauge-center-text .val { font-size: 24px !important; }
 
-    let anySynced = false;
+            #appToast { font-size: 13px !important; padding: 12px 16px !important; right: 10px !important; left: 10px !important; max-width: none !important; }
 
-    for (const task of tasks) {
+            #userBadge { font-size: 11px !important; padding: 6px 10px !important; top: 5px !important; left: 5px !important; }
 
-        const cloud = await dbFetchAll(task.table);
+            #loginScreen > div { width: 92% !important; padding: 25px 18px !important; }
+            #loginScreen h2 { font-size: 19px !important; }
+            #loginScreen input { padding: 13px !important; font-size: 16px !important; }
+            #loginBtn { padding: 14px !important; font-size: 16px !important; }
 
-        if (cloud === null) {
-            continue;
+            .alert-item { padding: 10px !important; font-size: 12px !important; }
         }
 
-        anySynced = true;
-
-        const notUploaded = [];
-        for (const item of task.array) {
-            if (!item.id) {
-                const inserted = await dbInsert(task.table, task.toRow(item));
-                if (inserted && inserted.id) {
-                    item.id = inserted.id;
-                    cloud.push(inserted);
-                } else {
-                    notUploaded.push(item);
-                }
-            }
+        @media (max-width: 480px) {
+            .navbar button { padding: 6px 8px !important; font-size: 11px !important; min-width: 60px; }
+            .stats-grid { grid-template-columns: 1fr !important; }
+            .premium-kpi-grid { grid-template-columns: 1fr !important; }
+            .main-header h1 { font-size: 16px !important; }
         }
 
-        const merged = cloud.map(task.fromRow);
-        notUploaded.forEach(function (x) {
-            merged.push(x);
-        });
-
-        task.array.length = 0;
-        merged.forEach(function (x) {
-            task.array.push(x);
-        });
-
-        await saveLocalData(task.key, task.array);
-        task.render();
-    }
-
-    if (anySynced) {
-        updateDashboard();
-        console.log("تمت مزامنة البيانات مع Supabase ✅");
-    }
-}
-
-/* =========================================================
-   11) الصور — ضغط + رفع سحابة + IndexedDB كخطة بديلة
-   ========================================================= */
-
-function compressImageToBlob(file, maxDim, quality) {
-    return new Promise(function (resolve) {
-
-        if (!file || !file.type || file.type.indexOf("image/") !== 0) {
-            resolve(null);
-            return;
+        @media print {
+            body * { visibility: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+            .header-logo-injected, .lab-logo-injected { display: block !important; visibility: visible !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+            .main-header, .header-content, .card-header, .navbar { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; visibility: visible !important; }
+            .card.table-card { page-break-before: always !important; }
+            #notes .card.table-card:first-of-type { page-break-before: auto !important; }
         }
-
-        const reader = new FileReader();
-
-        reader.onload = function () {
-            const img = new Image();
-
-            img.onload = function () {
-                try {
-                    let w = img.width;
-                    let h = img.height;
-
-                    const scale = Math.min(1, maxDim / Math.max(w, h));
-                    w = Math.round(w * scale);
-                    h = Math.round(h * scale);
-
-                    const canvas = document.createElement("canvas");
-                    canvas.width = w;
-                    canvas.height = h;
-
-                    const ctx = canvas.getContext("2d");
-
-                    ctx.fillStyle = "#ffffff";
-                    ctx.fillRect(0, 0, w, h);
-
-                    ctx.drawImage(img, 0, 0, w, h);
-
-                    canvas.toBlob(function (blob) {
-                        resolve(blob || null);
-                    }, "image/jpeg", quality);
-
-                } catch (e) {
-                    resolve(null);
-                }
-            };
-
-            img.onerror = function () {
-                resolve(null);
-            };
-
-            img.src = reader.result;
-        };
-
-        reader.onerror = function () {
-            resolve(null);
-        };
-
-        reader.readAsDataURL(file);
-    });
-}
-
-async function uploadToSupabase(blobOrFile, mime) {
-
-    const client = await initSupabase();
-
-    if (!client) {
-        return "";
-    }
-
-    const fileName =
-        Date.now() + "_" +
-        Math.random().toString(36).substring(2, 10) + ".jpg";
-
-    const filePath = "uploads/" + fileName;
-
-    try {
-        const { error } = await client.storage
-            .from("images")
-            .upload(filePath, blobOrFile, {
-                cacheControl: "3600",
-                upsert: false,
-                contentType: mime || (blobOrFile && blobOrFile.type) || "image/jpeg"
-            });
-
-        if (error) {
-            console.error("خطأ في رفع الصورة إلى السحابة:", error.message);
-            return "";
-        }
-
-        const { data: urlData } = client.storage
-            .from("images")
-            .getPublicUrl(filePath);
-
-        return urlData && urlData.publicUrl ? urlData.publicUrl : "";
-
-    } catch (e) {
-        console.error("استثناء أثناء رفع الصورة:", e);
-        return "";
-    }
-}
-
-/* معالجة صورة واحدة:
-   1) ضغط ورفع للسحابة
-   2) عند الفشل: تخزين في IndexedDB (المساحة الكبيرة) — لا حذف */
-async function readImage(file) {
-
-    if (!file) {
-        return "";
-    }
-
-    const uploadBlob = await compressImageToBlob(file, 1400, 0.85);
-
-    let cloudUrl = "";
-
-    try {
-        if (uploadBlob) {
-            cloudUrl = await withTimeout(uploadToSupabase(uploadBlob, "image/jpeg"), 60000);
-        }
-        if (!cloudUrl) {
-            cloudUrl = await withTimeout(uploadToSupabase(file, file.type), 60000);
-        }
-    } catch (error) {
-        console.warn("تعذر رفع الصورة للسحابة: " + (error && error.message ? error.message : error));
-    }
-
-    if (cloudUrl) {
-        console.log("تم رفع الصورة للسحابة ✅");
-        return cloudUrl;
-    }
-
-    /* الخطة البديلة: IndexedDB — مساحة كبيرة لا تنفد */
-    let fallbackBlob = uploadBlob;
-
-    if (!fallbackBlob) {
-        fallbackBlob = await compressImageToBlob(file, 1000, 0.7);
-    }
-
-    if (fallbackBlob) {
-        const dataUrl = await blobToDataUrl(fallbackBlob);
-        if (dataUrl) {
-            const ref = await storeImageInIdb(dataUrl);
-            if (ref) {
-                console.warn("تم تخزين الصورة في المخزن الكبير — ستُرفع للسحابة تلقائياً عند توفر الاتصال");
-                return ref;
-            }
-        }
-    }
-
-    skippedImagesCount++;
-    return "";
-}
-
-async function readImages(files) {
-
-    const result = [];
-
-    if (!files || files.length === 0) {
-        return result;
-    }
-
-    for (let i = 0; i < files.length; i++) {
-        const imageUrl = await readImage(files[i]);
-        if (imageUrl) {
-            result.push(imageUrl);
-        }
-    }
-
-    return result;
-}
-
-/* =========================================================
-   12) عرض الصور — يدعم idb:// والروابط العادية
-   ========================================================= */
-
-function imageThumb(image, title = "عرض الصورة") {
-    if (!image) {
-        return "<span>لا توجد صورة</span>";
-    }
-
-    if (isIdbRef(image)) {
-        return `
-            <img
-                data-idb="${image}"
-                alt="${title}"
-                title="${title}"
-                onclick="openImageRef(this)"
-                style="width:70px;height:70px;object-fit:cover;border-radius:8px;cursor:pointer;margin:3px;background:#eee;"
-            >
-        `;
-    }
-
-    return `
-        <img
-            src="${image}"
-            alt="${title}"
-            title="${title}"
-            onclick="openImage(this.src)"
-            style="width:70px;height:70px;object-fit:cover;border-radius:8px;cursor:pointer;margin:3px;"
-        >
-    `;
-}
-
-/* ملء الصور المخزنة في IndexedDB بعد عرض الجدول */
-async function resolveIdbImages() {
-    const imgs = document.querySelectorAll("img[data-idb]");
-    for (let i = 0; i < imgs.length; i++) {
-        const img = imgs[i];
-        const ref = img.getAttribute("data-idb");
-        const data = await idbGet(idbKeyFromRef(ref));
-        if (data) {
-            img.src = data;
-            img.setAttribute("data-loaded", "1");
-        }
-    }
-}
-
-async function openImageRef(imgEl) {
-    let src = imgEl.getAttribute("src") || "";
-
-    if (!imgEl.getAttribute("data-loaded")) {
-        const ref = imgEl.getAttribute("data-idb");
-        if (ref) {
-            src = await idbGet(idbKeyFromRef(ref)) || src;
-        }
-    }
-
-    if (!src) {
-        return;
-    }
-
-    openImage(src);
-}
-
-function openImage(image) {
-    const newWindow = window.open("", "_blank");
-
-    if (!newWindow) {
-        alert("يرجى السماح بفتح النوافذ المنبثقة");
-        return;
-    }
-
-    newWindow.document.write(`
-        <!DOCTYPE html>
-        <html lang="ar" dir="rtl">
-        <head>
-            <meta charset="UTF-8">
-            <title>عرض الصورة</title>
-            <style>
-                body {margin:0;background:#173f32;display:flex;justify-content:center;align-items:center;min-height:100vh;}
-                img {max-width:95%;max-height:95vh;object-fit:contain;border-radius:12px;}
-            </style>
-        </head>
-        <body>
-            <img src="${image}">
-        </body>
-        </html>
-    `);
-}
-
-/* =========================================================
-   13) مؤشر (جاري الحفظ)
-   ========================================================= */
-
-function setSaveBusy(busy) {
-    try {
-        document.querySelectorAll("button, input[type='button'], input[type='submit']").forEach(function (el) {
-
-            const oc = el.getAttribute("onclick") || "";
-            const wired = el.dataset ? el.dataset.wiredSave : "";
-
-            const isSave =
-                oc.indexOf("saveClearance") !== -1 ||
-                oc.indexOf("saveEmergency") !== -1 ||
-                oc.indexOf("saveNote") !== -1 ||
-                wired === "1";
-
-            if (!isSave) {
-                return;
-            }
-
-            if (busy) {
-                if (!el.dataset.oldText) {
-                    el.dataset.oldText = el.innerText || el.value || "";
-                }
-                el.disabled = true;
-                el.innerText = "⏳ جاري الحفظ...";
-            } else {
-                el.disabled = false;
-                if (el.dataset.oldText) {
-                    el.innerText = el.dataset.oldText;
-                }
-            }
-        });
-    } catch (e) {
-        /* تجاهل */
-    }
-}
-
-/* =========================================================
-   14) التنقل بين الصفحات
-   ========================================================= */
-
-function showPage(page) {
-
-    document.querySelectorAll(".page").forEach(function (p) {
-        p.classList.remove("active");
-    });
-
-    const selectedPage = document.getElementById(page);
-    if (selectedPage) {
-        selectedPage.classList.add("active");
-    }
-
-    document.querySelectorAll("button").forEach(function (btn) {
-        const onclick = btn.getAttribute("onclick") || "";
-        if (onclick.indexOf("showPage") !== -1) {
-            btn.classList.remove("active");
-            if (
-                onclick.indexOf("'" + page + "'") !== -1 ||
-                onclick.indexOf('"' + page + '"') !== -1
-            ) {
-                btn.classList.add("active");
-            }
-        }
-    });
-
-    updateDashboard();
-    resolveIdbImages();
-}
-
-/* =========================================================
-   15) رؤوس الجداول من الكود
-   ========================================================= */
-
-function ensureTableHeaders(bodyId, headers) {
-
-    const bodyEl = document.getElementById(bodyId);
-    if (!bodyEl) {
-        return null;
-    }
-
-    let parentTable = null;
-    let tbody = bodyEl;
-
-    if (bodyEl.tagName === "TABLE") {
-        parentTable = bodyEl;
-        tbody = bodyEl.querySelector("tbody");
-        if (!tbody) {
-            tbody = document.createElement("tbody");
-            bodyEl.appendChild(tbody);
-        }
-    } else if (bodyEl.tagName === "TBODY") {
-        parentTable = bodyEl.closest("table");
-    }
-
-    if (parentTable) {
-        let thead = parentTable.querySelector("thead");
-        if (!thead) {
-            thead = document.createElement("thead");
-            parentTable.insertBefore(thead, parentTable.firstChild);
-        }
-        thead.innerHTML =
-            "<tr>" +
-            headers.map(function (h) {
-                return "<th>" + h + "</th>";
-            }).join("") +
-            "</tr>";
-    }
-
-    return tbody;
-}
-
-/* =========================================================
-   16) رخص الإخلاءات
-   ========================================================= */
-
-async function saveClearance() {
-
-    try {
-        const permit = val("clearancePermit").trim();
-        const contractor = val("clearanceContractor").trim();
-        const owner = val("clearanceOwner").trim();
-        const location = val("clearanceLocation").trim();
-
-        let missing = [];
-        if (!permit) missing.push("رقم التصريح");
-        if (!contractor) missing.push("اسم المقاول");
-        if (!owner) missing.push("الجهة المالكة");
-        if (!location) missing.push("الموقع");
-
-        if (missing.length > 0) {
-            alert("يرجى تعبئة البيانات التالية:\n\n" + missing.join("\n"));
-            return;
-        }
-
-        const imagesEl = document.getElementById("clearanceImages");
-        const files = imagesEl ? imagesEl.files : [];
-
-        setSaveBusy(true);
-        skippedImagesCount = 0;
-
-        const images = await readImages(files);
-
-        const data = {
-            permit: permit,
-            contractor: contractor,
-            owner: owner,
-            location: location,
-            images: images
-        };
-
-        let cloudOk = true;
-
-        if (editingClearance >= 0) {
-            const old = clearances[editingClearance] || {};
-            if (images.length === 0) {
-                data.images = old.images || [];
-            }
-            data.id = old.id || null;
-            clearances[editingClearance] = data;
-            editingClearance = -1;
-
-            if (data.id) {
-                cloudOk = await dbUpdate("clearances", data.id, clearanceToRow(data));
-            } else {
-                const inserted = await dbInsert("clearances", clearanceToRow(data));
-                if (inserted && inserted.id) {
-                    data.id = inserted.id;
-                }
-                cloudOk = !!(inserted && inserted.id);
-            }
-        } else {
-            const inserted = await dbInsert("clearances", clearanceToRow(data));
-            if (inserted && inserted.id) {
-                data.id = inserted.id;
-            }
-            cloudOk = !!(inserted && inserted.id);
-            clearances.push(data);
-        }
-
-        await saveLocalData("clearances", clearances);
-
-        clearClearance();
-        renderClearances();
-        updateDashboard();
-
-        let msg = cloudOk
-            ? "تم حفظ رخصة الإخلاء بنجاح ✅"
-            : "تم الحفظ على هذا الجهاز (المخزن الكبير) ⚠️\nسيُرفع للسحابة تلقائياً عند توفر الاتصال";
-
-        if (skippedImagesCount > 0) {
-            msg += "\n\n⚠️ لم تُحفظ " + skippedImagesCount + " صورة";
-        }
-
-        alert(msg);
-
-    } catch (error) {
-        console.error("خطأ في حفظ رخصة الإخلاء:", error);
-        alert("حدث خطأ أثناء الحفظ:\n" + (error && error.message ? error.message : error));
-    } finally {
-        setSaveBusy(false);
-    }
-}
-
-function clearClearance() {
-    ["clearancePermit", "clearanceContractor", "clearanceOwner", "clearanceLocation"]
-        .forEach(function (id) {
-            setVal(id, "");
-        });
-    const images = document.getElementById("clearanceImages");
-    if (images) {
-        images.value = "";
-    }
-    editingClearance = -1;
-}
-
-function renderClearances(data = clearances) {
-
-    const tbody = ensureTableHeaders("clearanceTable", [
-        "رقم التصريح",
-        "اسم المقاول",
-        "الجهة المالكة",
-        "الموقع",
-        "الصور",
-        "الإجراءات"
-    ]);
-
-    if (!tbody) {
-        return;
-    }
-
-    tbody.innerHTML = "";
-
-    if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6">لا توجد رخص إخلاء مسجلة</td></tr>';
-        return;
-    }
-
-    data.forEach(function (item) {
-
-        const originalIndex = clearances.indexOf(item);
-
-        let imagesHTML = "";
-        if (item.images && item.images.length > 0) {
-            item.images.forEach(function (img) {
-                imagesHTML += imageThumb(img, "صورة رخصة الإخلاء");
-            });
-        } else {
-            imagesHTML = "<span>لا توجد صور</span>";
-        }
-
-        tbody.innerHTML += `
-            <tr>
-                <td>${item.permit || ""}</td>
-                <td>${item.contractor || ""}</td>
-                <td>${item.owner || ""}</td>
-                <td>${item.location || ""}</td>
-                <td>${imagesHTML}</td>
-                <td>
-                    <button class="edit" onclick="editClearance(${originalIndex})">تعديل</button>
-                    <button class="delete" onclick="deleteClearance(${originalIndex})">حذف</button>
-                </td>
-            </tr>
-        `;
-    });
-
-    resolveIdbImages();
-}
-
-function searchClearance() {
-
-    const input = document.getElementById("clearanceSearch");
-    const result = document.getElementById("clearanceSearchResult");
-
-    if (!input || !result) {
-        return;
-    }
-
-    const value = input.value.trim().toLowerCase();
-
-    if (!value) {
-        result.innerHTML = '<div class="search-error">اكتب رقم رخصة الإخلاء أولاً</div>';
-        renderClearances();
-        return;
-    }
-
-    const results = clearances.filter(function (item) {
-        return String(item.permit || "").toLowerCase().includes(value);
-    });
-
-    if (results.length === 0) {
-        result.innerHTML = '<div class="search-error">لم يتم العثور على رخصة بهذا الرقم</div>';
-        renderClearances([]);
-        return;
-    }
-
-    result.innerHTML = '<div class="search-success">تم العثور على ' + results.length + ' رخصة إخلاء</div>';
-    renderClearances(results);
-}
-
-function clearClearanceSearch() {
-    const input = document.getElementById("clearanceSearch");
-    const result = document.getElementById("clearanceSearchResult");
-    if (input) {
-        input.value = "";
-    }
-    if (result) {
-        result.innerHTML = "";
-    }
-    renderClearances();
-}
-
-function editClearance(index) {
-
-    const item = clearances[index];
-    if (!item) {
-        return;
-    }
-
-    setVal("clearancePermit", item.permit);
-    setVal("clearanceContractor", item.contractor);
-    setVal("clearanceOwner", item.owner);
-    setVal("clearanceLocation", item.location);
-
-    editingClearance = index;
-
-    showPage("clearance");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-async function deleteClearance(index) {
-
-    if (!confirm("هل تريد حذف رخصة الإخلاء؟")) {
-        return;
-    }
-
-    const item = clearances[index];
-
-    /* حذف الصور المحلية من المخزن الكبير أيضاً */
-    if (item && Array.isArray(item.images)) {
-        for (const img of item.images) {
-            if (isIdbRef(img)) {
-                await idbDelete(idbKeyFromRef(img));
-            }
-        }
-    }
-
-    if (item && item.id) {
-        await dbDelete("clearances", item.id);
-    }
-
-    clearances.splice(index, 1);
-    await saveLocalData("clearances", clearances);
-
-    renderClearances();
-    updateDashboard();
-    alert("تم حذف الرخصة");
-}
-
-/* =========================================================
-   17) رخص الطوارئ
-   ========================================================= */
-
-async function saveEmergency() {
-
-    try {
-        const permit = val("emergencyPermit").trim();
-        const contractor = val("emergencyContractor").trim();
-        const owner = val("emergencyOwner").trim();
-        const labReceive = val("labReceiveDate");
-        const start = val("workStartDate");
-        const end = val("workEndDate");
-        const location = val("emergencyLocation").trim();
-
-        let missing = [];
-        if (!permit) missing.push("رقم التصريح");
-        if (!contractor) missing.push("اسم المقاول");
-        if (!owner) missing.push("الجهة المالكة");
-
-        if (missing.length > 0) {
-            alert("يرجى تعبئة البيانات التالية:\n\n" + missing.join("\n"));
-            return;
-        }
-
-        const imagesEl = document.getElementById("emergencyImages");
-        const files = imagesEl ? imagesEl.files : [];
-
-        setSaveBusy(true);
-        skippedImagesCount = 0;
-
-        const images = await readImages(files);
-
-        const data = {
-            permit: permit,
-            contractor: contractor,
-            owner: owner,
-            labReceive: labReceive,
-            start: start,
-            end: end,
-            location: location,
-            images: images
-        };
-
-        let cloudOk = true;
-
-        if (editingEmergency >= 0) {
-            const old = emergencies[editingEmergency] || {};
-            if (images.length === 0) {
-                data.images = old.images || [];
-            }
-            data.id = old.id || null;
-            emergencies[editingEmergency] = data;
-            editingEmergency = -1;
-
-            if (data.id) {
-                cloudOk = await dbUpdate("emergencies", data.id, emergencyToRow(data));
-            } else {
-                const inserted = await dbInsert("emergencies", emergencyToRow(data));
-                if (inserted && inserted.id) {
-                    data.id = inserted.id;
-                }
-                cloudOk = !!(inserted && inserted.id);
-            }
-        } else {
-            const inserted = await dbInsert("emergencies", emergencyToRow(data));
-            if (inserted && inserted.id) {
-                data.id = inserted.id;
-            }
-            cloudOk = !!(inserted && inserted.id);
-            emergencies.push(data);
-        }
-
-        await saveLocalData("emergencies", emergencies);
-
-        clearEmergency();
-        renderEmergencies();
-        updateDashboard();
-
-        let msg = cloudOk
-            ? "تم حفظ رخصة الطوارئ بنجاح ✅"
-            : "تم الحفظ على هذا الجهاز (المخزن الكبير) ⚠️\nسيُرفع للسحابة تلقائياً عند توفر الاتصال";
-
-        if (skippedImagesCount > 0) {
-            msg += "\n\n⚠️ لم تُحفظ " + skippedImagesCount + " صورة";
-        }
-
-        alert(msg);
-
-    } catch (error) {
-        console.error("خطأ في حفظ رخصة الطوارئ:", error);
-        alert("حدث خطأ أثناء الحفظ:\n" + (error && error.message ? error.message : error));
-    } finally {
-        setSaveBusy(false);
-    }
-}
-
-function clearEmergency() {
-    ["emergencyPermit", "emergencyContractor", "emergencyOwner",
-     "labReceiveDate", "workStartDate", "workEndDate", "emergencyLocation"]
-        .forEach(function (id) {
-            setVal(id, "");
-        });
-    const images = document.getElementById("emergencyImages");
-    if (images) {
-        images.value = "";
-    }
-    editingEmergency = -1;
-}
-
-function renderEmergencies(data = emergencies) {
-
-    const tbody = ensureTableHeaders("emergencyTable", [
-        "رقم التصريح",
-        "اسم المقاول",
-        "الجهة المالكة",
-        "تاريخ الاستلام بالمختبر",
-        "تاريخ بداية العمل",
-        "تاريخ انتهاء العمل",
-        "الموقع",
-        "الصور",
-        "الإجراءات"
-    ]);
-
-    if (!tbody) {
-        return;
-    }
-
-    tbody.innerHTML = "";
-
-    if (data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9">لا توجد رخص طوارئ مسجلة</td></tr>';
-        return;
-    }
-
-    data.forEach(function (item) {
-
-        const originalIndex = emergencies.indexOf(item);
-
-        let imagesHTML = "";
-        if (item.images && item.images.length > 0) {
-            item.images.forEach(function (img) {
-                imagesHTML += imageThumb(img, "صورة رخصة الطوارئ");
-            });
-        } else {
-            imagesHTML = "<span>لا توجد صور</span>";
-        }
-
-        tbody.innerHTML += `
-            <tr>
-                <td>${item.permit || ""}</td>
-                <td>${item.contractor || ""}</td>
-                <td>${item.owner || ""}</td>
-                <td>${item.labReceive || ""}</td>
-                <td>${item.start || ""}</td>
-                <td>${item.end || ""}</td>
-                <td>${item.location || ""}</td>
-                <td>${imagesHTML}</td>
-                <td>
-                    <button class="edit" onclick="editEmergency(${originalIndex})">تعديل</button>
-                    <button class="delete" onclick="deleteEmergency(${originalIndex})">حذف</button>
-                </td>
-            </tr>
-        `;
-    });
-
-    resolveIdbImages();
-}
-
-function searchEmergency() {
-
-    const input = document.getElementById("emergencySearch");
-    const result = document.getElementById("emergencySearchResult");
-
-    if (!input || !result) {
-        return;
-    }
-
-    const value = input.value.trim().toLowerCase();
-
-    if (!value) {
-        result.innerHTML = '<div class="search-error">اكتب رقم رخصة الطوارئ أولاً</div>';
-        renderEmergencies();
-        return;
-    }
-
-    const results = emergencies.filter(function (item) {
-        return String(item.permit || "").toLowerCase().includes(value);
-    });
-
-    if (results.length === 0) {
-        result.innerHTML = '<div class="search-error">لم يتم العثور على رخصة بهذا الرقم</div>';
-        renderEmergencies([]);
-        return;
-    }
-
-    result.innerHTML = '<div class="search-success">تم العثور على ' + results.length + ' رخصة طوارئ</div>';
-    renderEmergencies(results);
-}
-
-function clearEmergencySearch() {
-    const input = document.getElementById("emergencySearch");
-    const result = document.getElementById("emergencySearchResult");
-    if (input) {
-        input.value = "";
-    }
-    if (result) {
-        result.innerHTML = "";
-    }
-    renderEmergencies();
-}
-
-function editEmergency(index) {
-
-    const item = emergencies[index];
-    if (!item) {
-        return;
-    }
-
-    setVal("emergencyPermit", item.permit);
-    setVal("emergencyContractor", item.contractor);
-    setVal("emergencyOwner", item.owner);
-    setVal("labReceiveDate", item.labReceive);
-    setVal("workStartDate", item.start);
-    setVal("workEndDate", item.end);
-    setVal("emergencyLocation", item.location);
-
-    editingEmergency = index;
-
-    showPage("emergency");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-async function deleteEmergency(index) {
-
-    if (!confirm("هل تريد حذف رخصة الطوارئ؟")) {
-        return;
-    }
-
-    const item = emergencies[index];
-
-    if (item && Array.isArray(item.images)) {
-        for (const img of item.images) {
-            if (isIdbRef(img)) {
-                await idbDelete(idbKeyFromRef(img));
-            }
-        }
-    }
-
-    if (item && item.id) {
-        await dbDelete("emergencies", item.id);
-    }
-
-    emergencies.splice(index, 1);
-    await saveLocalData("emergencies", emergencies);
-
-    renderEmergencies();
-    updateDashboard();
-    alert("تم حذف الرخصة");
-}
-
-/* =========================================================
-   18) تصنيف الملاحظات
-   ========================================================= */
-
-function setNoteType(type) {
-
-    const noteType = document.getElementById("noteType");
-    if (noteType) {
-        noteType.value = type;
-    }
-
-    document.querySelectorAll(".note-types button").forEach(function (button) {
-        button.classList.remove("active");
-    });
-
-    document.querySelectorAll(".note-types button").forEach(function (button) {
-        if (button.textContent.trim() === type) {
-            button.classList.add("active");
-        }
-    });
-}
-
-/* =========================================================
-   19) حفظ الملاحظة
-   ========================================================= */
-
-async function saveNote() {
-
-    try {
-        const date = val("noteDate");
-        const permit = val("notePermit").trim();
-        const contractor = val("noteContractor").trim();
-        const owner = val("noteOwner").trim();
-        const reason = val("noteReason").trim();
-        const action = val("noteAction").trim();
-        const type = val("noteType") || "مشاريع الأمانة";
-
-        let missing = [];
-        if (!date) missing.push("تاريخ الملاحظة");
-        if (!permit) missing.push("رقم التصريح");
-        if (!contractor) missing.push("اسم المقاول");
-        if (!owner) missing.push("الجهة المالكة");
-        if (!reason) missing.push("أسباب الرفض");
-        if (!action) missing.push("الإجراء المتخذ");
-
-        if (missing.length > 0) {
-            alert("يرجى تعبئة البيانات التالية:\n\n" + missing.join("\n"));
-            return;
-        }
-
-        let oldNote = null;
-        if (editingNote >= 0) {
-            oldNote = notes[editingNote] || null;
-        }
-
-        const beforeEl = document.getElementById("beforeImage");
-        const afterEl = document.getElementById("afterImage");
-
-        const beforeFile = beforeEl && beforeEl.files.length > 0 ? beforeEl.files[0] : null;
-        const afterFile = afterEl && afterEl.files.length > 0 ? afterEl.files[0] : null;
-
-        setSaveBusy(true);
-        skippedImagesCount = 0;
-
-        const before = await readImage(beforeFile);
-        const after = await readImage(afterFile);
-
-        const beforeImage = before || (oldNote ? oldNote.before || "" : "");
-        const afterImage = after || (oldNote ? oldNote.after || "" : "");
-
-        const completed = afterImage !== "";
-
-        const data = {
-            type: type,
-            date: date,
-            permit: permit,
-            contractor: contractor,
-            owner: owner,
-            reason: reason,
-            action: action,
-            before: beforeImage,
-            after: afterImage,
-            completed: completed
-        };
-
-        let cloudOk = true;
-
-        if (editingNote >= 0) {
-            const old = notes[editingNote] || {};
-            data.id = old.id || null;
-            notes[editingNote] = data;
-            editingNote = -1;
-
-            if (data.id) {
-                cloudOk = await dbUpdate("notes", data.id, noteToRow(data));
-            } else {
-                const inserted = await dbInsert("notes", noteToRow(data));
-                if (inserted && inserted.id) {
-                    data.id = inserted.id;
-                }
-                cloudOk = !!(inserted && inserted.id);
-            }
-        } else {
-            const inserted = await dbInsert("notes", noteToRow(data));
-            if (inserted && inserted.id) {
-                data.id = inserted.id;
-            }
-            cloudOk = !!(inserted && inserted.id);
-            notes.push(data);
-        }
-
-        await saveLocalData("notes", notes);
-
-        clearNote();
-        renderNotes();
-        updateDashboard();
-
-        let msg;
-        if (cloudOk) {
-            msg = completed
-                ? "تم حفظ الملاحظة وتسجيلها كمعدلة ✅"
-                : "تم حفظ الملاحظة بنجاح ✅";
-        } else {
-            msg = "تم الحفظ على هذا الجهاز (المخزن الكبير) ⚠️\nسيُرفع للسحابة تلقائياً عند توفر الاتصال";
-        }
-
-        if (skippedImagesCount > 0) {
-            msg += "\n\n⚠️ لم تُحفظ " + skippedImagesCount + " صورة";
-        }
-
-        alert(msg);
-
-    } catch (error) {
-        console.error("خطأ في حفظ الملاحظة:", error);
-        alert("حدث خطأ أثناء الحفظ:\n" + (error && error.message ? error.message : error));
-    } finally {
-        setSaveBusy(false);
-    }
-}
-
-function clearNote() {
-
-    ["noteDate", "notePermit", "noteContractor", "noteOwner", "noteReason"]
-        .forEach(function (id) {
-            setVal(id, "");
-        });
-
-    const before = document.getElementById("beforeImage");
-    const after = document.getElementById("afterImage");
-
-    if (before) {
-        before.value = "";
-    }
-    if (after) {
-        after.value = "";
-    }
-
-    setVal("noteAction", DEFAULT_ACTION_TEXT);
-    setVal("noteType", "مشاريع الأمانة");
-
-    document.querySelectorAll(".note-types button").forEach(function (button) {
-        button.classList.remove("active");
-    });
-
-    editingNote = -1;
-}
-
-/* =========================================================
-   20) حساب الأيام والحالة
-   ========================================================= */
-
-function daysPassed(date) {
-    if (!date) {
-        return 0;
-    }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const noteDate = new Date(date);
-    noteDate.setHours(0, 0, 0, 0);
-    return Math.floor((today - noteDate) / (1000 * 60 * 60 * 24));
-}
-
-function isLate(note) {
-    if (note.completed) {
-        return false;
-    }
-    return daysPassed(note.date) >= 5;
-}
-
-/* =========================================================
-   21) عرض الملاحظات
-   ========================================================= */
-/* =========================================================
-   21) عرض الملاحظات (مصنفة في جدول واحد)
-   ========================================================= */
-function renderNotes() {
-    const tbody = document.getElementById("notesTable");
-    if (!tbody) return;
-
-    tbody.innerHTML = "";
-
-    if (!notes || notes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="10">لا توجد ملاحظات مسجلة</td></tr>';
-        return;
-    }
-
-    // ترتيب التصنيفات ليظهر كل قسم تحت الآخر
-    const categories = [
-        "مشاريع الأمانة",
-        "المياه الوطنية",
-        "الكهرباء",
-        "الاتصالات",
-        "مشاريع خاصة"
-    ];
-
-    // المرور على كل تصنيف لرسم ملاحظاته تحته
-    categories.forEach(function (category) {
-
-        // فلترة الملاحظات التي تنتمي لهذا التصنيف فقط
-        const categoryNotes = notes.filter(function (item) {
-            return (item.type || "مشاريع الأمانة") === category;
-        });
-
-        // إذا لم يكن هناك ملاحظات في هذا التصنيف، نتجاوزه
-        if (categoryNotes.length === 0) return;
-
-        // 1. رسم صف الفاصل (عنوان التصنيف)
-        tbody.innerHTML += `
-            <tr class="note-category-row">
-                <td colspan="10" style="font-weight:bold; text-align:right; padding:12px; background:#eaf3ee; color:#1d4d3d; border-bottom:2px solid #1d4d3d; font-size:15px;">
-                    📁 ${category}
-                </td>
-            </tr>
-        `;
-
-        // 2. رسم ملاحظات هذا التصنيف
-        categoryNotes.forEach(function (item) {
-            
-            const index = notes.indexOf(item); // معرفة رقمه الفعلي في الذاكرة
-            const late = isLate(item);
-
-            let status = "";
-            if (item.completed) {
-                status = '<span class="status-done">✅ تم التعديل</span>';
-            } else if (late) {
-                status = '<span class="status-open">🔴 متأخرة</span>';
-            } else {
-                status = '<span class="status-follow">قيد المتابعة</span>';
-            }
-
-            let imagesHTML = "<span>لا توجد صور</span>";
-            if (item.before || item.after) {
-                imagesHTML = "";
-                if (item.before) {
-                    imagesHTML += `<div style="display:inline-block; text-align:center; margin:2px;"><small>قبل</small><br>${imageThumb(item.before, "صورة الملاحظة")}</div>`;
-                }
-                if (item.after) {
-                    imagesHTML += `<div style="display:inline-block; text-align:center; margin:2px;"><small>بعد</small><br>${imageThumb(item.after, "صورة الملاحظة بعد التعديل")}</div>`;
-                }
-            }
-
-            // رسم صف الملاحظة
-            tbody.innerHTML += `
-                <tr ${late ? 'style="background:#fff0f0;"' : ""}>
-                    <td>${item.date || ""}</td>
-                    <td>${item.type || "مشاريع الأمانة"}</td>
-                    <td>${item.permit || ""}</td>
-                    <td>${item.contractor || ""}</td>
-                    <td>${item.owner || ""}</td>
-                    <td>${item.reason || ""}</td>
-                    <td>${item.action || ""}</td>
-                    <td>${status}</td>
-                    <td>${imagesHTML}</td>
-                    <td>
-                        <button class="edit" onclick="editNote(${index})">تعديل</button>
-                        <button class="delete" onclick="deleteNote(${index})">حذف</button>
-                    </td>
-                </tr>
-            `;
-        });
-    });
-
-    // تحميل الصور المحلية إن وجدت
-    if (typeof resolveIdbImages === 'function') {
-        resolveIdbImages();
-    }
-}
-function editNote(index) {
-
-    const item = notes[index];
-    if (!item) {
-        return;
-    }
-
-    setVal("noteType", item.type || "مشاريع الأمانة");
-    setVal("noteDate", item.date);
-    setVal("notePermit", item.permit);
-    setVal("noteContractor", item.contractor);
-    setVal("noteOwner", item.owner);
-    setVal("noteReason", item.reason);
-    setVal("noteAction", item.action || DEFAULT_ACTION_TEXT);
-
-    editingNote = index;
-
-    setNoteType(item.type || "مشاريع الأمانة");
-
-    showPage("notes");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-async function deleteNote(index) {
-
-    if (!confirm("هل تريد حذف الملاحظة؟")) {
-        return;
-    }
-
-    const item = notes[index];
-
-    if (item) {
-        if (isIdbRef(item.before)) {
-            await idbDelete(idbKeyFromRef(item.before));
-        }
-        if (isIdbRef(item.after)) {
-            await idbDelete(idbKeyFromRef(item.after));
-        }
-    }
-
-    if (item && item.id) {
-        await dbDelete("notes", item.id);
-    }
-   
-    notes.splice(index, 1);
-    await saveLocalData("notes", notes);
-
-    renderNotes();
-    updateDashboard();
-    alert("تم حذف الملاحظة");
-}
-
-/* =========================================================
-   22) التنبيهات ولوحة المتابعة
-   ========================================================= */
-
-function updateAlerts() {
-
-    const late = notes.filter(function (note) {
-        return isLate(note);
-    });
-
-    const lateCounter = document.getElementById("lateNotesCount");
-    const completedCounter = document.getElementById("completedNotesCount");
-    const alertsBox = document.getElementById("alerts");
-
-    if (lateCounter) {
-        lateCounter.innerText = late.length;
-    }
-
-    if (completedCounter) {
-        completedCounter.innerText = notes.filter(function (note) {
-            return note.completed;
-        }).length;
-    }
-
-    if (!alertsBox) {
-        return;
-    }
-
-    if (late.length === 0) {
-        alertsBox.innerHTML = "لا توجد ملاحظات متأخرة حالياً";
-        return;
-    }
-
-    alertsBox.innerHTML = "";
-
-    late.forEach(function (note) {
-
-        const days = daysPassed(note.date);
-        const index = notes.indexOf(note);
-
-        alertsBox.innerHTML += `
-            <div class="alert-item">
-                <strong>🔴 ملاحظة تجاوزت 5 أيام</strong>
-                <br><br>
-                تاريخ الملاحظة: ${note.date}
-                <br>
-                رقم التصريح: ${note.permit}
-                <br>
-                المقاول: ${note.contractor}
-                <br>
-                التصنيف: ${note.type || "مشاريع الأمانة"}
-                <br>
-                سبب الرفض: ${note.reason}
-                <br>
-                مضى على الملاحظة: <strong>${days} أيام</strong>
-                <br><br>
-                <button class="edit" onclick="editNote(${index})">فتح الملاحظة</button>
-            </div>
-        `;
-    });
-}
-
-function updateDashboard() {
-
-    const clearanceCounter = document.getElementById("clearanceCount");
-    const emergencyCounter = document.getElementById("emergencyCount");
-
-    if (clearanceCounter) {
-        clearanceCounter.innerText = clearances.length;
-    }
-    if (emergencyCounter) {
-        emergencyCounter.innerText = emergencies.length;
-    }
-
-    updateAlerts();
-}
-
-/* =========================================================
-   23) ربط الأزرار تلقائياً
-   ========================================================= */
-
-function autoWireButtons() {
-
-    const pageWiring = [
-        { pageId: "clearance", save: saveClearance, clear: clearClearance, search: searchClearance, resetSearch: clearClearanceSearch },
-        { pageId: "emergency", save: saveEmergency, clear: clearEmergency, search: searchEmergency, resetSearch: clearEmergencySearch },
-        { pageId: "notes", save: saveNote, clear: clearNote, search: null, resetSearch: null }
-    ];
-
-    pageWiring.forEach(function (w) {
-
-        const page = document.getElementById(w.pageId);
-        if (!page) {
-            return;
-        }
-
-        page.querySelectorAll("button, input[type='button'], input[type='submit']").forEach(function (btn) {
-
-            if (btn.getAttribute("onclick") || btn.dataset.autoWired) {
-                return;
-            }
-
-            const text = ((btn.innerText || btn.value || "") + "").trim();
-
-            if (text.indexOf("حفظ") !== -1) {
-                btn.dataset.autoWired = "1";
-                btn.dataset.wiredSave = "1";
-                btn.addEventListener("click", function (event) {
-                    event.preventDefault();
-                    w.save();
-                });
-            } else if (text.indexOf("مسح") !== -1 || text.indexOf("تفريغ") !== -1 || text.indexOf("جديد") !== -1) {
-                btn.dataset.autoWired = "1";
-                btn.addEventListener("click", function (event) {
-                    event.preventDefault();
-                    w.clear();
-                });
-            } else if (text.indexOf("بحث") !== -1 && w.search) {
-                btn.dataset.autoWired = "1";
-                btn.addEventListener("click", function (event) {
-                    event.preventDefault();
-                    w.search();
-                });
-            } else if ((text.indexOf("الكل") !== -1 || text.indexOf("إلغاء") !== -1) && w.resetSearch) {
-                btn.dataset.autoWired = "1";
-                btn.addEventListener("click", function (event) {
-                    event.preventDefault();
-                    w.resetSearch();
-                });
-            }
-        });
-    });
-
-    const navMap = [
-        { keyword: "لوحة المتابعة", page: "dashboard" },
-        { keyword: "الرئيسية", page: "dashboard" },
-        { keyword: "الإخلاء", page: "clearance" },
-        { keyword: "الطوارئ", page: "emergency" },
-        { keyword: "الملاحظات", page: "notes" }
-    ];
-
-    document.querySelectorAll("button").forEach(function (btn) {
-
-        if (btn.getAttribute("onclick") || btn.dataset.autoWired || btn.dataset.navWired) {
-            return;
-        }
-
-        const text = (btn.textContent || "").trim();
-
-        if (
-            text.indexOf("حفظ") !== -1 ||
-            text.indexOf("مسح") !== -1 ||
-            text.indexOf("تعديل") !== -1 ||
-            text.indexOf("حذف") !== -1 ||
-            text.indexOf("بحث") !== -1 ||
-            text.indexOf("فتح") !== -1 ||
-            text.indexOf("تصدير") !== -1
-        ) {
-            return;
-        }
-
-        navMap.forEach(function (m) {
-            if (text.indexOf(m.keyword) !== -1 && document.getElementById(m.page)) {
-                btn.dataset.navWired = "1";
-                btn.addEventListener("click", function () {
-                    showPage(m.page);
-                });
-            }
-        });
-    });
-}
-
-/* =========================================================
-   24) أزرار التصدير تلقائياً
-   ========================================================= */
-
-function addExportButtons() {
-
-    const configs = [
-        {
-            pageId: "clearance",
-            buttons: [
-                { text: "📥 تصدير Excel", handler: function () { exportClearancesToExcel(); } },
-                { text: "📄 تصدير PDF", handler: function () { exportClearancesToPDF(this); } }
-            ]
-        },
-        {
-            pageId: "emergency",
-            buttons: [
-                { text: "📥 تصدير Excel", handler: function () { exportEmergenciesToExcel(); } },
-                { text: "📄 تصدير PDF", handler: function () { exportEmergenciesToPDF(this); } }
-            ]
-        },
-        {
-            pageId: "notes",
-            buttons: [
-                { text: "📥 تصدير Excel", handler: function () { exportNotesToExcel(); } },
-                { text: "📄 تصدير PDF", handler: function () { exportNotesToPDF(this); } }
-            ]
-        }
-    ];
-
-    configs.forEach(function (cfg) {
-
-        const page = document.getElementById(cfg.pageId);
-        if (!page) {
-            return;
-        }
-
-        let exists = false;
-        page.querySelectorAll("button").forEach(function (btn) {
-            const content = (btn.getAttribute("onclick") || "") + (btn.textContent || "");
-            if (content.indexOf("export") !== -1 || content.indexOf("تصدير") !== -1) {
-                exists = true;
-            }
-        });
-        if (exists) {
-            return;
-        }
-
-        const bar = document.createElement("div");
-        bar.style.cssText =
-            "display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;padding:10px;" +
-            "background:#f4f7f5;border-radius:10px;";
-
-        cfg.buttons.forEach(function (b) {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.innerText = b.text;
-            btn.style.cssText =
-                "background:#173f32;color:#ffffff;border:none;padding:9px 18px;" +
-                "border-radius:8px;cursor:pointer;font-size:14px;font-family:inherit;";
-            btn.addEventListener("click", b.handler);
-            bar.appendChild(btn);
-        });
-
-        page.insertBefore(bar, page.firstChild);
-    });
-}
-
-/* =========================================================
-   25) التشغيل عند فتح الصفحة
-   ========================================================= */
-
-document.addEventListener("DOMContentLoaded", function () {
-
-    initSupabase();
-
-    const clearanceSearch = document.getElementById("clearanceSearch");
-    if (clearanceSearch) {
-        clearanceSearch.addEventListener("keydown", function (event) {
-            if (event.key === "Enter") {
-                searchClearance();
-            }
-        });
-    }
-
-    const emergencySearch = document.getElementById("emergencySearch");
-    if (emergencySearch) {
-        emergencySearch.addEventListener("keydown", function (event) {
-            if (event.key === "Enter") {
-                searchEmergency();
-            }
-        });
-    }
-
-    const actionEl = document.getElementById("noteAction");
-    if (actionEl && !actionEl.value.trim()) {
-        actionEl.value = DEFAULT_ACTION_TEXT;
-    }
-
-    autoWireButtons();
-    addExportButtons();
-
-    renderClearances();
-    renderEmergencies();
-    renderNotes();
-    updateDashboard();
-
-    setNoteType("مشاريع الأمانة");
-
-    if (!document.querySelector(".page.active")) {
-        const firstPage = document.querySelector(".page");
-        if (firstPage) {
-            firstPage.classList.add("active");
-        }
-    }
-
-    /* تسلسل النقل الآمن:
-       1) نقل الصور الموجودة من localStorage إلى المخزن الكبير (يحرر المساحة فوراً — بدون حذف)
-       2) مزامنة البيانات مع السحابة
-       3) رفع صور المخزن الكبير إلى السحابة في الخلفية */
-    initialImageMigration()
-        .then(function () {
-            return syncFromCloud();
-        })
-        .then(function () {
-            return initialImageMigration(); /* معالجة أي Base64 قادم من السحابة */
-        })
-        .then(function () {
-            return migrateIdbImagesToCloud();
-        });
-});
-
-setInterval(updateAlerts, 60 * 60 * 1000);
-
-/* =========================================================
-   =========================================================
-   تصدير Excel و PDF (يدعم صور المخزن الكبير)
-   =========================================================
-   ========================================================= */
-
-(function loadExportLibraries() {
-    if (!document.getElementById("xlsxLibScript")) {
-        var s1 = document.createElement("script");
-        s1.id = "xlsxLibScript";
-        s1.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-        document.head.appendChild(s1);
-    }
-    if (!document.getElementById("html2pdfLibScript")) {
-        var s2 = document.createElement("script");
-        s2.id = "html2pdfLibScript";
-        s2.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
-        document.head.appendChild(s2);
-    }
-})();
-
-function exportDate() {
-    var d = new Date();
-    var day = ("0" + d.getDate()).slice(-2);
-    var month = ("0" + (d.getMonth() + 1)).slice(-2);
-    return d.getFullYear() + "-" + month + "-" + day;
-}
-
-function noteStatusText(item) {
-    if (item.completed) {
-        return "تم التعديل";
-    }
-    if (isLate(item)) {
-        return "متأخرة";
-    }
-    return "قيد المتابعة";
-}
-
-async function resolveImageForExport(ref) {
-    if (isIdbRef(ref)) {
-        return await idbGet(idbKeyFromRef(ref)) || "";
-    }
-    return ref || "";
-}
-
-async function resolveExportItems(items) {
-    const out = [];
-    for (const item of items) {
-        const copy = Object.assign({}, item);
-        if (Array.isArray(copy.images)) {
-            const imgs = [];
-            for (const img of copy.images) {
-                imgs.push(await resolveImageForExport(img));
-            }
-            copy.images = imgs;
-        }
-        if (copy.before) {
-            copy.before = await resolveImageForExport(copy.before);
-        }
-        if (copy.after) {
-            copy.after = await resolveImageForExport(copy.after);
-        }
-        out.push(copy);
-    }
-    return out;
-}
-var PDF_TH = "padding:8px;border:1px solid #999;background:#173f32;color:#ffffff;font-size:12px;text-align:center;";
-var PDF_TD = "padding:6px 8px;border:1px solid #999;font-size:12px;";
-var PDF_TD_CENTER = "padding:6px 8px;border:1px solid #999;font-size:12px;text-align:center;";
-
-function pdfReportHeader(title, info) {
-    return `
-        <div dir="rtl" style="font-family:Arial,Helvetica,sans-serif;">
-            <div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:12px;">
-                <h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2>
-                <h3 style="color:#333;margin:8px 0 4px;">${title}</h3>
-                <p style="color:#666;margin:0;font-size:12px;">${info} &nbsp;|&nbsp; تاريخ التقرير: ${exportDate()}</p>
-            </div>
-    `;
-}
-
-function generatePDFFromHTML(content, filename, orientation, btn) {
-    if (btn) {
-        btn.disabled = true;
-        btn.setAttribute("data-old-text", btn.innerText);
-        btn.innerText = "جاري الإنشاء...";
-    }
-    var element = document.createElement("div");
-    element.innerHTML = content;
-    html2pdf().set({
-        margin: 10,
-        filename: filename,
-        image: { type: "jpeg", quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true },
-        jsPDF: { unit: "mm", format: "a4", orientation: orientation || "landscape" },
-        pagebreak: { mode: ["css", "legacy"], avoid: ["tr", ".pdf-avoid-break"] }
-    }).from(element).save().then(function () {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerText = btn.getAttribute("data-old-text");
-        }
-    }).catch(function () {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerText = btn.getAttribute("data-old-text");
-        }
-        alert("حدث خطأ أثناء إنشاء ملف PDF، حاول مرة أخرى");
-    });
-}
-
-function downloadExcel(rows, sheetName, cols, filename) {
-    var ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = cols;
-    var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
-    if (!wb.Workbook) {
-        wb.Workbook = {};
-    }
-    if (!wb.Workbook.Views) {
-        wb.Workbook.Views = [];
-    }
-    wb.Workbook.Views.push({ RTL: true });
-    XLSX.writeFile(wb, filename);
-}
-
-/* ===== رخص الإخلاء - Excel ===== */
-function exportClearancesToExcel() {
-    if (typeof XLSX === "undefined") {
-        alert("جاري تحميل مكتبة Excel...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
-        return;
-    }
-    if (clearances.length === 0) {
-        alert("لا توجد رخص إخلاء للتصدير");
-        return;
-    }
-    var rows = clearances.map(function (item, index) {
-        return {
-            "م": index + 1,
-            "رقم التصريح": item.permit || "",
-            "اسم المقاول": item.contractor || "",
-            "الجهة المالكة": item.owner || "",
-            "الموقع": item.location || "",
-            "عدد الصور": (item.images || []).length
-        };
-    });
-    downloadExcel(
-        rows,
-        "رخص الإخلاء",
-        [{ wch: 5 }, { wch: 18 }, { wch: 28 }, { wch: 28 }, { wch: 32 }, { wch: 10 }],
-        "رخص_الإخلاء_" + exportDate() + ".xlsx"
-    );
-}
-
-/* ===== رخص الإخلاء - PDF ===== */
-async function exportClearancesToPDF(btn) {
-    if (typeof html2pdf === "undefined") {
-        alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
-        return;
-    }
-    if (clearances.length === 0) {
-        alert("لا توجد رخص إخلاء للتصدير");
-        return;
-    }
-
-    var data = await resolveExportItems(clearances);
-    var rows = "";
-
-    data.forEach(function (item, index) {
-        var imagesHTML = "";
-        (item.images || []).forEach(function (img) {
-            if (img) {
-                imagesHTML += '<img src="' + img + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
-            }
-        });
-        if (!imagesHTML) {
-            imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
-        }
-        rows += `
-            <tr>
-                <td style="${PDF_TD_CENTER}">${index + 1}</td>
-                <td style="${PDF_TD}">${item.permit || ""}</td>
-                <td style="${PDF_TD}">${item.contractor || ""}</td>
-                <td style="${PDF_TD}">${item.owner || ""}</td>
-                <td style="${PDF_TD}">${item.location || ""}</td>
-                <td style="${PDF_TD}">${imagesHTML}</td>
-            </tr>
-        `;
-    });
-
-    var content = pdfReportHeader("تقرير رخص الإخلاء", "إجمالي الرخص: " + clearances.length) + `
-        <table style="width:100%;border-collapse:collapse;">
-            <thead>
-                <tr>
-                    <th style="${PDF_TH}">م</th>
-                    <th style="${PDF_TH}">رقم التصريح</th>
-                    <th style="${PDF_TH}">اسم المقاول</th>
-                    <th style="${PDF_TH}">الجهة المالكة</th>
-                    <th style="${PDF_TH}">الموقع</th>
-                    <th style="${PDF_TH}">الصور</th>
-                </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-        </table>
-        <p style="text-align:center;color:#999;font-size:11px;margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p>
+    </style>
+</head>
+<body>
+
+<header class="main-header">
+    <div class="header-content">
+        <div>
+            <h1>نظام رخص الإخلاءات والطوارئ والملاحظات</h1>
+            <p>مختبر جودة المشاريع</p>
         </div>
-    `;
+    </div>
+</header>
 
-    generatePDFFromHTML(content, "رخص_الإخلاء_" + exportDate() + ".pdf", "landscape", btn);
-}
+<nav class="navbar">
+    <button onclick="showPage('dashboard')">الرئيسية</button>
+    <button onclick="showPage('analytics')">لوحة القيادة التنفيذية</button>
+    <button onclick="showPage('performance')">تصنيف المقاولين</button>
+    <button onclick="showPage('clearance')">رخص الإخلاءات</button>
+    <button onclick="showPage('emergency')">رخص الطوارئ</button>
+    <button onclick="showPage('notes')">الملاحظات</button>
+</nav>
 
-/* ===== رخص الطوارئ - Excel ===== */
-function exportEmergenciesToExcel() {
-    if (typeof XLSX === "undefined") {
-        alert("جاري تحميل مكتبة Excel...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
-        return;
-    }
-    if (emergencies.length === 0) {
-        alert("لا توجد رخص طوارئ للتصدير");
-        return;
-    }
-    var rows = emergencies.map(function (item, index) {
-        return {
-            "م": index + 1,
-            "رقم التصريح": item.permit || "",
-            "اسم المقاول": item.contractor || "",
-            "الجهة المالكة": item.owner || "",
-            "تاريخ الاستلام بالمختبر": item.labReceive || "",
-            "تاريخ بداية العمل": item.start || "",
-            "تاريخ انتهاء العمل": item.end || "",
-            "الموقع": item.location || "",
-            "عدد الصور": (item.images || []).length
-        };
-    });
-    downloadExcel(
-        rows,
-        "رخص الطوارئ",
-        [{ wch: 5 }, { wch: 18 }, { wch: 25 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 30 }, { wch: 10 }],
-        "رخص_الطوارئ_" + exportDate() + ".xlsx"
-    );
-}
+<main class="container">
 
-/* ===== رخص الطوارئ - PDF ===== */
-async function exportEmergenciesToPDF(btn) {
-    if (typeof html2pdf === "undefined") {
-        alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
-        return;
-    }
-    if (emergencies.length === 0) {
-        alert("لا توجد رخص طوارئ للتصدير");
-        return;
-    }
-
-    var data = await resolveExportItems(emergencies);
-    var rows = "";
-
-    data.forEach(function (item, index) {
-        var imagesHTML = "";
-        (item.images || []).forEach(function (img) {
-            if (img) {
-                imagesHTML += '<img src="' + img + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;">';
-            }
-        });
-        if (!imagesHTML) {
-            imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
-        }
-        rows += `
-            <tr>
-                <td style="${PDF_TD_CENTER}">${index + 1}</td>
-                <td style="${PDF_TD}">${item.permit || ""}</td>
-                <td style="${PDF_TD}">${item.contractor || ""}</td>
-                <td style="${PDF_TD}">${item.owner || ""}</td>
-                <td style="${PDF_TD_CENTER}">${item.labReceive || ""}</td>
-                <td style="${PDF_TD_CENTER}">${item.start || ""}</td>
-                <td style="${PDF_TD_CENTER}">${item.end || ""}</td>
-                <td style="${PDF_TD}">${item.location || ""}</td>
-                <td style="${PDF_TD}">${imagesHTML}</td>
-            </tr>
-        `;
-    });
-
-    var content = pdfReportHeader("تقرير رخص الطوارئ", "إجمالي الرخص: " + emergencies.length) + `
-        <table style="width:100%;border-collapse:collapse;">
-            <thead>
-                <tr>
-                    <th style="${PDF_TH}">م</th>
-                    <th style="${PDF_TH}">رقم التصريح</th>
-                    <th style="${PDF_TH}">اسم المقاول</th>
-                    <th style="${PDF_TH}">الجهة المالكة</th>
-                    <th style="${PDF_TH}">تاريخ الاستلام</th>
-                    <th style="${PDF_TH}">بداية العمل</th>
-                    <th style="${PDF_TH}">انتهاء العمل</th>
-                    <th style="${PDF_TH}">الموقع</th>
-                    <th style="${PDF_TH}">الصور</th>
-                </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-        </table>
-        <p style="text-align:center;color:#999;font-size:11px;margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p>
+    <section id="analytics" class="page">
+        <div class="section-title">
+            <h2>لوحة المؤشرات والإحصائيات الذكية <span id="analyticsCurrentYear" style="font-size: 18px; color: #666;"></span></h2>
+            <p>تحليل متقدم ومؤشرات تفاعلية لأداء المختبر والمقاولين</p>
         </div>
-    `;
-   
-    generatePDFFromHTML(content, "رخص_الطوارئ_" + exportDate() + ".pdf", "landscape", btn);
-}
-
-/* ===== الملاحظات - Excel ===== */
-function exportNotesToExcel() {
-    if (typeof XLSX === "undefined") {
-        alert("جاري تحميل مكتبة Excel...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
-        return;
-    }
-    if (notes.length === 0) {
-        alert("لا توجد ملاحظات للتصدير");
-        return;
-    }
-    var rows = notes.map(function (item, index) {
-        return {
-            "م": index + 1,
-            "التصنيف": item.type || "مشاريع الأمانة",
-            "التاريخ": item.date || "",
-            "رقم التصريح": item.permit || "",
-            "اسم المقاول": item.contractor || "",
-            "الجهة المالكة": item.owner || "",
-            "أسباب الرفض": item.reason || "",
-            "الإجراء المتخذ": item.action || "",
-            "الحالة": noteStatusText(item)
-        };
-    });
-    downloadExcel(
-        rows,
-        "الملاحظات",
-        [{ wch: 5 }, { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 25 }, { wch: 25 }, { wch: 30 }, { wch: 30 }, { wch: 14 }],
-        "الملاحظات_" + exportDate() + ".xlsx"
-    );
-}
-
-/* ===== الملاحظات - PDF ===== */
-async function exportNotesToPDF(btn) {
-    if (typeof html2pdf === "undefined") {
-        alert("جاري تحميل مكتبة PDF...\nانتظر ثانية واحدة ثم اضغط الزر مرة أخرى");
-        return;
-    }
-    if (notes.length === 0) {
-        alert("لا توجد ملاحظات للتصدير");
-        return;
-    }
-
-    var lateCount = 0;
-    notes.forEach(function (item) {
-        if (isLate(item)) {
-            lateCount++;
-        }
-    });
-
-    var data = await resolveExportItems(notes);
-    var rows = "";
-
-    data.forEach(function (item, index) {
-
-        var imagesHTML = "";
-        if (item.before) {
-            imagesHTML += '<div style="text-align:center;"><small>قبل</small><br><img src="' + item.before + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;"></div>';
-        }
-        if (item.after) {
-            imagesHTML += '<div style="text-align:center;"><small>بعد</small><br><img src="' + item.after + '" style="width:60px;height:60px;object-fit:cover;border-radius:4px;margin:2px;"></div>';
-        }
-        if (!imagesHTML) {
-            imagesHTML = '<span style="color:#999;font-size:11px;">لا توجد صور</span>';
-        }
-
-        rows += `
-            <tr>
-                <td style="${PDF_TD_CENTER}">${index + 1}</td>
-                <td style="${PDF_TD}">${item.type || "مشاريع الأمانة"}</td>
-                <td style="${PDF_TD_CENTER}">${item.date || ""}</td>
-                <td style="${PDF_TD}">${item.permit || ""}</td>
-                <td style="${PDF_TD}">${item.contractor || ""}</td>
-                <td style="${PDF_TD}">${item.owner || ""}</td>
-                <td style="${PDF_TD}">${item.reason || ""}</td>
-                <td style="${PDF_TD}">${item.action || ""}</td>
-                <td style="${PDF_TD_CENTER}">${noteStatusText(item)}</td>
-                <td style="${PDF_TD}">${imagesHTML}</td>
-            </tr>
-        `;
-    });
-
-    var content = pdfReportHeader(
-        "تقرير الملاحظات",
-        "إجمالي الملاحظات: " + notes.length + " | المتأخرة: " + lateCount
-    ) + `
-        <table style="width:100%;border-collapse:collapse;">
-            <thead>
-                <tr>
-                    <th style="${PDF_TH}">م</th>
-                    <th style="${PDF_TH}">التصنيف</th>
-                    <th style="${PDF_TH}">التاريخ</th>
-                    <th style="${PDF_TH}">رقم التصريح</th>
-                    <th style="${PDF_TH}">اسم المقاول</th>
-                    <th style="${PDF_TH}">الجهة المالكة</th>
-                    <th style="${PDF_TH}">أسباب الرفض</th>
-                    <th style="${PDF_TH}">الإجراء المتخذ</th>
-                    <th style="${PDF_TH}">الحالة</th>
-                    <th style="${PDF_TH}">الصور</th>
-                </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-        </table>
-        <p style="text-align:center;color:#999;font-size:11px;margin-top:15px;">تم إنشاء التقرير بواسطة نظام مختبر جودة المشاريع</p>
+        <div style="display:flex; gap:10px; margin-bottom:20px; justify-content:center;">
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportAnalyticsToExcel()">📥 تصدير Excel</button>
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportAnalyticsToPDF()">📄 تصدير PDF</button>
         </div>
-    `;
-
-    generatePDFFromHTML(content, "الملاحظات_" + exportDate() + ".pdf", "landscape", btn);
-}
-/* =========================================================
-   نظام دخول الموظفين — بالاسم فقط بدون بريد إلكتروني
-   ========================================================= */
-
-/* كلمة المرور المشتركة — المدير يغيّرها من هذا السطر فقط */
-const LAB_LOGIN_PASSWORD = "lab2026";
-
-let currentUserName = localStorage.getItem("labUserName") || "";
-
-function createLoginScreen() {
-
-    const old = document.getElementById("loginScreen");
-    if (old) old.remove();
-
-    const screen = document.createElement("div");
-    screen.id = "loginScreen";
-    screen.style.cssText =
-        "position:fixed;inset:0;z-index:999999;" +
-        "background:linear-gradient(135deg,#173f32,#0d241c);" +
-        "display:flex;justify-content:center;align-items:center;" +
-        "font-family:inherit;direction:rtl;";
-
-    screen.innerHTML = `
-        <div style="background:#fff;border-radius:16px;padding:35px;width:90%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,.4);">
-            <div style="text-align:center;margin-bottom:25px;">
-                <h2 style="color:#173f32;margin:10px 0 5px;">نظام مختبر جودة المشاريع</h2>
-                <p style="color:#666;font-size:14px;margin:0;">أدخل اسمك للمتابعة</p>
-            </div>
-            <div style="margin-bottom:15px;">
-                <label style="display:block;font-size:13px;color:#333;margin-bottom:5px;">الاسم الكامل</label>
-                <input type="text" id="loginName" placeholder="اكتب اسمك هنا"
-                    style="width:100%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:15px;box-sizing:border-box;text-align:right;">
-            </div>
-            <div style="margin-bottom:20px;">
-                <label style="display:block;font-size:13px;color:#333;margin-bottom:5px;">كلمة المرور</label>
-                <input type="password" id="loginPassword" placeholder="كلمة مرور المختبر"
-                    style="width:100%;padding:12px;border:2px solid #ddd;border-radius:8px;font-size:15px;box-sizing:border-box;">
-            </div>
-            <div id="loginError" style="color:#c0392b;font-size:13px;text-align:center;margin-bottom:15px;display:none;"></div>
-            <button id="loginBtn" onclick="doLogin()"
-                style="width:100%;background:#173f32;color:#fff;border:none;padding:14px;border-radius:8px;font-size:16px;cursor:pointer;font-family:inherit;">
-                دخول
-            </button>
+        <div class="premium-kpi-grid">
+            <div class="premium-card bg-green"><div class="icon-box">📄</div><div class="data-box"><span>إجمالي التصاريح</span><strong id="kpiTotalPermits">0</strong></div></div>
+            <div class="premium-card bg-teal"><div class="icon-box">⚙️</div><div class="data-box"><span>تصاريح نشطة اليوم</span><strong id="kpiActivePermits">0</strong></div></div>
+            <div class="premium-card bg-blue"><div class="icon-box">📝</div><div class="data-box"><span>إجمالي الملاحظات</span><strong id="kpiTotalNotes">0</strong></div></div>
+            <div class="premium-card bg-purple"><div class="icon-box">✅</div><div class="data-box"><span>معدل الإغلاق</span><strong id="kpiClosureRate">0%</strong></div></div>
+            <div class="premium-card bg-orange"><div class="icon-box">⚠️</div><div class="data-box"><span>نسبة الأخطاء</span><strong id="kpiErrorRate">0%</strong></div></div>
+            <div class="premium-card bg-red"><div class="icon-box">🔴</div><div class="data-box"><span>ملاحظات متأخرة</span><strong id="kpiLateNotes">0</strong></div></div>
+            <div class="premium-card bg-darkred"><div class="icon-box">🚨</div><div class="data-box"><span>ملاحظات حرجة جداً</span><strong id="kpiCriticalNotes">0</strong></div></div>
+            <div class="premium-card bg-gray"><div class="icon-box">⏳</div><div class="data-box"><span>تصاريح منتهية</span><strong id="kpiOverduePermits">0</strong></div></div>
         </div>
-    `;
+        <div style="display:flex; flex-wrap:wrap; gap:20px; margin-bottom:20px;">
+            <div class="chart-container" style="flex:1; min-width:300px;">
+                <div class="chart-header">مؤشر الالتزام العام للمختبر</div>
+                <div class="chart-body">
+                    <canvas id="complianceGaugeChart"></canvas>
+                    <div class="gauge-center-text"><span class="val" id="gaugeValue">0%</span><span class="lbl">نسبة الالتزام</span></div>
+                </div>
+            </div>
+            <div class="chart-container" style="flex:1; min-width:300px;">
+                <div class="chart-header">خريطة توزيع الأعباء (Polar Area)</div>
+                <div class="chart-body"><canvas id="workDistributionChart"></canvas></div>
+            </div>
+        </div>
+        <div class="chart-container" style="margin-bottom:20px;">
+            <div class="chart-header">تحليل أداء الجهات (مكتملة مقابل متأخرة)</div>
+            <div class="chart-body" style="height: 350px;"><canvas id="notesByEntityChart"></canvas></div>
+        </div>
+        <div class="chart-container" style="margin-bottom:20px;">
+            <div class="chart-header">الإحصاء السنوي والربع سنوي (للسنة الحالية)</div>
+            <div class="chart-body" style="height: auto; padding: 20px;">
+                <table style="width: 100%; border-collapse: collapse; text-align: center;">
+                    <thead>
+                        <tr style="background: #173f32; color: #fff;">
+                            <th style="padding: 10px; border: 1px solid #e0ebe5;">الفئة</th>
+                            <th class="annual-q-header" style="padding: 10px; border: 1px solid #e0ebe5;">الربع الأول</th>
+                            <th class="annual-q-header" style="padding: 10px; border: 1px solid #e0ebe5;">الربع الثاني</th>
+                            <th class="annual-q-header" style="padding: 10px; border: 1px solid #e0ebe5;">الربع الثالث</th>
+                            <th class="annual-q-header" style="padding: 10px; border: 1px solid #e0ebe5;">الربع الرابع</th>
+                            <th style="padding: 10px; border: 1px solid #e0ebe5; background: #245c49;">الإجمالي السنوي</th>
+                        </tr>
+                    </thead>
+                    <tbody id="annualStatsTable"><tr><td colspan="6" style="padding: 10px; text-align: center;">جاري حساب البيانات...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card table-card" style="border:1px solid #c0392b; border-radius:12px; overflow:hidden;">
+            <div class="card-header" style="background: linear-gradient(90deg, #c0392b, #e74c3c);"><h3>🚨 ملاحظات طارئة تتطلب تدخلاً إدارياً فورياً</h3></div>
+            <div class="table-container">
+                <table>
+                    <thead><tr style="background: #c0392b; color: white;"><th>التاريخ</th><th>رقم التصريح</th><th>المقاول</th><th>الجهة</th><th>سبب الرفض</th><th>مضى (أيام)</th><th>الخطورة</th></tr></thead>
+                    <tbody id="emergencyNotesTable"><tr><td colspan="7" style="text-align:center;">جاري فحص البيانات...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
 
-    document.body.appendChild(screen);
+    <section id="performance" class="page">
+        <div class="section-title"><h2>تقرير أداء المقاولين</h2><p>تحليل وتصنيف أداء المقاولين بناءً على التصاريح والملاحظات</p></div>
+        <div style="display:flex; gap:10px; margin-bottom:20px; justify-content:center;">
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportPerformanceToExcel()">📥 تصدير Excel</button>
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportPerformanceToPDF()">📄 تصدير PDF</button>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:20px; margin-bottom:20px;">
+            <div class="card" style="flex:2; min-width:300px;"><div class="card-header"><h3>مقارنة التصاريح بالملاحظات</h3></div><div style="padding:15px;"><canvas id="contractorBarChart"></canvas></div></div>
+            <div class="card" style="flex:1; min-width:300px;"><div class="card-header"><h3>توزيع تصنيف المقاولين</h3></div><div style="padding:15px;"><canvas id="classificationPieChart"></canvas></div></div>
+        </div>
+        <div class="card table-card">
+            <div class="card-header"><h3>التفاصيل الكاملة لتصنيف المقاولين</h3></div>
+            <div class="table-container">
+                <table><thead><tr><th>اسم المقاول</th><th>إجمالي التصاريح</th><th>إجمالي الملاحظات</th><th>نسبة الأخطاء</th><th>التصنيف النهائي</th></tr></thead>
+                    <tbody id="performanceTableBody"><tr><td colspan="5">جاري حساب البيانات...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
 
-    document.getElementById("loginPassword").addEventListener("keydown", function (e) {
-        if (e.key === "Enter") doLogin();
-    });
-    document.getElementById("loginName").addEventListener("keydown", function (e) {
-        if (e.key === "Enter") document.getElementById("loginPassword").focus();
-    });
+    <section id="dashboard" class="page active">
+        <div class="section-title"><h2>لوحة المتابعة</h2><p>ملخص أعمال مختبر جودة المشاريع</p></div>
+        <div class="stats-grid">
+            <div class="stat-card"><div class="stat-icon">📄</div><div><span>رخص الإخلاءات</span><strong id="clearanceCount">0</strong></div></div>
+            <div class="stat-card"><div class="stat-icon">🚧</div><div><span>رخص الطوارئ</span><strong id="emergencyCount">0</strong></div></div>
+            <div class="stat-card"><div class="stat-icon">🔴</div><div><span>ملاحظات متأخرة</span><strong id="lateNotesCount">0</strong></div></div>
+            <div class="stat-card"><div class="stat-icon">✅</div><div><span>ملاحظات تم تعديلها</span><strong id="completedNotesCount">0</strong></div></div>
+        </div>
+        <div class="card"><div class="card-header"><h3>تنبيهات الملاحظات</h3></div><div id="alerts" class="alerts-box">لا توجد ملاحظات متأخرة حالياً</div></div>
+    </section>
+
+    <section id="clearance" class="page">
+        <div class="section-title"><h2>رخص الإخلاءات</h2><p>إدخال والبحث ومتابعة رخص الإخلاءات</p></div>
+        <div style="display:flex; gap:10px; margin-bottom:20px; justify-content:center;">
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportClearancesToExcel()">📥 تصدير Excel</button>
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportClearancesToPDF()">📄 تصدير PDF</button>
+        </div>
+        <div class="card search-card"><div class="card-header"><h3>🔎 البحث عن رخصة إخلاء</h3></div>
+            <div class="search-row">
+                <input type="text" id="clearanceSearch" placeholder="اكتب رقم رخصة الإخلاء..." autocomplete="off">
+                <button class="btn-primary" onclick="searchClearance()">بحث</button>
+                <button class="btn-secondary" onclick="clearClearanceSearch()">مسح البحث</button>
+            </div>
+            <div id="clearanceSearchResult" class="search-result"></div>
+        </div>
+        <div class="card"><div class="card-header"><h3>إدخال رخصة إخلاء</h3></div>
+            <div class="form-grid">
+                <div class="form-group"><label>رقم التصريح</label><input id="clearancePermit" type="text"></div>
+                <div class="form-group"><label>اسم المقاول</label><input id="clearanceContractor" type="text"></div>
+                <div class="form-group"><label>الجهة المالكة</label><input id="clearanceOwner" type="text"></div>
+                <div class="form-group"><label>الموقع</label><input id="clearanceLocation" type="text"></div>
+                <div class="form-group full"><label>الصور</label><input id="clearanceImages" type="file" accept="image/*" multiple></div>
+            </div>
+            <div class="form-actions"><button class="btn-primary" onclick="saveClearance()">حفظ الرخصة</button><button class="btn-secondary" onclick="clearClearance()">تفريغ</button></div>
+        </div>
+        <div class="card table-card"><div class="card-header"><h3>سجل رخص الإخلاءات</h3></div>
+            <div class="table-container"><table><thead><tr><th>رقم التصريح</th><th>المقاول</th><th>الجهة المالكة</th><th>الموقع</th><th>الصور</th><th>الإجراءات</th></tr></thead><tbody id="clearanceTable"></tbody></table></div>
+        </div>
+    </section>
+
+    <section id="emergency" class="page">
+        <div class="section-title"><h2>رخص الطوارئ</h2><p>إدخال والبحث ومتابعة رخص الطوارئ</p></div>
+        <div style="display:flex; gap:10px; margin-bottom:20px; justify-content:center;">
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportEmergenciesToExcel()">📥 تصدير Excel</button>
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportEmergenciesToPDF()">📄 تصدير PDF</button>
+        </div>
+        <div class="card search-card"><div class="card-header"><h3>🔎 البحث عن رخصة طوارئ</h3></div>
+            <div class="search-row">
+                <input type="text" id="emergencySearch" placeholder="اكتب رقم رخصة الطوارئ..." autocomplete="off">
+                <button class="btn-primary" onclick="searchEmergency()">بحث</button>
+                <button class="btn-secondary" onclick="clearEmergencySearch()">مسح البحث</button>
+            </div>
+            <div id="emergencySearchResult" class="search-result"></div>
+        </div>
+        <div class="card"><div class="card-header"><h3>إدخال رخصة طوارئ</h3></div>
+            <div class="form-grid">
+                <div class="form-group"><label>رقم التصريح</label><input id="emergencyPermit" type="text"></div>
+                <div class="form-group"><label>اسم المقاول</label><input id="emergencyContractor" type="text"></div>
+                <div class="form-group"><label>الجهة المالكة</label><input id="emergencyOwner" type="text"></div>
+                <div class="form-group"><label>تاريخ استلام المختبر</label><input id="labReceiveDate" type="date"></div>
+                <div class="form-group"><label>تاريخ بدء العمل</label><input id="workStartDate" type="date"></div>
+                <div class="form-group"><label>تاريخ انتهاء العمل</label><input id="workEndDate" type="date"></div>
+                <div class="form-group"><label>الموقع</label><input id="emergencyLocation" type="text"></div>
+                <div class="form-group full"><label>الصور</label><input id="emergencyImages" type="file" accept="image/*" multiple></div>
+            </div>
+            <div class="form-actions"><button class="btn-primary" onclick="saveEmergency()">حفظ الرخصة</button><button class="btn-secondary" onclick="clearEmergency()">تفريغ</button></div>
+        </div>
+        <div class="card table-card"><div class="card-header"><h3>سجل رخص الطوارئ</h3></div>
+            <div class="table-container"><table><thead><tr><th>رقم التصريح</th><th>المقاول</th><th>الجهة المالكة</th><th>استلام المختبر</th><th>بدء العمل</th><th>انتهاء العمل</th><th>الموقع</th><th>الصور</th><th>الإجراءات</th></tr></thead><tbody id="emergencyTable"></tbody></table></div>
+        </div>
+    </section>
+
+    <section id="notes" class="page">
+        <div class="section-title"><h2>الملاحظات</h2><p>تسجيل ومتابعة ملاحظات المشاريع والمقاولين</p></div>
+        <div style="display:flex; gap:10px; margin-bottom:20px; justify-content:center;">
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportNotesToExcel()">📥 تصدير Excel</button>
+            <button class="btn-primary" style="padding:10px 20px;" onclick="exportNotesToPDF()">📄 تصدير PDF</button>
+        </div>
+        <div class="card"><div class="card-header"><h3>إدخال ملاحظة</h3></div>
+            <div class="note-types">
+                <button onclick="setNoteType('مشاريع الأمانة')">مشاريع الأمانة</button>
+                <button onclick="setNoteType('المياه الوطنية')">المياه الوطنية</button>
+                <button onclick="setNoteType('الكهرباء')">الكهرباء</button>
+                <button onclick="setNoteType('الاتصالات')">الاتصالات</button>
+                <button onclick="setNoteType('مشاريع خاصة')">مشاريع خاصة</button>
+            </div>
+            <input type="hidden" id="noteType" value="مشاريع الأمانة">
+            <div class="form-grid">
+                <div class="form-group"><label>تاريخ الملاحظة</label><input id="noteDate" type="date"></div>
+                <div class="form-group"><label>رقم التصريح</label><input id="notePermit" type="text"></div>
+                <div class="form-group"><label>اسم المقاول</label><input id="noteContractor" type="text"></div>
+                <div class="form-group"><label>الجهة المالكة</label><input id="noteOwner" type="text"></div>
+                <div class="form-group full"><label>أسباب الرفض</label><textarea id="noteReason"></textarea></div>
+                <div class="form-group full"><label>الإجراء المتخذ</label><textarea id="noteAction" readonly> تم رفض الطلب و إبلاغ المقاول بالملاحظات </textarea></div>
+                <div class="form-group"><label>صورة الملاحظة</label><input id="beforeImage" type="file" accept="image/*"></div>
+                <div class="form-group"><label>صورة الملاحظة بعد التعديل</label><input id="afterImage" type="file" accept="image/*"></div>
+            </div>
+            <div class="form-actions"><button class="btn-primary" onclick="saveNote()">حفظ الملاحظة</button><button class="btn-secondary" onclick="clearNote()">تفريغ</button></div>
+        </div>
+        <div class="card table-card"><div class="card-header"><h3>سجل الملاحظات</h3></div>
+            <div class="table-container"><table><thead><tr><th>التاريخ</th><th>نوع الملاحظة</th><th>رقم التصريح</th><th>المقاول</th><th>الجهة المالكة</th><th>سبب الرفض</th><th>الإجراء المتخذ</th><th>الحالة</th><th>الصور</th><th>الإجراءات</th></tr></thead><tbody id="notesTable"></tbody></table></div>
+        </div>
+    </section>
+
+</main>
+
+<footer>نظام مختبر جودة المشاريع</footer>
+
+<!-- المكتبات الخارجية -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="script.js?v=430"
+
+<!-- إيقاف الأنيميشن لتسريع الجوال -->
+<script>
+if (typeof Chart !== 'undefined') {
+    Chart.defaults.global.animation = false;
 }
+</script>
 
-function doLogin() {
-
-    const name = document.getElementById("loginName").value.trim();
-    const password = document.getElementById("loginPassword").value;
-    const errorEl = document.getElementById("loginError");
-
-    if (!name) {
-        errorEl.textContent = "يرجى كتابة اسمك أولاً";
-        errorEl.style.display = "block";
-        return;
-    }
-
-    if (password !== LAB_LOGIN_PASSWORD) {
-        errorEl.textContent = "كلمة المرور غير صحيحة";
-        errorEl.style.display = "block";
-        return;
-    }
-
-    currentUserName = name;
-    localStorage.setItem("labUserName", name);
-
-    removeLoginScreen();
-    showUserBadge();
-}
-
-function removeLoginScreen() {
-    const screen = document.getElementById("loginScreen");
-    if (screen) screen.remove();
-}
-
-function showUserBadge() {
-
-    const old = document.getElementById("userBadge");
-    if (old) old.remove();
-
-    const badge = document.createElement("div");
-    badge.id = "userBadge";
-    badge.style.cssText =
-        "position:fixed;top:10px;left:10px;z-index:99998;" +
-        "background:#173f32;color:#fff;padding:8px 14px;" +
-        "border-radius:20px;font-size:13px;font-family:inherit;" +
-        "display:flex;align-items:center;gap:10px;direction:rtl;" +
-        "box-shadow:0 2px 8px rgba(0,0,0,.3);";
-
-    badge.innerHTML = `
-        <span>👤 ${currentUserName}</span>
-        <button onclick="doLogout()" style="background:#c0392b;color:#fff;border:none;padding:4px 10px;border-radius:12px;cursor:pointer;font-size:11px;font-family:inherit;">
-            خروج
-        </button>
-    `;
-
-    document.body.appendChild(badge);
-}
-
-function doLogout() {
-
-    if (!confirm("هل تريد تسجيل الخروج؟")) return;
-
-    localStorage.removeItem("labUserName");
-    currentUserName = "";
-
-    const badge = document.getElementById("userBadge");
-    if (badge) badge.remove();
-
-    createLoginScreen();
-}
-
-document.addEventListener("DOMContentLoaded", function () {
-    if (currentUserName) {
-        showUserBadge();
-    } else {
-        createLoginScreen();
-    }
-});
-/* =========================================================
-   إصلاح عرض الصور — يُلصق في آخر الملف
-   هذه النسخ تتجاوز أي نسخ قديمة أو معطوبة
-   ========================================================= */
-
-function openImageDB() {
-    if (window.__labIdbPromise) {
-        return window.__labIdbPromise;
-    }
-    window.__labIdbPromise = new Promise(function (resolve) {
-        try {
-            const req = indexedDB.open("labImagesDB", 1);
-            req.onupgradeneeded = function (e) {
-                const db = e.target.result;
-                if (!db.objectStoreNames.contains("images")) {
-                    db.createObjectStore("images");
-                }
-            };
-            req.onsuccess = function (e) {
-                resolve(e.target.result);
-            };
-            req.onerror = function () {
-                resolve(null);
-            };
-        } catch (e) {
-            resolve(null);
-        }
-    });
-    return window.__labIdbPromise;
-}
-
-async function idbPut(key, dataUrl) {
-    const db = await openImageDB();
-    if (!db) return false;
-    return new Promise(function (resolve) {
-        try {
-            const tx = db.transaction("images", "readwrite");
-            tx.objectStore("images").put(dataUrl, key);
-            tx.oncomplete = function () { resolve(true); };
-            tx.onerror = function () { resolve(false); };
-        } catch (e) {
-            resolve(false);
-        }
-    });
-}
-
-async function idbGet(key) {
-    const db = await openImageDB();
-    if (!db) return null;
-    return new Promise(function (resolve) {
-        try {
-            const tx = db.transaction("images", "readonly");
-            const req = tx.objectStore("images").get(key);
-            req.onsuccess = function () { resolve(req.result || null); };
-            req.onerror = function () { resolve(null); };
-        } catch (e) {
-            resolve(null);
-        }
-    });
-}
-
-async function idbDelete(key) {
-    const db = await openImageDB();
-    if (!db) return;
-    return new Promise(function (resolve) {
-        try {
-            const tx = db.transaction("images", "readwrite");
-            tx.objectStore("images").delete(key);
-            tx.oncomplete = function () { resolve(true); };
-            tx.onerror = function () { resolve(false); };
-        } catch (e) {
-            resolve(false);
-        }
-    });
-}
-
-function newImageRef() {
-    return "idb://img_" + Date.now() + "_" +
-        Math.random().toString(36).substring(2, 10);
-}
-
-function isIdbRef(value) {
-    return typeof value === "string" && value.indexOf("idb://") === 0;
-}
-
-function idbKeyFromRef(ref) {
-    return ref.substring(6);
-}
-
-async function storeImageInIdb(dataUrl) {
-    const ref = newImageRef();
-    const ok = await idbPut(idbKeyFromRef(ref), dataUrl);
-    return ok ? ref : "";
-}
-
-function blobToDataUrl(blob) {
-    return new Promise(function (resolve) {
-        const reader = new FileReader();
-        reader.onload = function () { resolve(reader.result); };
-        reader.onerror = function () { resolve(""); };
-        reader.readAsDataURL(blob);
-    });
-}
-
-function imageThumb(image, title) {
-    title = title || "عرض الصورة";
-    if (!image) {
-        return "<span>لا توجد صورة</span>";
-    }
-    if (isIdbRef(image)) {
-        return '<img data-idb="' + image + '" alt="' + title + '" title="' + title +
-            '" onclick="openImageRef(this)" ' +
-            'style="width:70px;height:70px;object-fit:cover;border-radius:8px;cursor:pointer;margin:3px;background:#eee;">';
-    }
-    return '<img src="' + image + '" alt="' + title + '" title="' + title +
-        '" onclick="openImage(this.src)" ' +
-        'style="width:70px;height:70px;object-fit:cover;border-radius:8px;cursor:pointer;margin:3px;">';
-}
-
-async function resolveIdbImages() {
-    const imgs = document.querySelectorAll("img[data-idb]");
-    for (let i = 0; i < imgs.length; i++) {
-        const img = imgs[i];
-        if (img.getAttribute("data-loaded")) continue;
-        const ref = img.getAttribute("data-idb");
-        const data = await idbGet(idbKeyFromRef(ref));
-        if (data) {
-            img.src = data;
-            img.setAttribute("data-loaded", "1");
-        }
-    }
-}
-
-async function openImageRef(imgEl) {
-    let src = imgEl.getAttribute("src") || "";
-    if (!imgEl.getAttribute("data-loaded")) {
-        const ref = imgEl.getAttribute("data-idb");
-        if (ref) {
-            src = (await idbGet(idbKeyFromRef(ref))) || src;
-        }
-    }
-    if (src) openImage(src);
-}
-
-function openImage(image) {
-    const w = window.open("", "_blank");
-    if (!w) {
-        alert("يرجى السماح بفتح النوافذ المنبثقة");
-        return;
-    }
-    w.document.write(`
-        <!DOCTYPE html>
-        <html lang="ar" dir="rtl">
-        <head>
-            <meta charset="UTF-8">
-            <title>عرض الصورة</title>
-            <style>
-                body {margin:0;background:#173f32;display:flex;justify-content:center;align-items:center;min-height:100vh;}
-                img {max-width:95%;max-height:95vh;object-fit:contain;border-radius:12px;}
-            </style>
-        </head>
-        <body>
-            <img src="${image}">
-        </body>
-        </html>
-    `);
-}
-
-/* ===== إصلاح ظهور الصور في ملف PDF ===== */
-
-function loadImageAsDataUrl(url) {
-    return new Promise(function (resolve) {
-        try {
-            const img = new Image();
-            img.crossOrigin = "anonymous";
-            img.onload = function () {
-                try {
-                    const canvas = document.createElement("canvas");
-                    const maxDim = 900;
-                    const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
-                    canvas.width = Math.round(img.naturalWidth * scale);
-                    canvas.height = Math.round(img.naturalHeight * scale);
-                    const ctx = canvas.getContext("2d");
-                    ctx.fillStyle = "#ffffff";
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    resolve(canvas.toDataURL("image/jpeg", 0.85));
-                } catch (e) {
-                    resolve("");
-                }
-            };
-            img.onerror = function () {
-                resolve("");
-            };
-            img.src = url;
-        } catch (e) {
-            resolve("");
-        }
-    });
-}
-
-async function resolveImageForExport(ref) {
-    try {
-        if (!ref) return "";
-
-        if (isIdbRef(ref)) {
-            return await idbGet(idbKeyFromRef(ref)) || "";
-        }
-
-        if (ref.indexOf("data:") === 0) {
-            return ref;
-        }
-
-        try {
-            const res = await fetch(ref);
-            if (res.ok) {
-                const blob = await res.blob();
-                const dataUrl = await blobToDataUrl(blob);
-                if (dataUrl) return dataUrl;
-            }
-        } catch (e1) {
-        }
-
-        return await loadImageAsDataUrl(ref);
-
-    } catch (e) {
-        return "";
-    }
-}
-
-async function resolveExportItems(items) {
-
-    const out = [];
-
-    for (const item of items) {
-        const copy = Object.assign({}, item);
-
-        if (Array.isArray(copy.images)) {
-            const imgs = [];
-            for (const img of copy.images) {
-                imgs.push(await resolveImageForExport(img));
-            }
-            copy.images = imgs;
-        }
-
-        if (copy.before) {
-            copy.before = await resolveImageForExport(copy.before);
-        }
-
-        if (copy.after) {
-            copy.after = await resolveImageForExport(copy.after);
-        }
-
-        out.push(copy);
-    }
-
-    return out;
-}
-/* =========================================================
-   الإكمال التلقائي — يقترح الأسماء المدخلة سابقاً
-   الصق هذا الكود في آخر ملف script.js
-   ========================================================= */
-/* =========================================================
-   الإكمال التلقائي — النسخة المصححة
-   النقر يعمل + الأرقام تعمل + لوحة المفاتيح مدعومة
-   ========================================================= */
-
-(function () {
-
-    let activeList = null;
-    let activeInput = null;
-
-    const AUTOCOMPLETE_FIELDS = [
-        { id: "clearanceContractor", source: "contractor" },
-        { id: "clearanceOwner", source: "owner" },
-        { id: "clearanceLocation", source: "location" },
-        { id: "emergencyContractor", source: "contractor" },
-        { id: "emergencyOwner", source: "owner" },
-        { id: "emergencyLocation", source: "location" },
-        { id: "noteContractor", source: "contractor" },
-        { id: "noteOwner", source: "owner" }
-    ];
-
-    function collectSuggestions(source) {
-
-        const values = new Set();
-
-        clearances.forEach(function (item) {
-            if (source === "contractor" && item.contractor) values.add(item.contractor);
-            if (source === "owner" && item.owner) values.add(item.owner);
-            if (source === "location" && item.location) values.add(item.location);
-        });
-
-        emergencies.forEach(function (item) {
-            if (source === "contractor" && item.contractor) values.add(item.contractor);
-            if (source === "owner" && item.owner) values.add(item.owner);
-            if (source === "location" && item.location) values.add(item.location);
-        });
-
-        notes.forEach(function (item) {
-            if (source === "contractor" && item.contractor) values.add(item.contractor);
-            if (source === "owner" && item.owner) values.add(item.owner);
-        });
-
-        return Array.from(values).sort();
-    }
-
-    function matches(value, typed) {
-        try {
-            const v = String(value).toLowerCase();
-            const t = String(typed).toLowerCase();
-            return t.length > 0 && v.indexOf(t) !== -1;
-        } catch (e) {
-            return false;
-        }
-    }
-
-    function closeList() {
-        if (activeList) {
-            activeList.remove();
-            activeList = null;
-            activeInput = null;
-        }
-    }
-
-    /* استخدام mousedown بدل click — يعمل قبل blur
-       وهذا يمنع اختفاء القائمة قبل النقر */
-    function applyChoice(inputEl, value) {
-        inputEl.value = value;
-        closeList();
-        inputEl.focus();
-
-        /* إطلاق حدث input حتى تعمل أي معالجات أخرى */
-        try {
-            inputEl.dispatchEvent(new Event("input", { bubbles: true }));
-        } catch (e) { }
-    }
-
-    function createDropdown(inputEl, items) {
-
-        closeList();
-
-        if (!items || items.length === 0) {
-            return;
-        }
-
-        const list = document.createElement("div");
-        list.style.cssText =
-            "position:absolute;z-index:100000;background:#fff;border:2px solid #173f32;" +
-            "border-radius:8px;max-height:220px;overflow-y:auto;" +
-            "box-shadow:0 8px 25px rgba(0,0,0,.25);direction:rtl;font-family:inherit;";
-
-        items.forEach(function (item, index) {
-
-            const option = document.createElement("div");
-            option.textContent = item;
-            option.style.cssText =
-                "padding:10px 14px;cursor:pointer;font-size:14px;" +
-                "border-bottom:1px solid #eee;user-select:none;";
-
-            option.addEventListener("mouseenter", function () {
-                option.style.background = "#e8f2ee";
-            });
-            option.addEventListener("mouseleave", function () {
-                option.style.background = "#fff";
-            });
-
-            /* mousedown هو الحل الجوهري — يُنفذ قبل blur */
-            option.addEventListener("mousedown", function (e) {
-                e.preventDefault();
-                applyChoice(inputEl, item);
-            });
-
-            list.appendChild(option);
-        });
-
-        document.body.appendChild(list);
-
-        const rect = inputEl.getBoundingClientRect();
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-
-        list.style.top = (rect.bottom + scrollTop + 4) + "px";
-        list.style.left = (rect.left + scrollLeft) + "px";
-        list.style.width = Math.max(rect.width, 220) + "px";
-
-        activeList = list;
-        activeInput = inputEl;
-    }
-
-    function setupField(config) {
-
-        const inputEl = document.getElementById(config.id);
-        if (!inputEl) return;
-
-        let debounceTimer = null;
-
-        /* keydown: الأسهم + Enter + Escape */
-        inputEl.addEventListener("keydown", function (e) {
-
-            if (!activeList || activeInput !== inputEl) {
-                return;
-            }
-
-            const options = activeList.querySelectorAll("div");
-            let current = -1;
-
-            options.forEach(function (opt, i) {
-                if (opt.style.background === "rgb(232, 242, 238)") {
-                    current = i;
-                }
-            });
-
-            if (e.key === "ArrowDown") {
-                e.preventDefault();
-                const next = (current + 1) % options.length;
-                options.forEach(function (o) { o.style.background = "#fff"; });
-                if (options[next]) {
-                    options[next].style.background = "#e8f2ee";
-                    options[next].scrollIntoView({ block: "nearest" });
-                }
-                return;
-            }
-
-            if (e.key === "ArrowUp") {
-                e.preventDefault();
-                const prev = (current - 1 + options.length) % options.length;
-                options.forEach(function (o) { o.style.background = "#fff"; });
-                if (options[prev]) {
-                    options[prev].style.background = "#e8f2ee";
-                    options[prev].scrollIntoView({ block: "nearest" });
-                }
-                return;
-            }
-
-            if (e.key === "Enter") {
-                if (current >= 0 && options[current]) {
-                    e.preventDefault();
-                    applyChoice(inputEl, options[current].textContent);
-                }
-                return;
-            }
-
-            if (e.key === "Escape") {
-                closeList();
-                return;
-            }
-        });
-
-        /* input: كل كتابة عادية — حروف وأرقام عادية ومن لوحة الأرقام */
-        inputEl.addEventListener("input", function () {
-
-            clearTimeout(debounceTimer);
-
-            debounceTimer = setTimeout(function () {
-
-                const typed = inputEl.value.trim();
-
-                if (typed.length === 0) {
-                    closeList();
-                    return;
-                }
-
-                const all = collectSuggestions(config.source);
-                const filtered = all.filter(function (v) {
-                    return matches(v, typed);
-                }).slice(0, 15);
-
-                createDropdown(inputEl, filtered);
-
-            }, 120);
-        });
-
-        /* blur بتأخير أطول حتى يلحق mousedown بالنقر */
-        inputEl.addEventListener("blur", function () {
-            setTimeout(function () {
-                if (activeInput === inputEl) {
-                    closeList();
-                }
-            }, 300);
-        });
-    }
-
-    /* إغلاق القائمة عند النقر خارجها */
-    document.addEventListener("mousedown", function (e) {
-        if (activeList && !activeList.contains(e.target) && e.target !== activeInput) {
-            closeList();
-        }
-    });
-
-    function initAutocomplete() {
-        AUTOCOMPLETE_FIELDS.forEach(function (config) {
-            setupField(config);
-        });
-    }
-
-    document.addEventListener("DOMContentLoaded", initAutocomplete);
-})();
-// =========================================================
-// كود صفحة تصنيف المقاولين (مستقل تماماً ولا يؤثر على أي أزرار)
-// =========================================================
-
-var barChartInstance = null;
-var pieChartInstance = null;
-
-// 1. دالة التنقل الخاصة بصفحة التصنيف فقط
-function goToPerformance() {
-    var pages = document.querySelectorAll('.page');
-    for (var i = 0; i < pages.length; i++) {
-        pages[i].classList.remove('active');
-    }
-    var perfPage = document.getElementById('performance');
-    if (perfPage) {
-        perfPage.classList.add('active');
-    }
-    renderPerformanceData();
-}
-
-// 2. دالة جمع البيانات ورسم الجدول والمخططات
-function renderPerformanceData() {
-    var tbody = document.getElementById("performanceTableBody");
-    if (!tbody) return; // نخرج إذا لم نكن في الصفحة
-
-    // التأكد من تحميل المكتبة والبيانات
-    if (typeof Chart === 'undefined' || typeof clearances === 'undefined' || typeof emergencies === 'undefined' || typeof notes === 'undefined') {
-        setTimeout(renderPerformanceData, 1000); // نحاول مرة أخرى بعد ثانية
-        return;
-    }
-
-    var contractorStats = {};
-
-    // دمج التصاريح
-    var allPermits = clearances.concat(emergencies);
-    allPermits.forEach(function(p) {
-        var name = (p.contractor || "غير معروف").trim();
-        if (name) {
-            if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
-            contractorStats[name].permits++;
-        }
-    });
-
-    // دمج الملاحظات
-    notes.forEach(function(n) {
-        var name = (n.contractor || "غير معروف").trim();
-        if (name) {
-            if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 };
-            contractorStats[name].notes++;
-        }
-    });
-
-    var labels = Object.keys(contractorStats);
-    if (labels.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5">لا توجد بيانات حالياً</td></tr>';
-        return;
-    }
-
-    var tableRows = '';
-    var chartLabels = [];
-    var chartPermits = [];
-    var chartNotes = [];
-    var classCounts = { A: 0, B: 0, C: 0, D: 0 };
-
-    // تصنيف كل مقاول
-    labels.forEach(function(c) {
-        var data = contractorStats[c];
-        var ratio = data.permits > 0 ? (data.notes / data.permits) * 100 : 0;
-        var classification = '';
-        var classColor = '';
-
-        if (ratio === 0) {
-            classification = '🟢 A (ممتاز)';
-            classColor = 'background:#dcefe4; color:#24704d;';
-            classCounts.A++;
-        } else if (ratio <= 30) {
-            classification = '🔵 B (جيد)';
-            classColor = 'background:#e8eee9; color:#5d7066;';
-            classCounts.B++;
-        } else if (ratio <= 60) {
-            classification = '🟡 C (متوسط)';
-            classColor = 'background:#fff8e1; color:#8a6d3b;';
-            classCounts.C++;
-        } else {
-            classification = '🔴 D (خطر عالي)';
-            classColor = 'background:#f7dddd; color:#a33f3f;';
-            classCounts.D++;
-        }
-
-        chartLabels.push(c);
-        chartPermits.push(data.permits);
-        chartNotes.push(data.notes);
-
-        tableRows += '<tr>' +
-            '<td style="font-weight:bold;">' + c + '</td>' +
-            '<td style="text-align:center;">' + data.permits + '</td>' +
-            '<td style="text-align:center;">' + data.notes + '</td>' +
-            '<td style="text-align:center; font-weight:bold;">' + ratio.toFixed(1) + '%</td>' +
-            '<td style="text-align:center; font-weight:bold; padding:8px; border-radius:8px; ' + classColor + '">' + classification + '</td>' +
-        '</tr>';
-    });
-
-    // تحديث الجدول
-    tbody.innerHTML = tableRows;
-
-    // رسم المخطط العمودي
-    var barCtx = document.getElementById('contractorBarChart');
-    if (barCtx) {
-        if (barChartInstance) barChartInstance.destroy();
-        barChartInstance = new Chart(barCtx, {
-            type: 'bar',
-            data: {
-                labels: chartLabels,
-                datasets: [
-                    { label: 'إجمالي التصاريح', data: chartPermits, backgroundColor: '#245c49' },
-                    { label: 'إجمالي الملاحظات', data: chartNotes, backgroundColor: '#b3402a' }
-                ]
-            },
-            options: { responsive: true, scales: { y: { beginAtZero: true } } }
-        });
-    }
-
-    // رسم المخطط الدائري
-    var pieCtx = document.getElementById('classificationPieChart');
-    if (pieCtx) {
-        if (pieChartInstance) pieChartInstance.destroy();
-        pieChartInstance = new Chart(pieCtx, {
-            type: 'doughnut',
-            data: {
-                labels: ['ممتاز (A)', 'جيد (B)', 'متوسط (C)', 'خطر عالي (D)'],
-                datasets: [{
-                    data: [classCounts.A, classCounts.B, classCounts.C, classCounts.D],
-                    backgroundColor: ['#24704d', '#5d7066', '#8a6d3b', '#a33f3f']
-                }]
-            },
-            options: { responsive: true }
-        });
-    }
-}
-
-// 3. تشغيل تلقائي عند فتح التطبيق (بعد 3 ثوانٍ لضمان جلب البيانات من السحابة)
-setTimeout(renderPerformanceData, 3000);
-// =========================================================
-// مستمع آمن لزر التصنيف (يرسم البيانات عند فتح الصفحة)
-// =========================================================
+<!-- الشعارات -->
+<script>
 document.addEventListener("DOMContentLoaded", function() {
-    var navButtons = document.querySelectorAll('.navbar button');
-    navButtons.forEach(function(btn) {
-        var onclickAttr = btn.getAttribute('onclick') || '';
-        // إذا كان الزر هو زر صفحة التصنيف (performance)
-        if (onclickAttr.indexOf("performance") !== -1) {
-            btn.addEventListener('click', function() {
-                // ننتظر نصف ثانية حتى تفتح الصفحة، ثم نرسم البيانات
-                setTimeout(function() {
-                    if (typeof renderPerformanceData === 'function') {
-                        renderPerformanceData();
-                    }
-                }, 500);
-            });
-        }
-    });
+    const amanahLogoUrl = "https://z-cdn-media.chatglm.cn/files/14388a2b-5b5d-42d4-8e2f-ac93f8ede780.jpeg?auth_key=1887326183-5ce98f505449411fb3298ff8de264250-0-b067337c641d6b6447fcb70ea49bc8c3";
+    const labLogoUrl = "https://z-cdn-media.chatglm.cn/files/6222b48e-df16-4cef-8578-44b41893fc0e.jpeg?auth_key=1887326183-74b52225407b4b17ba4f3e9406b863d1-0-e1d1a0fe8d683b6a3c118333f8ce6900";
+    const headerContent = document.querySelector('.header-content');
+    if (headerContent && !document.getElementById('injected-amanah-logo')) {
+        const h1 = headerContent.querySelector('h1'); const p = headerContent.querySelector('p');
+        if (h1 && p) { const textDiv = document.createElement('div'); textDiv.className = 'header-text'; textDiv.appendChild(h1); textDiv.appendChild(p); headerContent.appendChild(textDiv); }
+        const amanahImg = document.createElement('img'); amanahImg.id = 'injected-amanah-logo'; amanahImg.src = amanahLogoUrl; amanahImg.className = 'header-logo-injected'; headerContent.prepend(amanahImg);
+    }
+    const passwordInput = document.querySelector('input[type="password"]');
+    if (passwordInput && !document.getElementById('injected-lab-logo')) {
+        const allImages = document.querySelectorAll('img');
+        allImages.forEach(img => { if (img.id !== 'injected-amanah-logo' && img.id !== 'injected-lab-logo') { img.id = 'injected-lab-logo'; img.src = labLogoUrl; img.className = 'lab-logo-injected'; } });
+    }
 });
-/* =========================================================
-   كود إضافي: إصلاح حفظ الإخلاءات على السحابة
-   يُضاف في نهاية ملف script.js
-   يعيد تعريف saveClearance لترفع البيانات للسحابة فوراً
-   ========================================================= */
+</script>
+
+
+
+
+
+
+<!-- لوحة القيادة التنفيذية -->
+<script>
+var analyticsCharts = {};
+function renderAnalyticsPage() {
+    if (typeof clearances === 'undefined' || typeof Chart === 'undefined' || typeof notes === 'undefined') return;
+    var currentYear = new Date().getFullYear();
+    var yearSpan = document.getElementById('analyticsCurrentYear'); if (yearSpan) yearSpan.innerText = "(" + currentYear + ")";
+    var qHeaders = document.querySelectorAll('.annual-q-header');
+    if (qHeaders.length === 4) { qHeaders[0].innerText = "الربع الأول " + currentYear; qHeaders[1].innerText = "الربع الثاني " + currentYear; qHeaders[2].innerText = "الربع الثالث " + currentYear; qHeaders[3].innerText = "الربع الرابع " + currentYear; }
+    var totalPermits = clearances.length + emergencies.length; var totalNotes = notes.length; var today = new Date().toISOString().split('T')[0];
+    var activePermits = emergencies.filter(function(e) { return (e.start && e.end && e.start <= today && e.end >= today); }).length;
+    var completedNotes = notes.filter(function(n) { return n.completed; }).length;
+    var allLateNotes = notes.filter(function(n) { var d = (typeof daysPassed === 'function') ? daysPassed(n.date) : 0; return !n.completed && d >= 5; });
+    var criticalNotes = notes.filter(function(n) { var d = (typeof daysPassed === 'function') ? daysPassed(n.date) : 0; return !n.completed && d > 10; });
+    var overduePermits = emergencies.filter(function(e) { return e.end && e.end < today; }).length;
+    var closureRate = totalNotes > 0 ? Math.round((completedNotes / totalNotes) * 100) : 0;
+    var errorRate = totalPermits > 0 ? Math.round((totalNotes / totalPermits) * 100) : 0;
+    document.getElementById('kpiTotalPermits').innerText = totalPermits; document.getElementById('kpiActivePermits').innerText = activePermits; document.getElementById('kpiTotalNotes').innerText = totalNotes;
+    document.getElementById('kpiClosureRate').innerText = closureRate + '%'; document.getElementById('kpiErrorRate').innerText = errorRate + '%'; document.getElementById('kpiLateNotes').innerText = allLateNotes.length;
+    document.getElementById('kpiCriticalNotes').innerText = criticalNotes.length; document.getElementById('kpiOverduePermits').innerText = overduePermits; document.getElementById('gaugeValue').innerText = closureRate + '%';
+    var emergTable = document.getElementById('emergencyNotesTable');
+    if (allLateNotes.length === 0) { emergTable.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#24704d; font-weight:bold; padding:15px;">لا توجد ملاحظات طارئة حالياً ✅</td></tr>'; }
+    else {
+        allLateNotes.sort(function(a,b){ return daysPassed(b.date) - daysPassed(a.date); }); var rows = "";
+        allLateNotes.forEach(function(n) {
+            var days = (typeof daysPassed === 'function') ? daysPassed(n.date) : 0;
+            var status = days > 10 ? '<span style="color:#5e0d0d; font-weight:bold;">حرجة جداً</span>' : '<span style="color:#b3402a;">متأخرة</span>';
+            rows += '<tr style="background:#fff0f0;"><td>' + (n.date || "") + '</td><td>' + (n.permit || "") + '</td><td>' + (n.contractor || "") + '</td><td>' + (n.type || "") + '</td><td>' + (n.reason || "") + '</td><td style="font-weight:bold; color:#b3402a;">' + days + ' يوم</td><td>' + status + '</td></tr>';
+        });
+        emergTable.innerHTML = rows;
+    }
+    var ctx1 = document.getElementById('complianceGaugeChart');
+    if (ctx1) { if (analyticsCharts.gauge) analyticsCharts.gauge.destroy(); analyticsCharts.gauge = new Chart(ctx1, { type: 'doughnut', data: { datasets: [{ data: [closureRate, 100 - closureRate], backgroundColor: ['#24704d', '#e0ebe5'], borderWidth: 0 }] }, options: { responsive: true, maintainAspectRatio: false, animation: false, cutout: '75%', circumference: 180, rotation: -90, plugins: { legend: { display: false }, tooltip: { enabled: false } } } }); }
+    var ctx2 = document.getElementById('workDistributionChart');
+    if (ctx2) { if (analyticsCharts.polar) analyticsCharts.polar.destroy(); analyticsCharts.polar = new Chart(ctx2, { type: 'polarArea', data: { labels: ['رخص الإخلاء', 'رخص الطوارئ', 'الملاحظات'], datasets: [{ data: [clearances.length, emergencies.length, notes.length], backgroundColor: ['rgba(36, 92, 73, 0.7)', 'rgba(57, 116, 93, 0.7)', 'rgba(192, 57, 43, 0.7)'] }] }, options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { position: 'bottom' } } } }); }
+    var ctx3 = document.getElementById('notesByEntityChart');
+    if (ctx3) { if (analyticsCharts.stacked) analyticsCharts.stacked.destroy(); var entityStats = {};
+        notes.forEach(function(n) { var type = n.type || "غير مصنف"; if (!entityStats[type]) entityStats[type] = { completed: 0, late: 0 }; if (n.completed) entityStats[type].completed++; else entityStats[type].late++; });
+        analyticsCharts.stacked = new Chart(ctx3, { type: 'bar', data: { labels: Object.keys(entityStats), datasets: [ { label: 'تم تعديلها', data: Object.values(entityStats).map(e => e.completed), backgroundColor: '#24704d' }, { label: 'متأخرة/قيد المتابعة', data: Object.values(entityStats).map(e => e.late), backgroundColor: '#b3402a' } ] }, options: { responsive: true, maintainAspectRatio: false, animation: false, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } } });
+    }
+    var q1 = { clearance: 0, emergency: 0, notes: 0 }; var q2 = { clearance: 0, emergency: 0, notes: 0 }; var q3 = { clearance: 0, emergency: 0, notes: 0 }; var q4 = { clearance: 0, emergency: 0, notes: 0 }; var totalAnnual = { clearance: 0, emergency: 0, notes: 0 };
+    function getQuarter(dateStr) { if (!dateStr) return -1; var d = new Date(dateStr); if (isNaN(d.getTime())) return -1; if (d.getFullYear() !== currentYear) return -1; var m = d.getMonth(); if (m <= 2) return 1; if (m <= 5) return 2; if (m <= 8) return 3; return 4; }
+    clearances.forEach(function(c) { var q = getQuarter(c.date || c.labReceive); if (q !== -1) { totalAnnual.clearance++; if (q === 1) q1.clearance++; else if (q === 2) q2.clearance++; else if (q === 3) q3.clearance++; else q4.clearance++; } });
+    emergencies.forEach(function(e) { var q = getQuarter(e.labReceive || e.start); if (q !== -1) { totalAnnual.emergency++; if (q === 1) q1.emergency++; else if (q === 2) q2.emergency++; else if (q === 3) q3.emergency++; else q4.emergency++; } });
+    notes.forEach(function(n) { var q = getQuarter(n.date); if (q !== -1) { totalAnnual.notes++; if (q === 1) q1.notes++; else if (q === 2) q2.notes++; else if (q === 3) q3.notes++; else q4.notes++; } });
+    var annualTable = document.getElementById('annualStatsTable');
+    if (annualTable) {
+        annualTable.innerHTML = '<tr><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold;">رخص الإخلاء</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q1.clearance+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q2.clearance+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q3.clearance+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q4.clearance+'</td><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold; color: #245c49;">'+totalAnnual.clearance+'</td></tr><tr style="background: #fff;"><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold;">رخص الطوارئ</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q1.emergency+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q2.emergency+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q3.emergency+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q4.emergency+'</td><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold; color: #245c49;">'+totalAnnual.emergency+'</td></tr><tr><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold;">الملاحظات</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q1.notes+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q2.notes+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q3.notes+'</td><td style="padding: 10px; border: 1px solid #e0ebe5;">'+q4.notes+'</td><td style="padding: 10px; border: 1px solid #e0ebe5; font-weight: bold; color: #245c49;">'+totalAnnual.notes+'</td></tr>';
+    }
+}
+setTimeout(renderAnalyticsPage, 1500);
+
+function getAnalyticsData() {
+    if (typeof clearances === 'undefined') return null;
+    let lateNotes = []; if (typeof notes !== 'undefined') lateNotes = notes.filter(function(n) { return !n.completed && typeof isLate === 'function' && isLate(n); });
+    return { totals: { "رخص الإخلاء": clearances.length, "رخص الطوارئ": (typeof emergencies !== 'undefined') ? emergencies.length : 0, "إجمالي الملاحظات": (typeof notes !== 'undefined') ? notes.length : 0, "ملاحظات طارئة": lateNotes.length }, lateNotes: lateNotes };
+}
+function exportAnalyticsToExcel() {
+    if (typeof XLSX === 'undefined') return alert("جاري تحميل مكتبة Excel..."); var data = getAnalyticsData(); if (!data) return alert("لا توجد بيانات");
+    var ws1 = XLSX.utils.json_to_sheet([{ "المؤشر": "رخص الإخلاء", "العدد": data.totals["رخص الإخلاء"] }, { "المؤشر": "رخص الطوارئ", "العدد": data.totals["رخص الطوارئ"] }, { "المؤشر": "إجمالي الملاحظات", "العدد": data.totals["إجمالي الملاحظات"] }, { "المؤشر": "ملاحظات طارئة", "العدد": data.totals["ملاحظات طارئة"] }]); ws1["!cols"] = [{ wch: 20 }, { wch: 10 }];
+    var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws1, "المؤشرات الإجمالية");
+    if (data.lateNotes.length > 0) { var notesData = data.lateNotes.map(function(n, i) { return { "م": i + 1, "التاريخ": n.date || "", "رقم التصريح": n.permit || "", "المقاول": n.contractor || "", "الجهة": n.type || "", "سبب الرفض": n.reason || "", "مضى (أيام)": (typeof daysPassed === 'function') ? daysPassed(n.date) : 0 }; }); var ws2 = XLSX.utils.json_to_sheet(notesData); ws2["!cols"] = [{ wch: 5 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 30 }, { wch: 10 }]; XLSX.utils.book_append_sheet(wb, ws2, "الملاحظات الطارئة"); }
+    if (!wb.Workbook) wb.Workbook = {}; if (!wb.Workbook.Views) wb.Workbook.Views = []; wb.Workbook.Views.push({ RTL: true }); XLSX.writeFile(wb, "تقرير_المؤشرات_والإحصائيات.xlsx");
+}
+</script>
+
+<!-- تصنيف المقاولين -->
+<script>
+var perfChartInterval = setInterval(function() {
+    if (typeof Chart === 'undefined' || typeof clearances === 'undefined' || typeof notes === 'undefined') return; clearInterval(perfChartInterval);
+    var contractorStats = {};
+    [...clearances, ...emergencies].forEach(function(p) { var name = (p.contractor || "غير معروف").trim(); if (name) { if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 }; contractorStats[name].permits++; } });
+    notes.forEach(function(n) { var name = (n.contractor || "غير معروف").trim(); if (name) { if (!contractorStats[name]) contractorStats[name] = { permits: 0, notes: 0 }; contractorStats[name].notes++; } });
+    var labels = Object.keys(contractorStats); var tbody = document.getElementById("performanceTableBody");
+    var tableRows = ''; var chartLabels = [], chartPermits = [], chartNotes = []; var classCounts = { A: 0, B: 0, C: 0, D: 0 };
+    labels.forEach(function(c) { var data = contractorStats[c]; var ratio = data.permits > 0 ? (data.notes / data.permits) * 100 : 0; var classification = '', classColor = '';
+        if (ratio === 0) { classification = '🟢 A (ممتاز)'; classColor = 'background:#dcefe4; color:#24704d;'; classCounts.A++; } else if (ratio <= 30) { classification = '🔵 B (جيد)'; classColor = 'background:#e8eee9; color:#5d7066;'; classCounts.B++; } else if (ratio <= 60) { classification = '🟡 C (متوسط)'; classColor = 'background:#fff8e1; color:#8a6d3b;'; classCounts.C++; } else { classification = '🔴 D (خطر عالي)'; classColor = 'background:#f7dddd; color:#a33f3f;'; classCounts.D++; }
+        chartLabels.push(c); chartPermits.push(data.permits); chartNotes.push(data.notes); tableRows += '<tr><td style="font-weight:bold;">' + c + '</td><td style="text-align:center;">' + data.permits + '</td><td style="text-align:center;">' + data.notes + '</td><td style="text-align:center; font-weight:bold;">' + ratio.toFixed(1) + '%</td><td style="text-align:center; font-weight:bold; padding:8px; border-radius:8px; ' + classColor + '">' + classification + '</td></tr>';
+    });
+    if (tbody) tbody.innerHTML = tableRows;
+    var barCtx = document.getElementById('contractorBarChart'); if (barCtx) new Chart(barCtx, { type: 'bar', data: { labels: chartLabels, datasets: [{ label: 'إجمالي التصاريح', data: chartPermits, backgroundColor: '#245c49' }, { label: 'إجمالي الملاحظات', data: chartNotes, backgroundColor: '#b3402a' }] }, options: { responsive: true, animation: false, scales: { y: { beginAtZero: true } } } });
+    var pieCtx = document.getElementById('classificationPieChart'); if (pieCtx) new Chart(pieCtx, { type: 'doughnut', data: { labels: ['ممتاز (A)', 'جيد (B)', 'متوسط (C)', 'خطر عالي (D)'], datasets: [{ data: [classCounts.A, classCounts.B, classCounts.C, classCounts.D], backgroundColor: ['#24704d', '#5d7066', '#8a6d3b', '#a33f3f'] }] }, options: { responsive: true, animation: false } });
+}, 1000);
+
+function getPerformanceDataArray() {
+    if (typeof clearances === 'undefined') return []; var stats = {};
+    clearances.concat(emergencies || []).forEach(function(p) { var n = (p.contractor || "غير معروف").trim(); if (n) { if (!stats[n]) stats[n] = { permits: 0, notes: 0 }; stats[n].permits++; } });
+    notes.forEach(function(n) { var name = (n.contractor || "غير معروف").trim(); if (name) { if (!stats[name]) stats[name] = { permits: 0, notes: 0 }; stats[name].notes++; } });
+    var arr = []; var i = 1;
+    Object.keys(stats).forEach(function(name) { var d = stats[name]; var r = d.permits > 0 ? (d.notes / d.permits) * 100 : 0; arr.push({ "م": i++, "اسم المقاول": name, "إجمالي التصاريح": d.permits, "إجمالي الملاحظات": d.notes, "نسبة الأخطاء (%)": r.toFixed(1), "التصنيف": r === 0 ? 'ممتاز (A)' : r <= 30 ? 'جيد (B)' : r <= 60 ? 'متوسط (C)' : 'خطر عالي (D)' }); });
+    return arr;
+}
+function exportPerformanceToExcel() {
+    if (typeof XLSX === 'undefined') return alert("جاري تحميل مكتبة Excel..."); var data = getPerformanceDataArray(); if (data.length === 0) return alert("لا توجد بيانات");
+    var ws = XLSX.utils.json_to_sheet(data); ws["!cols"] = [{ wch: 5 }, { wch: 25 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
+    var wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "تصنيف المقاولين");
+    if (!wb.Workbook) wb.Workbook = {}; if (!wb.Workbook.Views) wb.Workbook.Views = []; wb.Workbook.Views.push({ RTL: true }); XLSX.writeFile(wb, "تقرير_تصنيف_المقاولين.xlsx");
+}
+</script>
+
+<!-- ========================================================= -->
+<!-- الكود النهائي النظيف: فصل كل قسم في صفحة مستقلة -->
+<!-- ========================================================= -->
+<style>
+/* CSS قوي لإخفاء كل الصفحات ما عدا النشطة */
+.page {
+    display: none !important;
+}
+.page.active {
+    display: block !important;
+}
+</style>
+
+<script>
+/* إظهار أول صفحة فقط عند التحميل (بدون استبدال showPage من script.js) */
+(function() {
+    "use strict";
+    function showFirstPageOnly() {
+        try {
+            var pages = document.querySelectorAll(".page");
+            if (pages.length > 0 && !document.querySelector('.page.active')) {
+                pages[0].classList.add("active");
+                pages[0].style.display = "block";
+            }
+        } catch(e) {}
+    }
+    showFirstPageOnly();
+    document.addEventListener("DOMContentLoaded", showFirstPageOnly);
+    setTimeout(showFirstPageOnly, 500);
+    console.log("✅ تم تحميل الصفحات");
+})();
+</script>
+
+<!-- ============================================================ -->
+<!-- كود إصلاح التنقل بين الصفحات على الجوال (يضاف في النهاية) -->
+<!-- لا يؤثر على أي أكواد أخرى - يعمل بشكل مستقل -->
+<!-- ============================================================ -->
+<script>
 (function () {
     "use strict";
 
-    /* إعدادات Supabase */
-    var SUPABASE_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co";
-    var SUPABASE_KEY = "sb_publishable_HM4vP8LsEZJaZC9Cyug5fg_fhQ050qL";
-    var REST_URL = SUPABASE_URL + "/rest/v1/";
-    var HEADERS = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": "Bearer " + SUPABASE_KEY,
-        "Content-Type": "application/json"
-    };
-
-    /* دالة insert مباشرة للسحابة */
-    async function insertToCloud(tableName, row) {
+    /* دالة تنقل مستقلة لا تعتمد على شيء آخر */
+    function goToPage(pageName) {
         try {
-            var res = await fetch(REST_URL + tableName, {
-                method: "POST",
-                headers: Object.assign({}, HEADERS, { "Prefer": "return=representation" }),
-                body: JSON.stringify(row)
-            });
-            if (!res.ok) {
-                var txt = await res.text();
-                console.error("❌ خطأ حفظ السحابة:", res.status, txt.substring(0, 200));
-                return null;
+            var pages = document.querySelectorAll(".page");
+            for (var i = 0; i < pages.length; i++) {
+                pages[i].classList.remove("active");
+                pages[i].style.setProperty("display", "none", "important");
             }
-            var data = await res.json();
-            var result = Array.isArray(data) ? data[0] : data;
-            console.log("✅ تم الحفظ على السحابة - id:", result && result.id);
-            return result;
-        } catch (e) {
-            console.error("❌ استثناء:", e);
-            return null;
-        }
-    }
-
-    /* دالة update مباشرة للسحابة */
-    async function updateToCloud(tableName, id, changes) {
-        if (!id) return false;
-        try {
-            var res = await fetch(REST_URL + tableName + "?id=eq." + id, {
-                method: "PATCH",
-                headers: Object.assign({}, HEADERS, { "Prefer": "return=representation" }),
-                body: JSON.stringify(changes)
-            });
-            if (!res.ok) {
-                console.error("❌ خطأ تعديل السحابة:", res.status);
-                return false;
+            var target = document.getElementById(pageName);
+            if (target) {
+                target.classList.add("active");
+                target.style.setProperty("display", "block", "important");
             }
-            console.log("✅ تم التعديل على السحابة - id:", id);
-            return true;
-        } catch (e) {
-            console.error("❌ استثناء:", e);
-            return false;
-        }
-    }
-
-    /* عرض رسالة Toast */
-    function showToast(msg, type) {
-        type = type || "success";
-        var toast = document.getElementById("appToast");
-        if (!toast) {
-            toast = document.createElement("div");
-            toast.id = "appToast";
-            toast.style.cssText =
-                "position:fixed;top:15px;right:15px;left:15px;z-index:99999;color:#fff;padding:14px 18px;" +
-                "border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-family:inherit;font-size:14px;" +
-                "max-width:500px;margin:0 auto;text-align:center;white-space:pre-line;" +
-                "opacity:0;transform:translateY(-15px);transition:opacity .25s ease, transform .25s ease;";
-            document.body.appendChild(toast);
-        }
-        toast.textContent = msg;
-        toast.style.background = type === "error" ? "#b00020" : type === "warn" ? "#a86400" : "#245c49";
-        toast.style.opacity = "1";
-        toast.style.transform = "translateY(0)";
-        clearTimeout(toast._timer);
-        toast._timer = setTimeout(function () {
-            toast.style.opacity = "0";
-            toast.style.transform = "translateY(-15px)";
-        }, 3500);
-    }
-
-    /* إعادة تعريف saveClearance لترفع للسحابة فوراً */
-    window.saveClearance = async function () {
-        if (window._savingClearance) return;
-        window._savingClearance = true;
-
-        try {
-            var permit = document.getElementById("clearancePermit");
-            var contractor = document.getElementById("clearanceContractor");
-            var owner = document.getElementById("clearanceOwner");
-            var location = document.getElementById("clearanceLocation");
-
-            permit = permit ? permit.value.trim() : "";
-            contractor = contractor ? contractor.value.trim() : "";
-            owner = owner ? owner.value.trim() : "";
-            location = location ? location.value.trim() : "";
-
-            var missing = [];
-            if (!permit) missing.push("رقم التصريح");
-            if (!contractor) missing.push("اسم المقاول");
-            if (!owner) missing.push("الجهة المالكة");
-            if (!location) missing.push("الموقع");
-
-            if (missing.length > 0) {
-                alert("يرجى تعبئة:\n" + missing.join("\n"));
-                return;
-            }
-
-            /* عرض "جاري الحفظ" */
-            showToast("جارٍ الحفظ على السحابة... ⏳", "success");
-
-            /* تجهيز البيانات */
-            var data = {
-                permit: permit,
-                contractor: contractor,
-                owner: owner,
-                location: location,
-                images: []
-            };
-
-            /* هل هو تعديل أم جديد؟ */
-            var oldId = null;
-            if (typeof editingClearance !== "undefined" && editingClearance >= 0) {
-                var old = (typeof clearances !== "undefined" && clearances[editingClearance]) || {};
-                oldId = old.id || null;
-                if (old.images) data.images = old.images.filter(function (img) {
-                    return typeof img === "string" && img.indexOf("idb://") !== 0;
-                });
-                data.id = oldId;
-                clearances[editingClearance] = data;
-                editingClearance = -1;
-            } else {
-                clearances.push(data);
-            }
-
-            /* حفظ محلي فوري */
-            try { localStorage.setItem("clearances", JSON.stringify(clearances)); } catch (e) {}
-
-            /* تحديث الجدول فوراً */
-            if (typeof clearClearance === "function") clearClearance();
-            if (typeof renderClearances === "function") renderClearances();
-            if (typeof updateDashboard === "function") updateDashboard();
-
-            /* تجهيز البيانات للسحابة (إزالة idb:// references) */
-            var cloudRow = {
-                permit: permit,
-                contractor: contractor,
-                owner: owner,
-                location: location,
-                images: data.images.filter(function (img) {
-                    return typeof img === "string" && img.indexOf("idb://") !== 0;
-                })
-            };
-
-            /* رفع للسحابة الآن */
-            var cloudOk = false;
-
-            if (oldId) {
-                /* تعديل */
-                var ok = await updateToCloud("clearances", oldId, cloudRow);
-                if (ok) {
-                    cloudOk = true;
-                } else {
-                    /* لو فشل التعديل، أضف جديد */
-                    var ins = await insertToCloud("clearances", cloudRow);
-                    if (ins && ins.id) {
-                        data.id = ins.id;
-                        cloudOk = true;
-                    }
-                }
-            } else {
-                /* جديد */
-                var ins = await insertToCloud("clearances", cloudRow);
-                if (ins && ins.id) {
-                    data.id = ins.id;
-                    cloudOk = true;
+            /* تمرير لأعلى الصفحة */
+            window.scrollTo(0, 0);
+            /* تحديث أزرار الـ navbar */
+            var navBtns = document.querySelectorAll(".navbar button");
+            for (var j = 0; j < navBtns.length; j++) {
+                navBtns[j].classList.remove("active");
+                var oc = navBtns[j].getAttribute("onclick") || "";
+                if (oc.indexOf(pageName) !== -1) {
+                    navBtns[j].classList.add("active");
                 }
             }
-
-            /* تحديث الحفظ المحلي بالـ id الجديد */
-            try { localStorage.setItem("clearances", JSON.stringify(clearances)); } catch (e) {}
-            if (typeof renderClearances === "function") renderClearances();
-
-            /* رسالة النتيجة */
-            if (cloudOk) {
-                showToast("تم الحفظ على السحابة بنجاح ☁️✅", "success");
-                console.log("✅✅✅ تم حفظ الرخصة على السحابة! id:", data.id);
-            } else {
-                showToast("تم الحفظ محلياً ⚠️\nتحقق من الاتصال بالسحابة", "warn");
-                console.warn("⚠️ فشل الحفظ على السحابة، تم الحفظ محلياً فقط");
-            }
-
-        } catch (error) {
-            console.error("❌ خطأ في حفظ الإخلاء:", error);
-            showToast("خطأ: " + (error.message || error), "error");
-        } finally {
-            window._savingClearance = false;
+        } catch (err) {
+            console.error("خطأ في التنقل:", err);
         }
-    };
+    }
 
-    console.log("✅ تم تثبيت كود حفظ الإخلاءات على السحابة");
+    /* اعتراض نقرات أزرار التنقل - يعمل على الجوال والكمبيوتر */
+    function setupNavClicks() {
+        var buttons = document.querySelectorAll("button, a");
+        for (var i = 0; i < buttons.length; i++) {
+            (function (btn) {
+                if (btn.dataset.navFixed) return;
+                var oc = btn.getAttribute("onclick") || "";
+                /* فقط الأزرار التي تستدعي showPage */
+                var match = oc.match(/showPage\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+                if (match) {
+                    btn.dataset.navFixed = "1";
+                    var pageName = match[1];
+                    /* touchstart للجوال، click للكمبيوتر */
+                    btn.addEventListener("click", function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        goToPage(pageName);
+                    });
+                }
+            })(buttons[i]);
+        }
+    }
+
+    /* تشغيل بعد تحميل الصفحة */
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", setupNavClicks);
+    } else {
+        setupNavClicks();
+    }
+    /* إعادة التشغيل بعد ثانية لضمان عمل كل الأزرار */
+    setTimeout(setupNavClicks, 1000);
+    setTimeout(setupNavClicks, 3000);
+
+    console.log("✅ تم تثبيت كود التنقل للجوال");
 })();
-/* =========================================================
-   كود إضافي: إصلاح حفظ الطوارئ على السحابة
-   يُضاف بعد كود حفظ الإخلاءات في نهاية script.js
-   ========================================================= */
-(function () {
-    "use strict";
+</script>
 
-    var SUPABASE_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co";
-    var SUPABASE_KEY = "sb_publishable_HM4vP8LsEZJaZC9Cyug5fg_fhQ050qL";
-    var REST_URL = SUPABASE_URL + "/rest/v1/";
-    var HEADERS = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": "Bearer " + SUPABASE_KEY,
-        "Content-Type": "application/json"
-    };
-
-    async function insertToCloud(tableName, row) {
-        try {
-            var res = await fetch(REST_URL + tableName, {
-                method: "POST",
-                headers: Object.assign({}, HEADERS, { "Prefer": "return=representation" }),
-                body: JSON.stringify(row)
-            });
-            if (!res.ok) { var t = await res.text(); console.error("❌ خطأ:", res.status, t.substring(0, 200)); return null; }
-            var data = await res.json();
-            var result = Array.isArray(data) ? data[0] : data;
-            console.log("✅ تم الحفظ على السحابة - id:", result && result.id);
-            return result;
-        } catch (e) { console.error("❌ استثناء:", e); return null; }
-    }
-
-    async function updateToCloud(tableName, id, changes) {
-        if (!id) return false;
-        try {
-            var res = await fetch(REST_URL + tableName + "?id=eq." + id, {
-                method: "PATCH",
-                headers: Object.assign({}, HEADERS, { "Prefer": "return=representation" }),
-                body: JSON.stringify(changes)
-            });
-            if (!res.ok) { console.error("❌ خطأ تعديل:", res.status); return false; }
-            console.log("✅ تم التعديل على السحابة - id:", id);
-            return true;
-        } catch (e) { console.error("❌ استثناء:", e); return false; }
-    }
-
-    function showToast(msg, type) {
-        type = type || "success";
-        var toast = document.getElementById("appToast");
-        if (!toast) {
-            toast = document.createElement("div");
-            toast.id = "appToast";
-            toast.style.cssText = "position:fixed;top:15px;right:15px;left:15px;z-index:99999;color:#fff;padding:14px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-family:inherit;font-size:14px;max-width:500px;margin:0 auto;text-align:center;white-space:pre-line;opacity:0;transform:translateY(-15px);transition:opacity .25s ease, transform .25s ease;";
-            document.body.appendChild(toast);
-        }
-        toast.textContent = msg;
-        toast.style.background = type === "error" ? "#b00020" : type === "warn" ? "#a86400" : "#245c49";
-        toast.style.opacity = "1"; toast.style.transform = "translateY(0)";
-        clearTimeout(toast._timer);
-        toast._timer = setTimeout(function () { toast.style.opacity = "0"; toast.style.transform = "translateY(-15px)"; }, 3500);
-    }
-
-    /* إعادة تعريف saveEmergency */
-    window.saveEmergency = async function () {
-        if (window._savingEmergency) return;
-        window._savingEmergency = true;
-
-        try {
-            var permit = document.getElementById("emergencyPermit");
-            var contractor = document.getElementById("emergencyContractor");
-            var owner = document.getElementById("emergencyOwner");
-            var labReceive = document.getElementById("labReceiveDate");
-            var start = document.getElementById("workStartDate");
-            var end = document.getElementById("workEndDate");
-            var location = document.getElementById("emergencyLocation");
-
-            permit = permit ? permit.value.trim() : "";
-            contractor = contractor ? contractor.value.trim() : "";
-            owner = owner ? owner.value.trim() : "";
-            labReceive = labReceive ? labReceive.value : "";
-            start = start ? start.value : "";
-            end = end ? end.value : "";
-            location = location ? location.value.trim() : "";
-
-            var missing = [];
-            if (!permit) missing.push("رقم التصريح");
-            if (!contractor) missing.push("اسم المقاول");
-            if (!owner) missing.push("الجهة المالكة");
-            if (missing.length > 0) { alert("يرجى تعبئة:\n" + missing.join("\n")); return; }
-
-            showToast("جارٍ الحفظ على السحابة... ⏳", "success");
-
-            var data = {
-                permit: permit, contractor: contractor, owner: owner,
-                labReceive: labReceive, start: start, end: end, location: location, images: []
-            };
-
-            var oldId = null;
-            if (typeof editingEmergency !== "undefined" && editingEmergency >= 0) {
-                var old = (typeof emergencies !== "undefined" && emergencies[editingEmergency]) || {};
-                oldId = old.id || null;
-                if (old.images) data.images = old.images.filter(function (img) {
-                    return typeof img === "string" && img.indexOf("idb://") !== 0;
-                });
-                data.id = oldId;
-                emergencies[editingEmergency] = data;
-                editingEmergency = -1;
-            } else {
-                emergencies.push(data);
-            }
-
-            try { localStorage.setItem("emergencies", JSON.stringify(emergencies)); } catch (e) {}
-            if (typeof clearEmergency === "function") clearEmergency();
-            if (typeof renderEmergencies === "function") renderEmergencies();
-            if (typeof updateDashboard === "function") updateDashboard();
-
-            /* تجهيز البيانات للسحابة */
-            var cloudRow = {
-                permit: permit, contractor: contractor, owner: owner,
-                lab_receive: labReceive, work_start: start, work_end: end, location: location,
-                images: data.images.filter(function (img) { return typeof img === "string" && img.indexOf("idb://") !== 0; })
-            };
-
-            var cloudOk = false;
-            if (oldId) {
-                var ok = await updateToCloud("emergencies", oldId, cloudRow);
-                if (ok) cloudOk = true;
-                else { var ins = await insertToCloud("emergencies", cloudRow); if (ins && ins.id) { data.id = ins.id; cloudOk = true; } }
-            } else {
-                var ins = await insertToCloud("emergencies", cloudRow);
-                if (ins && ins.id) { data.id = ins.id; cloudOk = true; }
-            }
-
-            try { localStorage.setItem("emergencies", JSON.stringify(emergencies)); } catch (e) {}
-            if (typeof renderEmergencies === "function") renderEmergencies();
-
-            if (cloudOk) showToast("تم الحفظ على السحابة بنجاح ☁️✅", "success");
-            else showToast("تم الحفظ محلياً ⚠️\nتحقق من الاتصال", "warn");
-
-        } catch (error) {
-            console.error("❌ خطأ:", error);
-            showToast("خطأ: " + (error.message || error), "error");
-        } finally {
-            window._savingEmergency = false;
-        }
-    };
-
-    console.log("✅ تم تثبيت كود حفظ الطوارئ على السحابة");
-})();
+</body>
+</html>
