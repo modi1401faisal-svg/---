@@ -10,14 +10,19 @@
     <title>نظام مختبر جودة المشاريع</title>
     <link rel="stylesheet" href="style.css">
 
-    <!-- ====== إصلاح مبكر: تعطيل html2pdf + CSS احتياطي ====== -->
+    <!-- ====== إصلاح مبكر: CSS احتياطي (بدون document.write الذي يكسر الجوال) ====== -->
+    <style>
+        /* إخفاء كل الصفحات وإظهار النشطة فقط - مهم للجوال */
+        .page { display: none !important; }
+        .page.active { display: block !important; }
+    </style>
     <script>
+    /* تعطيل html2pdf بأمان بدون document.write */
     window.html2pdf = window.html2pdf || function() {
         return { set: function(){return this;}, from: function(){return this;}, save: function(){return Promise.resolve();} };
     };
-    document.write('<style>.page{display:none !important;}.page.active{display:block !important;}</style>');
-    window.onerror = function(msg, src, line, col, err) { console.warn("تجاوز خطأ:", msg); return true; };
-    window.addEventListener('unhandledrejection', function(e) { console.warn("تجاوز وعد:", e.reason); e.preventDefault(); });
+    /* عرض الأخطاء بدل إخفائها - مهم لتشخيص المشاكل على الجوال */
+    window.addEventListener('unhandledrejection', function(e) { console.warn("وعد مرفوض:", e.reason); e.preventDefault(); });
     </script>
 
     <style>
