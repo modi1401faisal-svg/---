@@ -182,7 +182,7 @@
                 <div class="form-group"><label>الموقع</label><input id="clearanceLocation" type="text"></div>
                 <div class="form-group full"><label>الصور</label><input id="clearanceImages" type="file" accept="image/*" multiple></div>
             </div>
-            <div class="form-actions"><button class="btn-primary" onclick="fastSaveClearance()">حفظ الرخصة</button><button class="btn-secondary" onclick="clearClearance()">تفريغ</button></div>
+            <div class="form-actions"><button class="btn-primary" onclick="saveClearance()">حفظ الرخصة</button><button class="btn-secondary" onclick="clearClearance()">تفريغ</button></div>
         </div>
         <div class="card table-card"><div class="card-header"><h3>سجل رخص الإخلاءات</h3></div>
             <div class="table-container"><table><thead><tr><th>رقم التصريح</th><th>المقاول</th><th>الجهة المالكة</th><th>الموقع</th><th>الصور</th><th>الإجراءات</th></tr></thead><tbody id="clearanceTable"></tbody></table></div>
@@ -214,7 +214,7 @@
                 <div class="form-group"><label>الموقع</label><input id="emergencyLocation" type="text"></div>
                 <div class="form-group full"><label>الصور</label><input id="emergencyImages" type="file" accept="image/*" multiple></div>
             </div>
-            <div class="form-actions"><button class="btn-primary" onclick="fastSaveEmergency()">حفظ الرخصة</button><button class="btn-secondary" onclick="clearEmergency()">تفريغ</button></div>
+            <div class="form-actions"><button class="btn-primary" onclick="saveEmergency()">حفظ الرخصة</button><button class="btn-secondary" onclick="clearEmergency()">تفريغ</button></div>
         </div>
         <div class="card table-card"><div class="card-header"><h3>سجل رخص الطوارئ</h3></div>
             <div class="table-container"><table><thead><tr><th>رقم التصريح</th><th>المقاول</th><th>الجهة المالكة</th><th>استلام المختبر</th><th>بدء العمل</th><th>انتهاء العمل</th><th>الموقع</th><th>الصور</th><th>الإجراءات</th></tr></thead><tbody id="emergencyTable"></tbody></table></div>
@@ -246,7 +246,7 @@
                 <div class="form-group"><label>صورة الملاحظة</label><input id="beforeImage" type="file" accept="image/*"></div>
                 <div class="form-group"><label>صورة الملاحظة بعد التعديل</label><input id="afterImage" type="file" accept="image/*"></div>
             </div>
-            <div class="form-actions"><button class="btn-primary" onclick="fastSaveNote()">حفظ الملاحظة</button><button class="btn-secondary" onclick="clearNote()">تفريغ</button></div>
+            <div class="form-actions"><button class="btn-primary" onclick="saveNote()">حفظ الملاحظة</button><button class="btn-secondary" onclick="clearNote()">تفريغ</button></div>
         </div>
         <div class="card table-card"><div class="card-header"><h3>سجل الملاحظات</h3></div>
             <div class="table-container"><table><thead><tr><th>التاريخ</th><th>نوع الملاحظة</th><th>رقم التصريح</th><th>المقاول</th><th>الجهة المالكة</th><th>سبب الرفض</th><th>الإجراء المتخذ</th><th>الحالة</th><th>الصور</th><th>الإجراءات</th></tr></thead><tbody id="notesTable"></tbody></table></div>
@@ -262,7 +262,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="script.js?v=500"></script>
+<script src="script.js?v=520"></script>
 
 <!-- إيقاف الأنيميشن لتسريع الجوال -->
 <script>
@@ -880,7 +880,7 @@ function exportPerformanceToPDF() {
         finally { window._savingEmergency = false; }
     };
 <!-- قبل: -->
-<button onclick="fastSaveClearance()">حفظ الرخصة</button>
+<button onclick="saveClearance()">حفظ الرخصة</button>
 <!-- بعد: -->
 <button onclick="saveClearance()">حفظ الرخصة</button>
     console.log("✅ تم تثبيت كود الحفظ المباشر على السحابة");
