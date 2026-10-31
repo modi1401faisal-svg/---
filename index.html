@@ -519,5 +519,79 @@ function exportPerformanceToExcel() {
 })();
 </script>
 
+<!-- ============================================================ -->
+<!-- كود إصلاح التنقل بين الصفحات على الجوال (يضاف في النهاية) -->
+<!-- لا يؤثر على أي أكواد أخرى - يعمل بشكل مستقل -->
+<!-- ============================================================ -->
+<script>
+(function () {
+    "use strict";
+
+    /* دالة تنقل مستقلة لا تعتمد على شيء آخر */
+    function goToPage(pageName) {
+        try {
+            var pages = document.querySelectorAll(".page");
+            for (var i = 0; i < pages.length; i++) {
+                pages[i].classList.remove("active");
+                pages[i].style.setProperty("display", "none", "important");
+            }
+            var target = document.getElementById(pageName);
+            if (target) {
+                target.classList.add("active");
+                target.style.setProperty("display", "block", "important");
+            }
+            /* تمرير لأعلى الصفحة */
+            window.scrollTo(0, 0);
+            /* تحديث أزرار الـ navbar */
+            var navBtns = document.querySelectorAll(".navbar button");
+            for (var j = 0; j < navBtns.length; j++) {
+                navBtns[j].classList.remove("active");
+                var oc = navBtns[j].getAttribute("onclick") || "";
+                if (oc.indexOf(pageName) !== -1) {
+                    navBtns[j].classList.add("active");
+                }
+            }
+        } catch (err) {
+            console.error("خطأ في التنقل:", err);
+        }
+    }
+
+    /* اعتراض نقرات أزرار التنقل - يعمل على الجوال والكمبيوتر */
+    function setupNavClicks() {
+        var buttons = document.querySelectorAll("button, a");
+        for (var i = 0; i < buttons.length; i++) {
+            (function (btn) {
+                if (btn.dataset.navFixed) return;
+                var oc = btn.getAttribute("onclick") || "";
+                /* فقط الأزرار التي تستدعي showPage */
+                var match = oc.match(/showPage\s*\(\s*['"]([^'"]+)['"]\s*\)/);
+                if (match) {
+                    btn.dataset.navFixed = "1";
+                    var pageName = match[1];
+                    /* touchstart للجوال، click للكمبيوتر */
+                    btn.addEventListener("click", function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        goToPage(pageName);
+                    });
+                }
+            })(buttons[i]);
+        }
+    }
+
+    /* تشغيل بعد تحميل الصفحة */
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", setupNavClicks);
+    } else {
+        setupNavClicks();
+    }
+    /* إعادة التشغيل بعد ثانية لضمان عمل كل الأزرار */
+    setTimeout(setupNavClicks, 1000);
+    setTimeout(setupNavClicks, 3000);
+
+    console.log("✅ تم تثبيت كود التنقل للجوال");
+})();
+</script>
+
 </body>
 </html>
