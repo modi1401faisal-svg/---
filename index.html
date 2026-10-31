@@ -2,9 +2,13 @@
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#173f32">
     <title>نظام مختبر جودة المشاريع</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=2">
     <style>
         .header-content { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 20px !important; }
         .header-text { text-align: center !important; flex: 1 !important; }
@@ -149,7 +153,7 @@
         </div>
     </section>
 
-    <section id="dashboard" class="page">
+    <section id="dashboard" class="page active">
         <div class="section-title"><h2>لوحة المتابعة</h2><p>ملخص أعمال مختبر جودة المشاريع</p></div>
         <div class="stats-grid">
             <div class="stat-card"><div class="stat-icon">📄</div><div><span>رخص الإخلاءات</span><strong id="clearanceCount">0</strong></div></div>
@@ -291,129 +295,6 @@ document.addEventListener("DOMContentLoaded", function() {
 </script>
 
 <!-- ====================================================== -->
-<!-- الحفظ السريع (يحفظ محلياً فوراً، ثم يرفع للسحابة بالخلفية) -->
-<!-- ====================================================== -->
-<script>
-function safeLS(key, data) { try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) {} }
-
-window.fastSaveClearance = async function() {
-    try {
-        const permit = document.getElementById("clearancePermit").value.trim();
-        const contractor = document.getElementById("clearanceContractor").value.trim();
-        const owner = document.getElementById("clearanceOwner").value.trim();
-        const location = document.getElementById("clearanceLocation").value.trim();
-        if (!permit || !contractor || !owner || !location) { alert("يرجى تعبئة جميع الحقول المطلوبة"); return; }
-
-        const files = document.getElementById("clearanceImages").files;
-        const data = { permit, contractor, owner, location, images: [] };
-
-        if (editingClearance >= 0) { clearances[editingClearance] = data; editingClearance = -1; }
-        else { clearances.push(data); }
-
-        safeLS("clearances", clearances);
-        clearClearance(); renderClearances(); updateDashboard();
-        alert("تم حفظ الرخصة بنجاح ✅");
-
-        // رفع الصور في الخلفية
-        setTimeout(async () => {
-            try {
-                const images = await readImages(files);
-                if (images && images.length > 0) { data.images = images; safeLS("clearances", clearances); renderClearances(); }
-                if (typeof initSupabase === 'function') {
-                    const client = await initSupabase();
-                    if (client) {
-                        if (data.id) await dbUpdate("clearances", data.id, clearanceToRow(data));
-                        else {
-                            const inserted = await dbInsert("clearances", clearanceToRow(data));
-                            if (inserted && inserted.id) { data.id = inserted.id; safeLS("clearances", clearances); }
-                        }
-                    }
-                }
-            } catch (e) { console.error("BG upload:", e); }
-        }, 100);
-    } catch (err) { alert("خطأ: " + err.message); }
-};
-
-window.fastSaveEmergency = async function() {
-    try {
-        const permit = document.getElementById("emergencyPermit").value.trim();
-        const contractor = document.getElementById("emergencyContractor").value.trim();
-        const owner = document.getElementById("emergencyOwner").value.trim();
-        if (!permit || !contractor || !owner) { alert("يرجى تعبئة الحقول المطلوبة"); return; }
-
-        const files = document.getElementById("emergencyImages").files;
-        const data = { permit, contractor, owner, labReceive: document.getElementById("labReceiveDate").value, start: document.getElementById("workStartDate").value, end: document.getElementById("workEndDate").value, location: document.getElementById("emergencyLocation").value.trim(), images: [] };
-
-        if (editingEmergency >= 0) { emergencies[editingEmergency] = data; editingEmergency = -1; }
-        else { emergencies.push(data); }
-
-        safeLS("emergencies", emergencies);
-        clearEmergency(); renderEmergencies(); updateDashboard();
-        alert("تم حفظ الرخصة بنجاح ✅");
-
-        setTimeout(async () => {
-            try {
-                const images = await readImages(files);
-                if (images && images.length > 0) { data.images = images; safeLS("emergencies", emergencies); renderEmergencies(); }
-                if (typeof initSupabase === 'function') {
-                    const client = await initSupabase();
-                    if (client) {
-                        if (data.id) await dbUpdate("emergencies", data.id, emergencyToRow(data));
-                        else {
-                            const inserted = await dbInsert("emergencies", emergencyToRow(data));
-                            if (inserted && inserted.id) { data.id = inserted.id; safeLS("emergencies", emergencies); }
-                        }
-                    }
-                }
-            } catch (e) { console.error("BG upload:", e); }
-        }, 100);
-    } catch (err) { alert("خطأ: " + err.message); }
-};
-
-window.fastSaveNote = async function() {
-    try {
-        const date = document.getElementById("noteDate").value;
-        const permit = document.getElementById("notePermit").value.trim();
-        const contractor = document.getElementById("noteContractor").value.trim();
-        const reason = document.getElementById("noteReason").value.trim();
-        const action = document.getElementById("noteAction").value.trim();
-        const type = document.getElementById("noteType").value || "مشاريع الأمانة";
-        if (!date || !permit || !contractor || !reason || !action) { alert("يرجى تعبئة الحقول المطلوبة"); return; }
-
-        const beforeFile = document.getElementById("beforeImage").files[0];
-        const afterFile = document.getElementById("afterImage").files[0];
-        const data = { type, date, permit, contractor, owner: document.getElementById("noteOwner").value.trim(), reason, action, before: "", after: "", completed: false };
-
-        if (editingNote >= 0) { notes[editingNote] = data; editingNote = -1; }
-        else { notes.push(data); }
-
-        safeLS("notes", notes);
-        clearNote(); renderNotes(); updateDashboard();
-        alert("تم حفظ الملاحظة بنجاح ✅");
-
-        setTimeout(async () => {
-            try {
-                const before = beforeFile ? await readImage(beforeFile) : "";
-                const after = afterFile ? await readImage(afterFile) : "";
-                data.before = before; data.after = after; data.completed = (after !== "");
-                safeLS("notes", notes); renderNotes();
-                if (typeof initSupabase === 'function') {
-                    const client = await initSupabase();
-                    if (client) {
-                        if (data.id) await dbUpdate("notes", data.id, noteToRow(data));
-                        else {
-                            const inserted = await dbInsert("notes", noteToRow(data));
-                            if (inserted && inserted.id) { data.id = inserted.id; safeLS("notes", notes); }
-                        }
-                    }
-                }
-            } catch (e) { console.error("BG upload:", e); }
-        }, 100);
-    } catch (err) { alert("خطأ: " + err.message); }
-};
-</script>
-
-<!-- ====================================================== -->
 <!-- الحذف السريع (يحذف محلياً فوراً، ثم يحذف من السحابة بالخلفية) -->
 <!-- ====================================================== -->
 <script>
@@ -441,7 +322,7 @@ document.addEventListener('click', function(e) {
         if (idx !== -1) {
             const item = arr[idx];
             arr.splice(idx, 1);
-            safeLS(tableName, arr);
+            try { localStorage.setItem(tableName, JSON.stringify(arr)); } catch(e) {}
             row.remove();
             updateDashboard();
 
@@ -709,182 +590,6 @@ function exportPerformanceToPDF() {
     var content = '<div dir="rtl" style="font-family:Arial,sans-serif;width:1000px;"><div style="text-align:center;border-bottom:3px solid #173f32;padding-bottom:8px;margin-bottom:15px;"><h2 style="color:#173f32;margin:0;">نظام مختبر جودة المشاريع</h2><h3 style="color:#333;margin:8px 0 4px;">تقرير تصنيف أداء المقاولين</h3></div><div style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:10px;margin-bottom:20px;"><div style="flex:2;min-width:300px;">'+barChartImg+'</div><div style="flex:1;min-width:200px;">'+pieChartImg+'</div></div><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:#173f32;color:#fff;"><th style="padding:8px;border:1px solid #999;">م</th><th style="padding:8px;border:1px solid #999;">اسم المقاول</th><th style="padding:8px;border:1px solid #999;">التصاريح</th><th style="padding:8px;border:1px solid #999;">الملاحظات</th><th style="padding:8px;border:1px solid #999;">نسبة الأخطاء</th><th style="padding:8px;border:1px solid #999;">التصنيف</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
     html2pdf().set({ margin: 10, filename: 'تقرير_تصنيف_المقاولين.pdf', image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: getPDFScale(), useCORS: true, windowWidth: 1200, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' } }).from(content).save();
 }
-</script>
-<!-- ====== كود إجبار الحفظ على السحابة ====== -->
-<script>
-(function () {
-    "use strict";
-
-    var SUPABASE_URL = "https://uuhldvdgyyxvtmjqqwex.supabase.co";
-    var SUPABASE_KEY = "sb_publishable_HM4vP8LsEZJaZC9Cyug5fg_fhQ050qL";
-    var REST_URL = SUPABASE_URL + "/rest/v1/";
-    var HEADERS = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": "Bearer " + SUPABASE_KEY,
-        "Content-Type": "application/json"
-    };
-
-    function showToastFix(msg, type) {
-        type = type || "success";
-        var toast = document.getElementById("appToast");
-        if (!toast) {
-            toast = document.createElement("div");
-            toast.id = "appToast";
-            toast.style.cssText = "position:fixed;top:15px;right:15px;left:15px;z-index:99999;color:#fff;padding:14px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.28);font-family:inherit;font-size:14px;max-width:500px;margin:0 auto;text-align:center;white-space:pre-line;opacity:0;transform:translateY(-15px);transition:opacity .25s ease, transform .25s ease;";
-            document.body.appendChild(toast);
-        }
-        toast.textContent = msg;
-        toast.style.background = type === "error" ? "#b00020" : type === "warn" ? "#a86400" : "#245c49";
-        toast.style.opacity = "1"; toast.style.transform = "translateY(0)";
-        clearTimeout(toast._timer);
-        toast._timer = setTimeout(function () { toast.style.opacity = "0"; toast.style.transform = "translateY(-15px)"; }, 3500);
-    }
-
-    async function insertToCloud(tableName, row) {
-        try {
-            var res = await fetch(REST_URL + tableName, {
-                method: "POST",
-                headers: Object.assign({}, HEADERS, { "Prefer": "return=representation" }),
-                body: JSON.stringify(row)
-            });
-            if (!res.ok) { var t = await res.text(); console.error("❌ خطأ:", res.status, t.substring(0, 200)); return null; }
-            var data = await res.json();
-            var result = Array.isArray(data) ? data[0] : data;
-            console.log("✅ تم الحفظ على السحابة - id:", result && result.id);
-            return result;
-        } catch (e) { console.error("❌ استثناء:", e); return null; }
-    }
-
-    async function updateToCloud(tableName, id, changes) {
-        if (!id) return false;
-        try {
-            var res = await fetch(REST_URL + tableName + "?id=eq." + id, {
-                method: "PATCH",
-                headers: Object.assign({}, HEADERS, { "Prefer": "return=representation" }),
-                body: JSON.stringify(changes)
-            });
-            if (!res.ok) { console.error("❌ خطأ تعديل:", res.status); return false; }
-            console.log("✅ تم التعديل على السحابة - id:", id);
-            return true;
-        } catch (e) { console.error("❌ استثناء:", e); return false; }
-    }
-
-    function getValue(id) {
-        var el = document.getElementById(id);
-        return el ? (el.value || "").trim() : "";
-    }
-
-    /* ====== إصلاح حفظ الإخلاءات ====== */
-    window.saveClearance = async function () {
-        if (window._savingClearance) return;
-        window._savingClearance = true;
-        try {
-            var permit = getValue("clearancePermit");
-            var contractor = getValue("clearanceContractor");
-            var owner = getValue("clearanceOwner");
-            var location = getValue("clearanceLocation");
-            var missing = [];
-            if (!permit) missing.push("رقم التصريح");
-            if (!contractor) missing.push("اسم المقاول");
-            if (!owner) missing.push("الجهة المالكة");
-            if (!location) missing.push("الموقع");
-            if (missing.length > 0) { alert("يرجى تعبئة:\n" + missing.join("\n")); return; }
-
-            showToastFix("جارٍ الحفظ على السحابة... ⏳", "success");
-            var data = { permit, contractor, owner, location, images: [] };
-            var oldId = null;
-            if (typeof editingClearance !== "undefined" && editingClearance >= 0) {
-                var old = (typeof clearances !== "undefined" && clearances[editingClearance]) || {};
-                oldId = old.id || null;
-                if (old.images) data.images = old.images.filter(function (img) { return typeof img === "string" && img.indexOf("idb://") !== 0; });
-                data.id = oldId;
-                clearances[editingClearance] = data;
-                editingClearance = -1;
-            } else { clearances.push(data); }
-
-            try { localStorage.setItem("clearances", JSON.stringify(clearances)); } catch (e) {}
-            if (typeof clearClearance === "function") clearClearance();
-            if (typeof renderClearances === "function") renderClearances();
-            if (typeof updateDashboard === "function") updateDashboard();
-
-            var cloudRow = { permit, contractor, owner, location, images: data.images.filter(function (img) { return typeof img === "string" && img.indexOf("idb://") !== 0; }) };
-            var cloudOk = false;
-            if (oldId) {
-                var ok = await updateToCloud("clearances", oldId, cloudRow);
-                if (ok) cloudOk = true;
-                else { var ins = await insertToCloud("clearances", cloudRow); if (ins && ins.id) { data.id = ins.id; cloudOk = true; } }
-            } else {
-                var ins = await insertToCloud("clearances", cloudRow);
-                if (ins && ins.id) { data.id = ins.id; cloudOk = true; }
-            }
-            try { localStorage.setItem("clearances", JSON.stringify(clearances)); } catch (e) {}
-            if (typeof renderClearances === "function") renderClearances();
-
-            if (cloudOk) showToastFix("تم الحفظ على السحابة بنجاح ☁️✅", "success");
-            else showToastFix("تم الحفظ محلياً ⚠️\nتحقق من الاتصال", "warn");
-        } catch (error) { console.error("❌ خطأ:", error); showToastFix("خطأ: " + (error.message || error), "error"); }
-        finally { window._savingClearance = false; }
-    };
-
-    /* ====== إصلاح حفظ الطوارئ ====== */
-    window.saveEmergency = async function () {
-        if (window._savingEmergency) return;
-        window._savingEmergency = true;
-        try {
-            var permit = getValue("emergencyPermit");
-            var contractor = getValue("emergencyContractor");
-            var owner = getValue("emergencyOwner");
-            var labReceive = getValue("labReceiveDate");
-            var start = getValue("workStartDate");
-            var end = getValue("workEndDate");
-            var location = getValue("emergencyLocation");
-            var missing = [];
-            if (!permit) missing.push("رقم التصريح");
-            if (!contractor) missing.push("اسم المقاول");
-            if (!owner) missing.push("الجهة المالكة");
-            if (missing.length > 0) { alert("يرجى تعبئة:\n" + missing.join("\n")); return; }
-
-            showToastFix("جارٍ الحفظ على السحابة... ⏳", "success");
-            var data = { permit, contractor, owner, labReceive, start, end, location, images: [] };
-            var oldId = null;
-            if (typeof editingEmergency !== "undefined" && editingEmergency >= 0) {
-                var old = (typeof emergencies !== "undefined" && emergencies[editingEmergency]) || {};
-                oldId = old.id || null;
-                if (old.images) data.images = old.images.filter(function (img) { return typeof img === "string" && img.indexOf("idb://") !== 0; });
-                data.id = oldId;
-                emergencies[editingEmergency] = data;
-                editingEmergency = -1;
-            } else { emergencies.push(data); }
-
-            try { localStorage.setItem("emergencies", JSON.stringify(emergencies)); } catch (e) {}
-            if (typeof clearEmergency === "function") clearEmergency();
-            if (typeof renderEmergencies === "function") renderEmergencies();
-            if (typeof updateDashboard === "function") updateDashboard();
-
-            var cloudRow = { permit, contractor, owner, lab_receive: labReceive, work_start: start, work_end: end, location, images: data.images.filter(function (img) { return typeof img === "string" && img.indexOf("idb://") !== 0; }) };
-            var cloudOk = false;
-            if (oldId) {
-                var ok = await updateToCloud("emergencies", oldId, cloudRow);
-                if (ok) cloudOk = true;
-                else { var ins = await insertToCloud("emergencies", cloudRow); if (ins && ins.id) { data.id = ins.id; cloudOk = true; } }
-            } else {
-                var ins = await insertToCloud("emergencies", cloudRow);
-                if (ins && ins.id) { data.id = ins.id; cloudOk = true; }
-            }
-            try { localStorage.setItem("emergencies", JSON.stringify(emergencies)); } catch (e) {}
-            if (typeof renderEmergencies === "function") renderEmergencies();
-
-            if (cloudOk) showToastFix("تم الحفظ على السحابة بنجاح ☁️✅", "success");
-            else showToastFix("تم الحفظ محلياً ⚠️\nتحقق من الاتصال", "warn");
-        } catch (error) { console.error("❌ خطأ:", error); showToastFix("خطأ: " + (error.message || error), "error"); }
-        finally { window._savingEmergency = false; }
-    };
-<!-- قبل: -->
-<button onclick="saveClearance()">حفظ الرخصة</button>
-<!-- بعد: -->
-<button onclick="saveClearance()">حفظ الرخصة</button>
-    console.log("✅ تم تثبيت كود الحفظ المباشر على السحابة");
-})();
 </script>
 </body>
 </html>
